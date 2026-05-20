@@ -1,6 +1,16 @@
 {
   "name": "create-cozy-api",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Scaffold a new cozy-api project — npx create-cozy-api <name>",
+  "license": "MIT",
+  "author": "dyudabomb@gmail.com",
+  "keywords": [
+    "cozy-api",
+    "scaffold",
+    "create-app",
+    "starter",
+    "typescript"
+  ],
   "type": "module",
   "bin": {
     "create-cozy-api": "./dist/cli.js"
@@ -10,6 +20,9 @@
     "dist",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

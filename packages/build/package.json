@@ -1,6 +1,17 @@
 {
   "name": "@cozy/build",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Compiler and CLI for cozy-api projects: cozy build (codegen), cozy dev (interpreter), cozy init, cozy import-openapi",
+  "license": "MIT",
+  "author": "dyudabomb@gmail.com",
+  "keywords": [
+    "cozy-api",
+    "cli",
+    "build",
+    "codegen",
+    "hono",
+    "typescript"
+  ],
   "type": "module",
   "main": "./dist/cli.js",
   "exports": {
@@ -20,6 +31,9 @@
     "dist",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

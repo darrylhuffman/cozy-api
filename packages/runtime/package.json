@@ -1,6 +1,18 @@
 {
   "name": "@cozy/runtime",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Headless runtime for cozy-api workflows — dataflow interpreter, defineNode helper, typed testing primitives",
+  "license": "MIT",
+  "author": "dyudabomb@gmail.com",
+  "keywords": [
+    "cozy-api",
+    "workflow",
+    "dataflow",
+    "api",
+    "hono",
+    "zod",
+    "typescript"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,9 +28,11 @@
   },
   "files": [
     "dist",
-    "src",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
