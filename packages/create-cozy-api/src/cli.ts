@@ -1,6 +1,7 @@
 import { readdir, stat } from "node:fs/promises"
 import { resolve } from "node:path"
 import { detectPackageManager } from "./detect-package-manager.js"
+import { scaffold } from "./scaffold.js"
 import { validateName } from "./validate-name.js"
 
 async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
@@ -25,8 +26,27 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   }
 
   const pm = detectPackageManager()
-  console.log(`create-cozy-api: would scaffold '${name}' at ${target} using ${pm}`)
-  console.log("(template rendering + install land in Tasks 32-33)")
+  console.log(`Scaffolding '${name}' at ${target} (package manager: ${pm})…`)
+
+  await scaffold({ target, name, pm })
+
+  console.log(`✓ Scaffold complete. (Install step lands in Task 33.)`)
+  console.log(``)
+  console.log(`Next steps:`)
+  console.log(`  cd ${name}`)
+  if (pm === "npm") {
+    console.log(`  npm install`)
+    console.log(`  npm run dev`)
+  } else if (pm === "yarn") {
+    console.log(`  yarn install`)
+    console.log(`  yarn dev`)
+  } else if (pm === "bun") {
+    console.log(`  bun install`)
+    console.log(`  bun run dev`)
+  } else {
+    console.log(`  ${pm} install`)
+    console.log(`  ${pm} dev`)
+  }
 }
 
 async function dirIsNonEmpty(p: string): Promise<boolean> {
