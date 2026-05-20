@@ -125,3 +125,8 @@ body,
   height: 100%;
   margin: 0;
 }
+
+.dv-react-part {
+  background-color: var(--background);
+  color: var(--foreground);
+}
