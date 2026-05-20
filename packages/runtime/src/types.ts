@@ -61,4 +61,6 @@ export interface Trigger<
   readonly config?: C
 }
 
-export type AnyNodeOrTrigger = Node | Trigger
+export type AnyNodeOrTrigger =
+  | Node<ZodObjectAny, ZodObjectAny, ZodObjectAny | undefined>
+  | Trigger<ZodObjectAny, ZodObjectAny | undefined>
