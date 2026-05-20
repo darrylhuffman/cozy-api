@@ -73,11 +73,26 @@ function computeExecutionSet(
     depsOf.set(id, deps)
   }
 
-  // BFS upstream from every reachable node to include all transitive ancestors.
+  // Foreign triggers: every trigger in the workflow that ISN'T the firing one.
+  // The execution-plan's `reachableFrom` keys are exactly the trigger nodes
+  // discovered by topology.ts; anything keyed there but not equal to the
+  // firing trigger is "another trigger's entrypoint" and must be excluded
+  // from this run — including from the ancestor walk below. This preserves
+  // the spec's "each trigger's run is independent" semantics: ancestor walking
+  // from a shared downstream node must not pull a sibling trigger (and its
+  // subgraph) into the execution set.
+  const foreignTriggers = new Set<string>()
+  for (const trigId of plan.reachableFrom.keys()) {
+    if (trigId !== triggerNodeId) foreignTriggers.add(trigId)
+  }
+
+  // BFS upstream from every reachable node to include all transitive ancestors,
+  // skipping foreign triggers (and not recursing into their ancestors).
   const queue: string[] = [...execSet]
   while (queue.length > 0) {
     const cur = queue.shift() as string
     for (const dep of depsOf.get(cur) ?? []) {
+      if (foreignTriggers.has(dep)) continue
       if (!execSet.has(dep)) {
         execSet.add(dep)
         queue.push(dep)
@@ -114,7 +129,16 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<WorkflowRun
         }),
       )
     }
-    if (tasks.length > 0) await Promise.all(tasks)
+    if (tasks.length > 0) {
+      // Per spec §3.5: "If any node throws, the workflow halts. In-flight
+      // sibling nodes are awaited (so dispose()s run on services) but their
+      // results are discarded." Promise.all would reject fast and leave
+      // siblings as unhandled rejections; allSettled awaits all, then we
+      // rethrow the first failure.
+      const settled = await Promise.allSettled(tasks)
+      const rejection = settled.find((s) => s.status === "rejected")
+      if (rejection) throw (rejection as PromiseRejectedResult).reason
+    }
     if (responseResult) break
   }
 

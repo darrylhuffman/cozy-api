@@ -151,6 +151,110 @@ describe("runWorkflow", () => {
     expect(events).toContain("after:res")
   })
 
+  it("fail-fast awaits in-flight siblings before throwing", async () => {
+    const sideEffectCompleted = vi.fn()
+    const slowOk = defineNode({
+      inputs: z.object({}),
+      outputs: z.object({}),
+      async run() {
+        await new Promise((r) => setTimeout(r, 20))
+        sideEffectCompleted()
+        return {}
+      },
+    })
+    const fastFail = defineNode({
+      inputs: z.object({}),
+      outputs: z.object({}),
+      async run() {
+        throw new Error("boom")
+      },
+    })
+    const wf = parseWorkflow({
+      cozy: 1,
+      nodes: {
+        req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
+        slow: { uses: "./slow", in: {}, after: ["req"] },
+        fail: { uses: "./fail", in: {}, after: ["req"] },
+        r: { uses: "@core/response", in: { body: "slow" } },
+      },
+    })
+    const { depsByNode } = validateWorkflow(wf)
+    const plan = computeExecutionPlan(wf, depsByNode)
+    await expect(
+      runWorkflow({
+        workflow: wf,
+        plan,
+        triggerNodeId: "req",
+        triggerOutputs: {
+          body: null,
+          params: {},
+          query: {},
+          headers: {},
+          context: { requestId: "", timestamp: 0 },
+        },
+        services: {},
+        resolveNode: (u) =>
+          resolveCoreNode(u) ??
+          (
+            { "./slow": slowOk, "./fail": fastFail } as Record<
+              string,
+              ReturnType<typeof defineNode>
+            >
+          )[u] ??
+          null,
+      }),
+    ).rejects.toThrow(/boom/)
+    expect(sideEffectCompleted).toHaveBeenCalled()
+  })
+
+  it("multi-trigger workflow: firing one trigger does not run the other trigger's subgraph", async () => {
+    const aFn = vi.fn(async () => ({ out: "A" }))
+    const bFn = vi.fn(async () => ({ out: "B" }))
+    const nA = defineNode({
+      inputs: z.object({}),
+      outputs: z.object({ out: z.string() }),
+      run: aFn as never,
+    })
+    const nB = defineNode({
+      inputs: z.object({}),
+      outputs: z.object({ out: z.string() }),
+      run: bFn as never,
+    })
+    const wf = parseWorkflow({
+      cozy: 1,
+      nodes: {
+        reqA: { uses: "@core/http-request", config: { path: "/a", method: "GET" } },
+        reqB: { uses: "@core/http-request", config: { path: "/b", method: "GET" } },
+        a: { uses: "./a", in: {}, after: ["reqA"] },
+        b: { uses: "./b", in: {}, after: ["reqB"] },
+        resA: { uses: "@core/response", in: { body: "a.out" } },
+        resB: { uses: "@core/response", in: { body: "b.out" } },
+      },
+    })
+    const { depsByNode } = validateWorkflow(wf)
+    const plan = computeExecutionPlan(wf, depsByNode)
+    const result = await runWorkflow({
+      workflow: wf,
+      plan,
+      triggerNodeId: "reqA",
+      triggerOutputs: {
+        body: null,
+        params: {},
+        query: {},
+        headers: {},
+        context: { requestId: "", timestamp: 0 },
+      },
+      services: {},
+      resolveNode: (u) =>
+        resolveCoreNode(u) ??
+        ({ "./a": nA, "./b": nB } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+        null,
+    })
+    expect(result.body).toBe("A")
+    expect(aFn).toHaveBeenCalledOnce()
+    expect(bFn).not.toHaveBeenCalled()
+  })
+
   it("fail-fast: a node throw aborts the workflow with NodeRunError", async () => {
     const boom = defineNode({
       inputs: z.object({}),
