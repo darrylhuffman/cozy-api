@@ -108,8 +108,6 @@ function printNextSteps(name: string, pm: string, needsInstall: boolean): void {
   console.log(`it needs under nodes/.`);
   console.log(``);
   console.log(`Tests: ${runPrefix} test`);
-  console.log(``);
-  console.log(`Docs: https://lorien-api.dev (placeholder)`);
 }
 
 async function dirIsNonEmpty(p: string): Promise<boolean> {
