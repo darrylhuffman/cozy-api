@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest"
 
 // Mock the resolution of @lorien/ide to a tmp dist so we can test runIde without
 // requiring an actual @lorien/ide build.
@@ -6,8 +6,13 @@ import { describe, expect, it } from "vitest";
 
 describe("ide command — registration smoke", () => {
   it("the ide module exports registerIde + runIde", async () => {
-    const mod = await import("./ide.js");
-    expect(typeof mod.registerIde).toBe("function");
-    expect(typeof mod.runIde).toBe("function");
-  });
-});
+    const mod = await import("./ide.js")
+    expect(typeof mod.registerIde).toBe("function")
+    expect(typeof mod.runIde).toBe("function")
+  })
+
+  it("defaults to the 8188 starting port", async () => {
+    const mod = await import("./ide.js")
+    expect(mod.DEFAULT_IDE_PORT).toBe(8188)
+  })
+})

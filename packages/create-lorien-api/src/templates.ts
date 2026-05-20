@@ -1,5 +1,5 @@
 export interface TemplateContext {
-  name: string;
+  name: string
 }
 
 export function renderPackageJson(ctx: TemplateContext): string {
@@ -9,7 +9,10 @@ export function renderPackageJson(ctx: TemplateContext): string {
     private: true,
     type: "module",
     scripts: {
-      dev: "tsx src/server.ts",
+      dev: "lorien dev",
+      "dev:server": "lorien dev --no-ide",
+      build: "lorien build",
+      start: "node dist/index.js",
       test: "vitest run",
       typecheck: "tsc --noEmit",
     },
@@ -19,14 +22,15 @@ export function renderPackageJson(ctx: TemplateContext): string {
       zod: "^4.4.3",
     },
     devDependencies: {
+      "@darrylondil/lorien-build": "latest",
       "@darrylondil/lorien-runtime": "latest",
       "@types/node": "^25.9.1",
       tsx: "^4.20.0",
       typescript: "^6.0.3",
       vitest: "^4.1.7",
     },
-  };
-  return `${JSON.stringify(pkg, null, 2)}\n`;
+  }
+  return `${JSON.stringify(pkg, null, 2)}\n`
 }
 
 export function renderTsconfig(): string {
@@ -41,14 +45,9 @@ export function renderTsconfig(): string {
       skipLibCheck: true,
       types: ["node"],
     },
-    include: [
-      "src/**/*",
-      "nodes/**/*",
-      "lorien.config.ts",
-      "workflows/**/*.test.ts",
-    ],
-  };
-  return `${JSON.stringify(tsconfig, null, 2)}\n`;
+    include: ["src/**/*", "nodes/**/*", "lorien.config.ts", "workflows/**/*.test.ts"],
+  }
+  return `${JSON.stringify(tsconfig, null, 2)}\n`
 }
 
 export function renderBiomeJson(): string {
@@ -75,8 +74,8 @@ export function renderBiomeJson(): string {
       rules: { recommended: true },
     },
     assist: { actions: { source: { organizeImports: "on" } } },
-  };
-  return `${JSON.stringify(biome, null, 2)}\n`;
+  }
+  return `${JSON.stringify(biome, null, 2)}\n`
 }
 
 export function renderGitignore(): string {
@@ -91,7 +90,7 @@ export function renderGitignore(): string {
     ".DS_Store",
     "Thumbs.db",
     "",
-  ].join("\n");
+  ].join("\n")
 }
 
 export function renderLorienConfig(): string {
@@ -105,7 +104,7 @@ export default defineConfig({
     // logger: (ctx) => createLogger(ctx.requestId),
   },
 })
-`;
+`
 }
 
 export function renderHelloWorkflow(): string {
@@ -125,8 +124,8 @@ export function renderHelloWorkflow(): string {
         in: { body: "say.greeting" },
       },
     },
-  };
-  return `${JSON.stringify(wf, null, 2)}\n`;
+  }
+  return `${JSON.stringify(wf, null, 2)}\n`
 }
 
 export function renderSayHelloNode(): string {
@@ -141,7 +140,7 @@ export default defineNode({
     return { greeting: "Hello from lorien-api!" }
   },
 })
-`;
+`
 }
 
 export function renderServerEntry(): string {
@@ -153,7 +152,7 @@ const port = Number(process.env.PORT) || 3000
 serve({ fetch: app.fetch, port }, ({ port }) => {
   console.log(\`lorien-api listening on http://localhost:\${port}\`)
 })
-`;
+`
 }
 
 export function renderAgentsMd(ctx: TemplateContext): string {
@@ -205,16 +204,16 @@ files define HTTP endpoints as dependency graphs of typed nodes.
 
 - Documentation: https://lorien-api.dev (placeholder)
 - @darrylondil/lorien-runtime API: \`testWorkflow\`, \`traceWorkflow\`, \`defineNode\`, \`defineConfig\`
-`;
+`
 }
 
 /** Returns the correct run prefix for the given package manager. */
 function runCmd(pm: string, script: string): string {
-  if (pm === "npm") return `npm run ${script}`;
-  if (pm === "yarn") return `yarn ${script}`;
-  if (pm === "bun") return `bun run ${script}`;
+  if (pm === "npm") return `npm run ${script}`
+  if (pm === "yarn") return `yarn ${script}`
+  if (pm === "bun") return `bun run ${script}`
   // pnpm and others
-  return `${pm} ${script}`;
+  return `${pm} ${script}`
 }
 
 export function renderReadme(ctx: TemplateContext, pm: string): string {
@@ -225,8 +224,10 @@ API project built with [lorien-api](https://lorien-api.dev).
 ## Quickstart
 
 \`\`\`
-${runCmd(pm, "dev")}       # start dev server on port 3000
-${runCmd(pm, "test")}      # run tests
+${runCmd(pm, "dev")}        # start dev server and open the IDE
+${runCmd(pm, "dev:server")} # start dev server without the IDE
+${runCmd(pm, "build")}      # generate dist/
+${runCmd(pm, "test")}       # run tests
 \`\`\`
 
 Then:
@@ -243,5 +244,5 @@ curl http://localhost:3000/hello
 - \`lorien.config.ts\` — service registry
 
 See [AGENTS.md](./AGENTS.md) for the author's guide.
-`;
+`
 }

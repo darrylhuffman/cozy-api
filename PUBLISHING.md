@@ -56,7 +56,7 @@ Source files, tests, and configs are NOT shipped — keeps the install size smal
 npm view @darrylondil/lorien-runtime version
 npm view @darrylondil/lorien-build version
 npm view @darrylondil/lorien-openapi version
-npm view create-lorien-api version
+npm view create-lorien version
 
 # Test the install end-to-end (use a fresh directory!)
 cd /tmp && mkdir lorien-test && cd lorien-test
@@ -67,7 +67,7 @@ ls node_modules/@darrylondil/lorien-runtime/dist/
 You can also test the scaffolder right away:
 
 ```bash
-cd /tmp && npx create-lorien-api@latest test-app
+cd /tmp && npx create-lorien@latest test-app
 cd test-app && npm install && npm run dev
 ```
 

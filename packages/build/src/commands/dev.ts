@@ -2,10 +2,14 @@ import { spawn } from "node:child_process"
 import { stat } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import type { Command } from "commander"
-import { runIde } from "./ide.js"
+import { findAvailablePort, parseStartingPort } from "../ports.js"
+import { DEFAULT_IDE_PORT, runIde } from "./ide.js"
+
+export const DEFAULT_API_PORT = 3000
 
 export interface DevOptions {
   root: string
+  port: string
 }
 
 export function registerDev(program: Command): void {
@@ -13,15 +17,29 @@ export function registerDev(program: Command): void {
     .command("dev")
     .description("Start the dev server and open the IDE (use --no-ide to skip the IDE)")
     .option("--root <path>", "project root", process.cwd())
+    .option(
+      "--port <number>",
+      "starting port for the API dev server",
+      process.env.PORT ?? String(DEFAULT_API_PORT),
+    )
     .option("--no-ide", "skip the IDE — just run the dev server")
-    .option("--ide-port <number>", "port for the IDE static server", "3737")
-    .action(async (opts: { root: string; ide: boolean; idePort: string }) => {
+    .option(
+      "--ide-port <number>",
+      "starting port for the IDE static server",
+      String(DEFAULT_IDE_PORT),
+    )
+    .action(async (opts: { root: string; port: string; ide: boolean; idePort: string }) => {
       const root = resolve(opts.root)
+      const port = parseStartingPort(opts.port, DEFAULT_API_PORT)
       if (opts.ide === false) {
-        const r = await runDevServer({ root })
+        const r = await runDevServer({ root, port })
         process.exit(r.exitCode ?? 1)
       } else {
-        const r = await runDevWithIde({ root, idePort: parseInt(opts.idePort, 10) })
+        const r = await runDevWithIde({
+          root,
+          port,
+          idePort: parseStartingPort(opts.idePort, DEFAULT_IDE_PORT),
+        })
         process.exit(r.exitCode ?? 1)
       }
     })
@@ -30,15 +48,21 @@ export function registerDev(program: Command): void {
     .command("dev:server")
     .description("Start only the dev server (no IDE)")
     .option("--root <path>", "project root", process.cwd())
+    .option(
+      "--port <number>",
+      "starting port for the API dev server",
+      process.env.PORT ?? String(DEFAULT_API_PORT),
+    )
     .action(async (opts: DevOptions) => {
       const root = resolve(opts.root)
-      const r = await runDevServer({ root })
+      const r = await runDevServer({ root, port: parseStartingPort(opts.port, DEFAULT_API_PORT) })
       process.exit(r.exitCode ?? 1)
     })
 }
 
 export interface RunDevOptions {
   root: string
+  port?: number
   /** For tests: inject a different spawn implementation. */
   spawnImpl?: typeof spawn
 }
@@ -57,10 +81,17 @@ export async function runDevServer(opts: RunDevOptions): Promise<RunDevResult> {
     return { exitCode: 1, error: "entry-not-found" }
   }
 
+  const requestedPort = parseStartingPort(opts.port ?? process.env.PORT, DEFAULT_API_PORT)
+  const port = await findAvailablePort(requestedPort)
+  if (port !== requestedPort) {
+    console.log(`lorien dev: API port ${requestedPort} is busy; using ${port}.`)
+  }
+
   const spawnFn = opts.spawnImpl ?? spawn
   return new Promise<RunDevResult>((resolveResult) => {
     const child = spawnFn("tsx", [entry], {
       cwd: opts.root,
+      env: { ...process.env, PORT: String(port) },
       stdio: "inherit",
       shell: process.platform === "win32",
     })
@@ -79,10 +110,12 @@ export async function runDevServer(opts: RunDevOptions): Promise<RunDevResult> {
 
 export async function runDevWithIde(opts: {
   root: string
+  port?: number
   idePort: number
   spawnImpl?: typeof spawn
 }): Promise<RunDevResult> {
-  const devOpts: { root: string; spawnImpl?: typeof spawn } = { root: opts.root }
+  const devOpts: { root: string; port?: number; spawnImpl?: typeof spawn } = { root: opts.root }
+  if (opts.port !== undefined) devOpts.port = opts.port
   if (opts.spawnImpl !== undefined) devOpts.spawnImpl = opts.spawnImpl
 
   // Start the IDE static server first; it stays alive in the background.
