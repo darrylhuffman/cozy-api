@@ -16,3 +16,14 @@ describe("CLI integration smoke", () => {
     expect(detectPackageManager("npm/10.0.0")).toBe("npm")
   })
 })
+
+describe("install command names", () => {
+  // Re-test the install commands here so failures point at the install module
+  it("matches expected commands per pm", async () => {
+    const { installCommand } = await import("./install.js")
+    expect(installCommand("npm").cmd).toBe("npm")
+    expect(installCommand("pnpm").cmd).toBe("pnpm")
+    expect(installCommand("yarn").cmd).toBe("yarn")
+    expect(installCommand("bun").cmd).toBe("bun")
+  })
+})
