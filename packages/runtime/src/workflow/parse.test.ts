@@ -4,7 +4,7 @@ import { parseWorkflow, parseWorkflowFromString, WorkflowParseError } from "./pa
 describe("parseWorkflow", () => {
   it("parses a minimal workflow", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         request: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         response: { uses: "@core/response", in: { body: "request.params" } },
@@ -15,20 +15,20 @@ describe("parseWorkflow", () => {
   })
 
   it("rejects unknown version", () => {
-    expect(() => parseWorkflow({ cozy: 99, nodes: {} } as unknown)).toThrow(/cozy.*version/i)
+    expect(() => parseWorkflow({ lorien: 99, nodes: {} } as unknown)).toThrow(/lorien.*version/i)
   })
 
   it("rejects when nodes is missing", () => {
-    expect(() => parseWorkflow({ cozy: 1 } as unknown)).toThrow()
+    expect(() => parseWorkflow({ lorien: 1 } as unknown)).toThrow()
   })
 
   it("rejects a node without `uses`", () => {
-    expect(() => parseWorkflow({ cozy: 1, nodes: { x: {} as never } } as unknown)).toThrow(/uses/)
+    expect(() => parseWorkflow({ lorien: 1, nodes: { x: {} as never } } as unknown)).toThrow(/uses/)
   })
 
   it("accepts optional view block", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: { r: { uses: "@core/response" } },
       view: { r: { x: 10, y: 20 } },
     })
@@ -40,7 +40,7 @@ describe("parseWorkflowFromString", () => {
   it("parses valid JSON workflow source", () => {
     const wf = parseWorkflowFromString(
       JSON.stringify({
-        cozy: 1,
+        lorien: 1,
         nodes: { r: { uses: "@core/response" } },
       }),
     )
@@ -53,6 +53,6 @@ describe("parseWorkflowFromString", () => {
   })
 
   it("throws WorkflowParseError on schema-invalid JSON", () => {
-    expect(() => parseWorkflowFromString(JSON.stringify({ cozy: 1 }))).toThrow(WorkflowParseError)
+    expect(() => parseWorkflowFromString(JSON.stringify({ lorien: 1 }))).toThrow(WorkflowParseError)
   })
 })

@@ -8,7 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const fixturePath = join(__dirname, "..", "test-fixtures", "petstore.json")
 
 // Use a temp dir within the packages/openapi directory so that Vitest's module
-// resolver can find @cozy/runtime and zod from the surrounding node_modules when
+// resolver can find @darrylondil/lorien-runtime and zod from the surrounding node_modules when
 // dynamically importing generated TypeScript files.
 const packageRoot = join(__dirname, "..")
 
@@ -39,8 +39,8 @@ describe("Plan #3 acceptance — petstore", () => {
 
   it("generated operation files contain expected structure", () => {
     const listPets = readFileSync(join(outDir, "list-pets.ts"), "utf-8")
-    expect(listPets).toMatch(/cozy-openapi: generated/)
-    expect(listPets).toMatch(/import \{ defineNode \} from "@cozy\/runtime"/)
+    expect(listPets).toMatch(/lorien-openapi: generated/)
+    expect(listPets).toMatch(/import \{ defineNode \} from "@darrylondil\/lorien-runtime"/)
     expect(listPets).toMatch(/export default defineNode/)
     expect(listPets).toMatch(/baseUrl\(\)/)
     expect(listPets).toMatch(/\bfetch\(/)

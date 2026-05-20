@@ -6,7 +6,7 @@
       "!**/dist",
       "!**/dist-test",
       "!**/node_modules",
-      "!**/.cozy",
+      "!**/.lorien",
       "!**/.superpowers"
     ]
   },

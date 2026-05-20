@@ -14,7 +14,7 @@ export const NodeViewSchema = z.object({
 })
 
 export const WorkflowFileSchema = z.object({
-  cozy: z.literal(1),
+  lorien: z.literal(1),
   nodes: z.record(z.string(), NodeInstanceSchema),
   view: z.record(z.string(), NodeViewSchema).optional(),
 })

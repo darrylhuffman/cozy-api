@@ -17,7 +17,7 @@ export interface WriteResult {
 }
 
 /**
- * Writes generated files to disk under outRoot. Respects the cozy-openapi marker:
+ * Writes generated files to disk under outRoot. Respects the lorien-openapi marker:
  *   - File doesn't exist → write
  *   - File exists with marker → overwrite
  *   - File exists without marker → preserve (don't touch user-authored files)

@@ -1,7 +1,7 @@
-# `@cozy/ide` shell — design
+# `@lorien/ide` shell — design
 
 **Date:** 2026-05-20
-**Builds on:** `2026-05-20-cozy-api-design.md` §7.1 (Layout B), §7.4 (creation flow)
+**Builds on:** `2026-05-20-lorien-api-design.md` §7.1 (Layout B), §7.4 (creation flow)
 **Scope:** Sub-project #3 — the IDE shell. Frontend SPA only; backend bridge comes in a later sub-project.
 **Status:** design approved, ready for plan-writing
 
@@ -18,13 +18,13 @@ A Vite + React + TypeScript SPA at `packages/ide/` that:
 5. Shows an **inspector** in the right panel with three tabs (Inspect / Tests / Run)
 6. **Persists layout** to localStorage — refresh keeps your panel arrangement
 7. Uses **shadcn/ui** for buttons, inputs, tabs, etc.; Tailwind v4 for styling
-8. Is **served by `cozy ide`** — `@cozy/build`'s CLI gets a new subcommand that serves the built SPA and opens it in a browser
+8. Is **served by `lorien ide`** — `@lorien/build`'s CLI gets a new subcommand that serves the built SPA and opens it in a browser
 
 What's NOT here (deferred to later sub-projects):
 - Visual graph editor (sub-project #4)
 - Code editor with TS LSP (sub-project #5)
 - Run/debug UX (sub-project #7)
-- Backend bridge to file system + runtime (sub-project #8, "`@cozy/ide-server`")
+- Backend bridge to file system + runtime (sub-project #8, "`@lorien/ide-server`")
 - Real file operations (load/save workflows from disk)
 - Multi-trigger workflow scenarios (the file tree just shows files, doesn't yet parse them)
 
@@ -42,7 +42,7 @@ What's NOT here (deferred to later sub-projects):
 | Test runner | **Vitest 4 + Testing Library** | Consistent with the rest of the monorepo. |
 | File watcher (build) | **Vite dev server** (`pnpm dev`) | Reload-on-save during shell dev. |
 
-Build output is a static SPA in `packages/ide/dist/` — pure HTML+JS+CSS. The `cozy ide` command (in @cozy/build) serves it from disk.
+Build output is a static SPA in `packages/ide/dist/` — pure HTML+JS+CSS. The `lorien ide` command (in @lorien/build) serves it from disk.
 
 ---
 
@@ -118,7 +118,7 @@ The right panel is fixed-tab — users can split/move the inspector group but th
 ## Persistence
 
 On load:
-1. Read `localStorage.getItem("cozy-ide-layout")`
+1. Read `localStorage.getItem("lorien-ide-layout")`
 2. If present, `api.fromJSON(parsed)`
 3. Otherwise, build the default Layout B arrangement programmatically
 
@@ -126,29 +126,29 @@ On layout change (dockview fires `onDidLayoutChange`):
 1. Serialize via `api.toJSON()`
 2. Write to localStorage
 
-Open-files state is ALSO persisted (which files are tabs, which one is active). Stored under `cozy-ide-tabs`.
+Open-files state is ALSO persisted (which files are tabs, which one is active). Stored under `lorien-ide-tabs`.
 
 ---
 
-## `cozy ide` integration
+## `lorien ide` integration
 
-A new subcommand in `@cozy/build`:
+A new subcommand in `@lorien/build`:
 
 ```bash
-cozy ide [--port 3737] [--no-open]
+lorien ide [--port 3737] [--no-open]
 ```
 
 What it does:
-1. Locates the @cozy/ide package's `dist/` directory (resolved from @cozy/build's own node_modules — installed as a peer or direct dep)
+1. Locates the @lorien/ide package's `dist/` directory (resolved from @lorien/build's own node_modules — installed as a peer or direct dep)
 2. Starts an HTTP server serving `dist/` as static files
 3. Opens the browser to `http://localhost:<port>` (unless `--no-open`)
 4. Logs the URL to stdout
 
 NO backend bridge yet in this sub-project — the SPA reads its file tree from a hard-coded fixture in dev. The backend bridge (sub-project #8) replaces this.
 
-`@cozy/ide` is added as a dependency of `@cozy/build` so the `dist/` is available when installed.
+`@lorien/ide` is added as a dependency of `@lorien/build` so the `dist/` is available when installed.
 
-For development of the IDE itself (`pnpm dev` in `packages/ide/`), Vite's own dev server handles things. `cozy ide` is for the production-deployed flow.
+For development of the IDE itself (`pnpm dev` in `packages/ide/`), Vite's own dev server handles things. `lorien ide` is for the production-deployed flow.
 
 ---
 
@@ -193,7 +193,7 @@ packages/ide/
 
 This will be expanded into the detailed plan, but at a glance:
 
-1. `@cozy/ide` package scaffold (Vite + React + TS + Vitest)
+1. `@lorien/ide` package scaffold (Vite + React + TS + Vitest)
 2. Tailwind v4 + shadcn installation + base components
 3. dockview-react integration + default Layout B
 4. Files panel with mock data + click-to-open
@@ -202,7 +202,7 @@ This will be expanded into the detailed plan, but at a glance:
 7. Editor placeholder content (per-tab card)
 8. Inspector panel with shadcn Tabs
 9. Layout persistence to localStorage
-10. `cozy ide` command in @cozy/build
+10. `lorien ide` command in @lorien/build
 11. Acceptance: clicking through the IDE works end-to-end; refresh persists layout
 
 ~11 tasks. Smaller than Plan #1 or Plan #2 because the scope is intentionally tight — the goal is a working visual shell, not the full editor functionality.
@@ -211,7 +211,7 @@ This will be expanded into the detailed plan, but at a glance:
 
 ## Acceptance for sub-project #3
 
-A user installs `@cozy/build@0.2.0` (the version that adds `cozy ide`) and runs `npx cozy ide` from any directory. The browser opens. They see:
+A user installs `@lorien/build@0.2.0` (the version that adds `lorien ide`) and runs `npx lorien ide` from any directory. The browser opens. They see:
 
 1. Three docked panels in Layout B
 2. A file tree on the left with sample workflows + nodes

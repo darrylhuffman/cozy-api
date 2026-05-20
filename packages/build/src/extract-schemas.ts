@@ -1,5 +1,5 @@
-import type { ZodObjectAny } from "@cozy/runtime"
-import { importNodes } from "@cozy/runtime"
+import type { ZodObjectAny } from "@darrylondil/lorien-runtime"
+import { importNodes } from "@darrylondil/lorien-runtime"
 
 export interface NodeSchemas {
   /** The "uses" key: e.g. "./nodes/say-hello". */

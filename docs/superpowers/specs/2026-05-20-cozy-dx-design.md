@@ -1,36 +1,36 @@
-# cozy-api DX layer — design
+# lorien-api DX layer — design
 
 **Date:** 2026-05-20
-**Builds on:** `2026-05-20-cozy-api-design.md` (sub-project #1 spec)
-**Scope:** Plan #1.5 (`startCozyServer` in `@cozy/runtime`) + Plan #2.5 (`create-cozy-api` scaffolder)
+**Builds on:** `2026-05-20-lorien-api-design.md` (sub-project #1 spec)
+**Scope:** Plan #1.5 (`startLorienServer` in `@darrylondil/lorien-runtime`) + Plan #2.5 (`create-lorien-api` scaffolder)
 **Status:** design approved, ready for plan-writing
 
 ---
 
 ## 1. Why
 
-After Plan #1, a user can build a cozy-api project — but only by hand-wiring `loadWorkspace` + `mountWorkflows` + service resolution, listing every node module manually in the resolver map. That's friction. Next.js-style file-based routing is the right model: drop a `.workflow` into `workflows/` and a `.ts` into `nodes/`, and it Just Works.
+After Plan #1, a user can build a lorien-api project — but only by hand-wiring `loadWorkspace` + `mountWorkflows` + service resolution, listing every node module manually in the resolver map. That's friction. Next.js-style file-based routing is the right model: drop a `.workflow` into `workflows/` and a `.ts` into `nodes/`, and it Just Works.
 
 The two pieces:
 
-- **`startCozyServer`** lives in `@cozy/runtime`. Walks `workflows/` and `nodes/` from a project root, dynamic-imports every node, auto-loads `cozy.config.ts`, mounts everything on a Hono app, returns it.
-- **`create-cozy-api`** is a separate standalone npm package. `npx create-cozy-api my-app` generates a complete starter project (deps, configs, sample workflow + node, server entry, AGENTS.md, README), detects the calling package manager, runs install, prints next steps.
+- **`startLorienServer`** lives in `@darrylondil/lorien-runtime`. Walks `workflows/` and `nodes/` from a project root, dynamic-imports every node, auto-loads `lorien.config.ts`, mounts everything on a Hono app, returns it.
+- **`create-lorien-api`** is a separate standalone npm package. `npx create-lorien-api my-app` generates a complete starter project (deps, configs, sample workflow + node, server entry, AGENTS.md, README), detects the calling package manager, runs install, prints next steps.
 
-Together: a user goes from `npx create-cozy-api my-app` → editing one workflow → `pnpm dev` and seeing `GET /hello` respond, all in under a minute.
+Together: a user goes from `npx create-lorien-api my-app` → editing one workflow → `pnpm dev` and seeing `GET /hello` respond, all in under a minute.
 
 ---
 
-## 2. `startCozyServer` design
+## 2. `startLorienServer` design
 
 ### 2.1 API
 
 ```ts
-export async function startCozyServer(opts?: StartServerOptions): Promise<Hono>
+export async function startLorienServer(opts?: StartServerOptions): Promise<Hono>
 
 export interface StartServerOptions {
   /** Project root. Defaults to process.cwd(). */
   root?: string
-  /** Service overrides on top of cozy.config.ts. Useful for tests. */
+  /** Service overrides on top of lorien.config.ts. Useful for tests. */
   services?: Partial<Services>
   /** Node overrides on top of disk-discovered nodes. Useful for tests. */
   nodes?: Record<string, AnyNodeOrTrigger>
@@ -47,11 +47,11 @@ export interface StartServerOptions {
 
 Given `root`:
 
-1. **`cozy.config.ts`** at `root` — dynamic-imported. Its default export's `services` field provides the service registry. Missing config = empty services (warn, don't throw).
+1. **`lorien.config.ts`** at `root` — dynamic-imported. Its default export's `services` field provides the service registry. Missing config = empty services (warn, don't throw).
 2. **`workflows/**/*.workflow`** — every file walked, parsed via `parseWorkflowFromString`. Invalid files logged but skipped (lenient mode); strict mode throws.
 3. **`nodes/**/*.ts`** — every file walked, dynamic-imported. The default export is captured. The import path is the project-relative path with `.ts` extension dropped: `nodes/foo/bar.ts` → `uses` key `"./nodes/foo/bar"`. Files with parse errors or missing default exports logged + skipped.
 
-Existing `loadWorkspace` returns a node registry that's still empty (Plan #1 deferred node loading). `startCozyServer` does the dynamic-import legwork and populates the registry.
+Existing `loadWorkspace` returns a node registry that's still empty (Plan #1 deferred node loading). `startLorienServer` does the dynamic-import legwork and populates the registry.
 
 ### 2.3 Test ergonomics
 
@@ -59,30 +59,30 @@ Overrides win. If `opts.nodes` provides a key, it shadows the disk version. Same
 
 ```ts
 // Real dev: zero-config
-const app = await startCozyServer()
+const app = await startLorienServer()
 
 // Test: override a node and a service
-const app = await startCozyServer({
+const app = await startLorienServer({
   root: __dirname,
   nodes: { "./nodes/save-user": mockSaveUser },
   services: { db: mockDb },
 })
 ```
 
-`testWorkflow` / `traceWorkflow` keep their existing signature (they receive a workflow and a service/node map, no root). Auto-discovery is opt-in via `startCozyServer`.
+`testWorkflow` / `traceWorkflow` keep their existing signature (they receive a workflow and a service/node map, no root). Auto-discovery is opt-in via `startLorienServer`.
 
 ### 2.4 Runtime requirements
 
 Dynamic-importing `.ts` files requires either:
 - The project is run via `tsx src/server.ts` (loader hook handles TS)
 - Or Bun (native TS)
-- Or after `cozy build` (Plan #2), the imported files are emitted JS
+- Or after `lorien build` (Plan #2), the imported files are emitted JS
 
-In pure Node without a TS loader, `startCozyServer` cannot import `.ts` nodes. The function detects this and throws with a clear error pointing to the `tsx` or `cozy build` path.
+In pure Node without a TS loader, `startLorienServer` cannot import `.ts` nodes. The function detects this and throws with a clear error pointing to the `tsx` or `lorien build` path.
 
 ### 2.5 Error handling
 
-- Missing `cozy.config.ts`: warn, continue with empty services
+- Missing `lorien.config.ts`: warn, continue with empty services
 - `workflows/` directory absent: warn, continue (no routes will be mounted)
 - `nodes/` directory absent: warn, continue (workflows referencing nodes will fail validation)
 - Individual file parse errors: log to stderr, skip the file (lenient: true). With `lenient: false`, throw on the first error
@@ -90,17 +90,17 @@ In pure Node without a TS loader, `startCozyServer` cannot import `.ts` nodes. T
 
 ---
 
-## 3. `create-cozy-api` design
+## 3. `create-lorien-api` design
 
 ### 3.1 Package structure
 
-Standalone npm package `create-cozy-api`, published to npm independently. NOT part of the monorepo packages, but lives in the monorepo for development: `packages/create-cozy-api/`. Has its own `package.json` with a single binary entry: `create-cozy-api`.
+Standalone npm package `create-lorien-api`, published to npm independently. NOT part of the monorepo packages, but lives in the monorepo for development: `packages/create-lorien-api/`. Has its own `package.json` with a single binary entry: `create-lorien-api`.
 
 ```json
 {
-  "name": "create-cozy-api",
+  "name": "create-lorien-api",
   "version": "0.0.0",
-  "bin": { "create-cozy-api": "./dist/cli.js" },
+  "bin": { "create-lorien-api": "./dist/cli.js" },
   ...
 }
 ```
@@ -108,7 +108,7 @@ Standalone npm package `create-cozy-api`, published to npm independently. NOT pa
 ### 3.2 CLI behavior
 
 ```
-$ npx create-cozy-api my-app
+$ npx create-lorien-api my-app
 ```
 
 1. **Argument:** the target directory name (positional). Must be a valid npm package name. If absent, prompt for it (interactive).
@@ -125,17 +125,17 @@ $ npx create-cozy-api my-app
 
 ```
 my-app/
-├── .gitignore                    # node_modules, dist, .cozy, .env, etc.
-├── package.json                  # @cozy/runtime devDep, hono + zod deps, scripts
-├── tsconfig.json                 # extends "@cozy/runtime/tsconfig" or inlined strict config
+├── .gitignore                    # node_modules, dist, .lorien, .env, etc.
+├── package.json                  # @darrylondil/lorien-runtime devDep, hono + zod deps, scripts
+├── tsconfig.json                 # extends "@darrylondil/lorien-runtime/tsconfig" or inlined strict config
 ├── biome.json                    # matches project conventions
-├── cozy.config.ts                # defineConfig with empty services + target: "hono"
+├── lorien.config.ts                # defineConfig with empty services + target: "hono"
 ├── workflows/
 │   └── hello.workflow            # GET /hello -> sayHello -> response
 ├── nodes/
 │   └── say-hello.ts              # defineNode returning { greeting: "Hello, world!" }
 ├── src/
-│   └── server.ts                 # startCozyServer + @hono/node-server adapter
+│   └── server.ts                 # startLorienServer + @hono/node-server adapter
 ├── AGENTS.md                     # AI agent skill artifact (static for v1)
 └── README.md                     # quickstart instructions
 ```
@@ -146,7 +146,7 @@ my-app/
 
 ```json
 {
-  "cozy": 1,
+  "lorien": 1,
   "nodes": {
     "request": {
       "uses": "@core/http-request",
@@ -167,7 +167,7 @@ my-app/
 `nodes/say-hello.ts`:
 
 ```ts
-import { defineNode } from "@cozy/runtime"
+import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
 
 export default defineNode({
@@ -175,7 +175,7 @@ export default defineNode({
   inputs: z.object({}),
   outputs: z.object({ greeting: z.string() }),
   async run() {
-    return { greeting: "Hello from cozy-api!" }
+    return { greeting: "Hello from lorien-api!" }
   },
 })
 ```
@@ -184,26 +184,26 @@ export default defineNode({
 
 ```ts
 import { serve } from "@hono/node-server"
-import { startCozyServer } from "@cozy/runtime"
+import { startLorienServer } from "@darrylondil/lorien-runtime"
 
-const app = await startCozyServer()
+const app = await startLorienServer()
 serve({ fetch: app.fetch, port: 3000 }, ({ port }) => {
-  console.log(`cozy-api listening on http://localhost:${port}`)
+  console.log(`lorien-api listening on http://localhost:${port}`)
 })
 ```
 
 `AGENTS.md` (placeholder for the eventually-richer artifact in Plan #2):
 
 ```markdown
-# cozy-api project guide for AI agents
+# lorien-api project guide for AI agents
 
-This project uses cozy-api: file-based API routing where `.workflow` files
+This project uses lorien-api: file-based API routing where `.workflow` files
 define HTTP endpoints as dependency graphs of typed nodes.
 
 ## Layout
 - `workflows/**/*.workflow` — HTTP routes as JSON dependency graphs
-- `nodes/**/*.ts` — typed compute units (via `defineNode` from `@cozy/runtime`)
-- `cozy.config.ts` — services (db, logger, etc.)
+- `nodes/**/*.ts` — typed compute units (via `defineNode` from `@darrylondil/lorien-runtime`)
+- `lorien.config.ts` — services (db, logger, etc.)
 
 ## Node contract
 [brief]
@@ -211,7 +211,7 @@ define HTTP endpoints as dependency graphs of typed nodes.
 ## Workflow file format
 [brief]
 
-(Full guide will be written by `cozy init` in plan #2.)
+(Full guide will be written by `lorien init` in plan #2.)
 ```
 
 `README.md`:
@@ -219,7 +219,7 @@ define HTTP endpoints as dependency graphs of typed nodes.
 ```markdown
 # {{name}}
 
-API project built with cozy-api.
+API project built with lorien-api.
 
 ## Quickstart
 
@@ -228,13 +228,13 @@ API project built with cozy-api.
 {{pm}} test      # run tests (vitest)
 \`\`\`
 
-Then `curl http://localhost:3000/hello` returns `{"greeting":"Hello from cozy-api!"}`.
+Then `curl http://localhost:3000/hello` returns `{"greeting":"Hello from lorien-api!"}`.
 
 ## Layout
 
 - `workflows/` — HTTP routes as `.workflow` JSON files
 - `nodes/` — typed compute units (`defineNode` modules)
-- `cozy.config.ts` — service registry
+- `lorien.config.ts` — service registry
 
 See AGENTS.md for the full author's guide.
 ```
@@ -258,7 +258,7 @@ See AGENTS.md for the full author's guide.
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cozy/runtime": "latest",
+    "@darrylondil/lorien-runtime": "latest",
     "@types/node": "^25.9.1",
     "tsx": "^4.20.0",
     "typescript": "^6.0.3",
@@ -274,7 +274,7 @@ See AGENTS.md for the full author's guide.
 After successful generation + install:
 
 ```
-✓ Created my-app with cozy-api
+✓ Created my-app with lorien-api
 
 Next steps:
   cd my-app
@@ -288,9 +288,9 @@ To run tests:
   pnpm test
 
 Eventual IDE (coming soon):
-  pnpm cozy ide          # not yet implemented
+  pnpm lorien ide          # not yet implemented
 
-Documentation: https://cozy-api.dev (placeholder)
+Documentation: https://lorien-api.dev (placeholder)
 ```
 
 The "Eventual IDE" line previews the upcoming work without overpromising.
@@ -299,13 +299,13 @@ The "Eventual IDE" line previews the upcoming work without overpromising.
 
 ## 4. Decisions log
 
-- `startCozyServer` returns the Hono app; user serves it themselves
+- `startLorienServer` returns the Hono app; user serves it themselves
 - Test path keeps `testWorkflow`/`traceWorkflow` with explicit node/service maps (no auto-discovery in tests by default)
-- Dynamic imports require `tsx` (or Bun, or post-`cozy build`)
+- Dynamic imports require `tsx` (or Bun, or post-`lorien build`)
 - Lenient error handling by default; strict mode opt-in
 - Scaffolder auto-installs via detected package manager
 - Sample is "GET /hello returning JSON" — minimum viable
-- Scaffolder lives in `packages/create-cozy-api/` in the monorepo
+- Scaffolder lives in `packages/create-lorien-api/` in the monorepo
 
 ---
 
@@ -313,9 +313,9 @@ The "Eventual IDE" line previews the upcoming work without overpromising.
 
 A new user can, in one shell session:
 
-1. `pnpm dlx create-cozy-api my-app` (or `npx`, `bunx`, etc.)
+1. `pnpm dlx create-lorien-api my-app` (or `npx`, `bunx`, etc.)
 2. `cd my-app && pnpm dev`
-3. `curl http://localhost:3000/hello` returns `{"greeting":"Hello from cozy-api!"}`
+3. `curl http://localhost:3000/hello` returns `{"greeting":"Hello from lorien-api!"}`
 4. Edit `workflows/hello.workflow` to add a new route, save, hit it. (Hot-reload deferred to v1.x.)
 5. Add a new node in `nodes/foo.ts`, reference it from a workflow, hit the workflow, see it work.
 6. Write a `vitest` test against the workflow using `testWorkflow`/`traceWorkflow`. Tests pass.

@@ -1,41 +1,41 @@
-import { rm } from "node:fs/promises"
-import { dirname, join } from "node:path"
-import { fileURLToPath, pathToFileURL } from "node:url"
-import { runBuild } from "@cozy/build/run-build"
-import { Hono } from "hono"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { runBuild } from "@darrylondil/lorien-build/run-build";
+import { Hono } from "hono";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const root = join(__dirname, "..")
-const distDir = join(root, "dist-built-test")
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = join(__dirname, "..");
+const distDir = join(root, "dist-built-test");
 
 beforeAll(async () => {
-  await runBuild({ root, outDir: distDir, skipTypes: true })
-}, 30000)
+  await runBuild({ root, outDir: distDir, skipTypes: true });
+}, 30000);
 
 afterAll(async () => {
-  await rm(distDir, { recursive: true, force: true })
-})
+  await rm(distDir, { recursive: true, force: true });
+});
 
-describe("built dist via cozy build", () => {
+describe("built dist via lorien build", () => {
   it("the built handler serves POST /users", async () => {
     // Dynamic-import the generated handler (vitest resolves .ts via Vite)
     const generated = (await import(
       pathToFileURL(join(distDir, "workflows", "users", "create.gen.ts")).href
     )) as {
-      register: (app: Hono) => void
-    }
-    const app = new Hono()
-    generated.register(app)
+      register: (app: Hono) => void;
+    };
+    const app = new Hono();
+    generated.register(app);
 
     const res = await app.request("/users", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: "test@example.com", password: "hunter2" }),
-    })
-    expect(res.status).toBe(201)
-    const body = (await res.json()) as { id: string; email: string }
-    expect(body.email).toBe("test@example.com")
-    expect(typeof body.id).toBe("string")
-  })
-})
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { id: string; email: string };
+    expect(body.email).toBe("test@example.com");
+    expect(typeof body.id).toBe("string");
+  });
+});

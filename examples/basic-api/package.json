@@ -1,10 +1,10 @@
 {
-  "name": "@cozy-example/basic-api",
+  "name": "@lorien-example/basic-api",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "cozy build",
+    "build": "lorien build",
     "dev": "tsx src/server.ts",
     "start": "node dist/index.js",
     "test": "vitest run",
@@ -15,8 +15,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cozy/build": "workspace:*",
-    "@cozy/runtime": "workspace:*",
+    "@darrylondil/lorien-build": "workspace:*",
+    "@darrylondil/lorien-runtime": "workspace:*",
     "@hono/node-server": "^1.13.0",
     "@types/node": "^25.9.1",
     "tsx": "^4.20.0",

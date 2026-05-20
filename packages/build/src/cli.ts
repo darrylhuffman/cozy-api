@@ -10,8 +10,8 @@ const VERSION = "0.0.0"
 function createProgram(): Command {
   const program = new Command()
   program
-    .name("cozy")
-    .description("Build, dev, and OpenAPI tools for cozy-api projects")
+    .name("lorien")
+    .description("Build, dev, and OpenAPI tools for lorien projects")
     .version(VERSION)
 
   registerBuild(program)

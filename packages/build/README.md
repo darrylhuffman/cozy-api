@@ -1,11 +1,11 @@
-# @cozy/build
+# @darrylondil/lorien-build
 
-The `cozy` CLI: build, dev, init, and OpenAPI import commands for cozy-api projects.
+The `lorien` CLI: build, dev, init, and OpenAPI import commands for lorien-api projects.
 
 ```
-npx cozy build
-npx cozy dev
-npx cozy init
+npx lorien build
+npx lorien dev
+npx lorien init
 ```
 
-See the design spec at `docs/superpowers/specs/2026-05-20-cozy-build-design.md`.
+See the design spec at `docs/superpowers/specs/2026-05-20-lorien-build-design.md`.

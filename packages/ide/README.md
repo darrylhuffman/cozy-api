@@ -1,6 +1,6 @@
-# @cozy/ide
+# @darrylondil/lorien-ide
 
-Browser IDE for cozy-api projects. Visual workflow editor, code editor, run/debug UX — all in a Vite + React 19 SPA.
+Browser IDE for lorien-api projects. Visual workflow editor, code editor, run/debug UX — all in a Vite + React 19 SPA.
 
 ## Dev
 
@@ -15,10 +15,10 @@ pnpm build
 # dist/ is the deployable static SPA
 ```
 
-Or invoke via `@cozy/build`:
+Or invoke via `@darrylondil/lorien-build`:
 
 ```
-npx cozy ide
+npx lorien ide
 ```
 
-(Once `cozy ide` lands in @cozy/build Task #66.)
+(Once `lorien ide` lands in @darrylondil/lorien-build Task #66.)

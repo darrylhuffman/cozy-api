@@ -49,21 +49,21 @@ export async function runInit(opts: RunInitOptions): Promise<RunInitResult> {
 function renderAgentsMd(name: string): string {
   return `# AI agent guide for ${name}
 
-This project uses **cozy-api**: a file-based API framework where \`.workflow\`
+This project uses **lorien**: a file-based API framework where \`.workflow\`
 files define HTTP endpoints as dependency graphs of typed nodes.
 
 ## Layout
 
 - \`workflows/**/*.workflow\` — HTTP routes as JSON dependency graphs
-- \`nodes/**/*.ts\` — typed compute units (via \`defineNode\` from \`@cozy/runtime\`)
-- \`cozy.config.ts\` — service registry (db, logger, etc.)
+- \`nodes/**/*.ts\` — typed compute units (via \`defineNode\` from \`@darrylondil/lorien-runtime\`)
+- \`lorien.config.ts\` — service registry (db, logger, etc.)
 
 ## Adding a new endpoint
 
 1. Create a node in \`nodes/\` (e.g., \`nodes/calculate.ts\`):
 
    \`\`\`ts
-   import { defineNode } from "@cozy/runtime"
+   import { defineNode } from "@darrylondil/lorien-runtime"
    import { z } from "zod"
 
    export default defineNode({
@@ -80,7 +80,7 @@ files define HTTP endpoints as dependency graphs of typed nodes.
 
    \`\`\`json
    {
-     "cozy": 1,
+     "lorien": 1,
      "nodes": {
        "req": { "uses": "@core/http-request", "config": { "path": "/calc", "method": "POST" } },
        "calc": { "uses": "./nodes/calculate", "in": { "x": "req.body.x" } },
@@ -93,8 +93,8 @@ files define HTTP endpoints as dependency graphs of typed nodes.
 
 ## References
 
-- Documentation: https://cozy-api.dev (placeholder)
-- @cozy/runtime API: \`testWorkflow\`, \`traceWorkflow\`, \`defineNode\`, \`defineConfig\`
+- Documentation: https://lorien.dev (placeholder)
+- @darrylondil/lorien-runtime API: \`testWorkflow\`, \`traceWorkflow\`, \`defineNode\`, \`defineConfig\`
 `
 }
 

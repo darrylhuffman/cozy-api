@@ -16,11 +16,11 @@ export function parseWorkflow(input: unknown): WorkflowFile {
   const result = WorkflowFileSchema.safeParse(input)
   if (!result.success) {
     const versionIssue = result.error.issues.find(
-      (i) => i.path[0] === "cozy" && i.code === "invalid_value",
+      (i) => i.path[0] === "lorien" && i.code === "invalid_value",
     )
     if (versionIssue) {
       throw new WorkflowParseError(
-        `Unsupported cozy version. This runtime expects \`cozy: 1\`.`,
+        `Unsupported lorien version. This runtime expects \`lorien: 1\`.`,
         result.error.issues,
       )
     }

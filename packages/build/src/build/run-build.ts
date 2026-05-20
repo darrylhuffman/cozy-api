@@ -1,6 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, resolve } from "node:path"
-import { loadWorkspace, validateWorkflow } from "@cozy/runtime"
+import { loadWorkspace, validateWorkflow } from "@darrylondil/lorien-runtime"
 import { emitIndex, emitWorkflow } from "../codegen/index.js"
 import { generateServicesTypes } from "../generate-services-types.js"
 

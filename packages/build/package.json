@@ -1,11 +1,11 @@
 {
-  "name": "@cozy/build",
+  "name": "@darrylondil/lorien-build",
   "version": "0.1.0",
-  "description": "Compiler and CLI for cozy-api projects: cozy build (codegen), cozy dev (interpreter), cozy init, cozy import-openapi",
+  "description": "Compiler and CLI for lorien projects: lorien build (codegen), lorien dev (interpreter), lorien init, lorien import-openapi",
   "license": "MIT",
   "author": "dyudabomb@gmail.com",
   "keywords": [
-    "cozy-api",
+    "lorien",
     "cli",
     "build",
     "codegen",
@@ -25,7 +25,7 @@
     }
   },
   "bin": {
-    "cozy": "./dist/cli.js"
+    "lorien": "./dist/cli.js"
   },
   "files": [
     "dist",
@@ -41,9 +41,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cozy/ide": "workspace:*",
-    "@cozy/openapi": "workspace:*",
-    "@cozy/runtime": "workspace:*",
+    "@darrylondil/lorien-ide": "workspace:*",
+    "@darrylondil/lorien-openapi": "workspace:*",
+    "@darrylondil/lorien-runtime": "workspace:*",
     "@hono/node-server": "^1.13.0",
     "commander": "^12.1.0",
     "hono": "^4.12.21"

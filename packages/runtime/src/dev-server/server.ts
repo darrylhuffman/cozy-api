@@ -174,7 +174,7 @@ function buildTriggerSlice(
     nodes[id] = wf.nodes[id]!
   }
 
-  return { cozy: 1, nodes }
+  return { lorien: 1, nodes }
 }
 
 /** Extracts :param values from a Hono-style path against an actual pathname. */

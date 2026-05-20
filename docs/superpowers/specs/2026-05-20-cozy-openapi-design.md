@@ -1,8 +1,8 @@
-# `@cozy/openapi` — design supplement
+# `@lorien/openapi` — design supplement
 
 **Date:** 2026-05-20
-**Builds on:** `2026-05-20-cozy-api-design.md` §3.10 (OpenAPI client-node import)
-**Scope:** Plan #3 — the `@cozy/openapi` package
+**Builds on:** `2026-05-20-lorien-api-design.md` §3.10 (OpenAPI client-node import)
+**Scope:** Plan #3 — the `@lorien/openapi` package
 **Status:** design approved, ready for plan-writing
 
 ---
@@ -19,12 +19,12 @@ This supplement pins down the implementation choices.
 
 ## Architecture
 
-`@cozy/openapi` is a new monorepo package: `packages/openapi/`. It exports:
+`@lorien/openapi` is a new monorepo package: `packages/openapi/`. It exports:
 - A pure `convertOpenApiSpec(spec, opts): GeneratedFiles` function that takes parsed OpenAPI JSON and returns a map of `<path>: <ts source>` to write
 - A `writeGeneratedFiles(files, opts)` helper that handles conflicts (skip existing or `--force` overwrite)
 - Schemas-and-types-only — no CLI binary
 
-The `cozy import-openapi` CLI command in `@cozy/build` becomes a thin wrapper: read JSON, call `@cozy/openapi`, write to disk, print summary. (Replaces the stub from Plan #2.)
+The `lorien import-openapi` CLI command in `@lorien/build` becomes a thin wrapper: read JSON, call `@lorien/openapi`, write to disk, print summary. (Replaces the stub from Plan #2.)
 
 ## Library choices
 
@@ -52,9 +52,9 @@ nodes/
 Each operation node file looks like:
 
 ```ts
-// cozy-openapi: generated from petstore.json operation `getPetById`.
-// Do NOT edit manually — re-run `cozy import-openapi petstore.json` to regenerate.
-import { defineNode } from "@cozy/runtime"
+// lorien-openapi: generated from petstore.json operation `getPetById`.
+// Do NOT edit manually — re-run `lorien import-openapi petstore.json` to regenerate.
+import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
 import { baseUrl, buildHeaders } from "./_client.js"
 
@@ -86,7 +86,7 @@ export default defineNode({
 The `_client.ts` helper:
 
 ```ts
-// cozy-openapi: generated. Edit baseUrl()/buildHeaders() to customize.
+// lorien-openapi: generated. Edit baseUrl()/buildHeaders() to customize.
 export function baseUrl(): string {
   return process.env.PETSTORE_BASE_URL ?? "https://petstore.example.com/v3"
 }
@@ -105,11 +105,11 @@ The user can edit `_client.ts` for auth, retries, etc. The per-operation files a
 
 Generated files have a header comment marker:
 ```ts
-// cozy-openapi: generated from <spec-name> operation `<id>`.
-// Do NOT edit manually — re-run `cozy import-openapi <spec>` to regenerate.
+// lorien-openapi: generated from <spec-name> operation `<id>`.
+// Do NOT edit manually — re-run `lorien import-openapi <spec>` to regenerate.
 ```
 
-`cozy import-openapi <spec>` v1.0 behavior:
+`lorien import-openapi <spec>` v1.0 behavior:
 - Files containing the marker → overwritten
 - Files NOT containing the marker → preserved (the user manually authored or modified)
 - `--force` → overwrites everything
@@ -148,16 +148,16 @@ These can land in v1.1 as the surface area grows.
 
 After Plan #3:
 
-1. `cozy import-openapi /path/to/petstore.json` generates `nodes/petstore/*.ts`
+1. `lorien import-openapi /path/to/petstore.json` generates `nodes/petstore/*.ts`
 2. Each generated node compiles cleanly with `tsc --noEmit`
 3. A user can `import getPetById from "./nodes/petstore/get-pet-by-id"` and call it (with a mocked fetch) — full type safety
-4. A user can use it in a workflow that mounts via `startCozyServer` and runs end-to-end with a mocked target API
-5. Re-running `cozy import-openapi` is idempotent (same input → same files)
+4. A user can use it in a workflow that mounts via `startLorienServer` and runs end-to-end with a mocked target API
+5. Re-running `lorien import-openapi` is idempotent (same input → same files)
 6. Editing `_client.ts` to set a custom base URL survives re-imports
 
 ## Plan #3 task structure
 
-1. `@cozy/openapi` package scaffold
+1. `@lorien/openapi` package scaffold
 2. OpenAPI 3.x JSON loader + structural validator
 3. `$ref` resolver (local refs, cycle detection)
 4. OpenAPI Schema → Zod schema converter
@@ -165,7 +165,7 @@ After Plan #3:
 6. `_client.ts` emitter (base URL + headers helper)
 7. Multi-operation orchestrator (`convertOpenApiSpec` function)
 8. File-writing helper with re-import safety (markers, --force)
-9. Wire `cozy import-openapi` in `@cozy/build` to call `@cozy/openapi` (replaces Plan #2's stub)
+9. Wire `lorien import-openapi` in `@lorien/build` to call `@lorien/openapi` (replaces Plan #2's stub)
 10. Acceptance: import a real petstore spec, generated nodes compile + work in a workflow
 
-Roughly the same scale as Plan #2 — 10 tasks, mostly small. Total monorepo packages after Plan #3: 4 (runtime, build, openapi, create-cozy-api).
+Roughly the same scale as Plan #2 — 10 tasks, mostly small. Total monorepo packages after Plan #3: 4 (runtime, build, openapi, create-lorien-api).

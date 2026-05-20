@@ -1,21 +1,21 @@
-# cozy-api — design
+# lorien-api — design
 
 **Date:** 2026-05-20
-**Working name:** `cozy-api` (file extension `.workflow` is brand-neutral)
+**Working name:** `lorien-api` (file extension `.workflow` is brand-neutral)
 **Status:** brainstorm complete, ready for implementation planning of sub-project #1
 
 ---
 
 ## 1. Vision
 
-cozy-api is an in-browser IDE for building HTTP APIs through a typed, drag-and-drop graph editor. It produces idiomatic TypeScript at build time, so deployed APIs have **zero dependency on cozy-api itself**. The IDE supports both human-driven and AI-driven authoring; the workflow file format is optimized for hand-editing.
+lorien-api is an in-browser IDE for building HTTP APIs through a typed, drag-and-drop graph editor. It produces idiomatic TypeScript at build time, so deployed APIs have **zero dependency on lorien-api itself**. The IDE supports both human-driven and AI-driven authoring; the workflow file format is optimized for hand-editing.
 
 ### Pillars
 
 - **Two execution paths, one model.** A dev-time interpreter executes `.workflow` files for rich debugging and live values. A prod-time codegen emits plain TypeScript that calls the same node modules directly. The two share one execution semantics by construction — codegen is "inline what the interpreter would do."
 - **Types are the source of truth.** Nodes declare inputs/outputs as Zod schemas. The editor reads schemas to render ports; validation, type inference, and form UI all derive from the same source.
 - **Files are human-editable.** The `.workflow` format is named-input style: each node's block describes where its inputs come from. No separate edges list. AIs and humans can hand-author files without the IDE.
-- **AI-as-skill, not AI-as-feature.** v1 ships no in-editor AI. It ships a documentation artifact at a known location that any agent (Claude, Cursor, Copilot) can read to understand cozy-api's conventions and author files correctly.
+- **AI-as-skill, not AI-as-feature.** v1 ships no in-editor AI. It ships a documentation artifact at a known location that any agent (Claude, Cursor, Copilot) can read to understand lorien-api's conventions and author files correctly.
 
 ### v1 scope (this design covers)
 
@@ -24,9 +24,9 @@ A user can:
 - Wire nodes by dragging from output ports to input ports, with field-level mapping
 - Run workflows in-IDE with live values, breakpoints, step controls, replay
 - Write tests against workflows and nodes (Vitest)
-- Build for production — `cozy build` emits Hono route code with no cozy-api runtime
+- Build for production — `lorien build` emits Hono route code with no lorien-api runtime
 - Import an OpenAPI JSON spec → generated client nodes appear under `nodes/<api>/`
-- Drop a documentation file into their repo so AI assistants can author cozy-api content
+- Drop a documentation file into their repo so AI assistants can author lorien-api content
 
 ### Out of scope for v1
 
@@ -44,7 +44,7 @@ A user can:
 
 ## 2. Subsystem decomposition
 
-cozy-api is ten subsystems. Each has its own spec → plan → implementation cycle. This design specs **sub-project #1** in depth and captures **validated direction** for the rest.
+lorien-api is ten subsystems. Each has its own spec → plan → implementation cycle. This design specs **sub-project #1** in depth and captures **validated direction** for the rest.
 
 | # | Subsystem | Status in this design | Depends on |
 |---|---|---|---|
@@ -73,7 +73,7 @@ Named-input JSON. Each node lists where its inputs come from inline. No separate
 
 ```jsonc
 {
-  "cozy": 1,
+  "lorien": 1,
   "nodes": {
     "request": {
       "uses": "@core/http-request",
@@ -116,7 +116,7 @@ Named-input JSON. Each node lists where its inputs come from inline. No separate
 
 **Field semantics:**
 
-- `cozy`: format version integer. v1 is `1`. Used for forward-compatible migrations.
+- `lorien`: format version integer. v1 is `1`. Used for forward-compatible migrations.
 - `nodes`: object keyed by **instance id**. The id is a valid JavaScript identifier; it's how other nodes reference this one. Two instances of the same module have different ids.
 - `nodes.<id>.uses`: a module reference. Two forms:
   - `./<relative path>` — a user-authored node file, resolved relative to the workspace root's `nodes/` directory (or wherever the user organizes node files).
@@ -142,7 +142,7 @@ User-authored nodes export a single default `defineNode(...)` call. The helper i
 ```ts
 // nodes/hash-password.ts
 import { z } from "zod"
-import { defineNode } from "@cozy/runtime"
+import { defineNode } from "@darrylondil/lorien-runtime"
 
 export default defineNode({
   name: "Hash Password",
@@ -163,7 +163,7 @@ export default defineNode({
 - `config?: ZodObject` — optional per-instance configuration. Defines the form rendered on the node body. See §3.6.
 - `run(input, services, config?)`: async function. Receives the resolved input, the typed services bag, and the resolved config. Returns a value matching the outputs schema.
 
-**`defineNode` is compile-time-erased.** At build, codegen emits the function body inline; no `@cozy/runtime` import survives. In dev, the helper is an identity function. Zero runtime cost.
+**`defineNode` is compile-time-erased.** At build, codegen emits the function body inline; no `@lorien/runtime` import survives. In dev, the helper is an identity function. Zero runtime cost.
 
 **Programmatic invocation.** `defineNode` returns a Node object whose `.run()` is directly callable. Other code (other nodes, tests, scripts) can `import hashPassword from "./hash-password"` and call `hashPassword.run({ plain }, services)`. Nodes are reusable utilities — the graph is one way to invoke them, plain TS is another.
 
@@ -187,8 +187,8 @@ Schemas are evaluated, not just statically inspected — the Zod schema is a run
 Services are declared in one file at workspace root:
 
 ```ts
-// cozy.config.ts
-import { defineConfig } from "@cozy/runtime"
+// lorien.config.ts
+import { defineConfig } from "@darrylondil/lorien-runtime"
 import { createDb } from "./services/db"
 import { createLogger } from "./services/logger"
 
@@ -212,8 +212,8 @@ export default defineConfig({
 The IDE generates an ambient declaration at workspace level:
 
 ```ts
-// .cozy/types/services.d.ts (auto-generated, do not edit)
-declare module "@cozy/runtime" {
+// .lorien/types/services.d.ts (auto-generated, do not edit)
+declare module "@darrylondil/lorien-runtime" {
   interface Services {
     db: import("./services/db").DBClient
     logger: import("./services/logger").Logger
@@ -221,7 +221,7 @@ declare module "@cozy/runtime" {
 }
 ```
 
-So when a node writes `async run(input, { db, logger }) { ... }`, TypeScript types `db` and `logger` correctly. Adding a service to `cozy.config.ts` causes regeneration of `services.d.ts`, and autocomplete picks it up in every node.
+So when a node writes `async run(input, { db, logger }) { ... }`, TypeScript types `db` and `logger` correctly. Adding a service to `lorien.config.ts` causes regeneration of `services.d.ts`, and autocomplete picks it up in every node.
 
 **Test overrides:** `testWorkflow(wf, { services: { db: mockDb } })` provides a partial override. Missing services fall back to the config.
 
@@ -307,7 +307,7 @@ nodes/hash-password.ts
 nodes/hash-password.test.ts           ← tests for the node
 ```
 
-**Two helpers from `@cozy/runtime/testing`:**
+**Two helpers from `@lorien/runtime/testing`:**
 
 ```ts
 // End-to-end: returns the response
@@ -327,9 +327,9 @@ expect(trace.errors).toEqual([])
 
 **Runner:** Vitest. Works with both Bun and Node. The IDE shells out and parses results; no custom runner. Watch mode is the default.
 
-### 3.9 Production build — `cozy build`
+### 3.9 Production build — `lorien build`
 
-`cozy build` reads `cozy.config.ts`, every `.workflow` file, every referenced node module, and emits idiomatic TypeScript under `dist/` (or configurable). The emitted code has **no `@cozy/runtime` dependency** — `defineNode`/`defineTrigger` are erased, references become inlined function calls, config becomes object literals.
+`lorien build` reads `lorien.config.ts`, every `.workflow` file, every referenced node module, and emits idiomatic TypeScript under `dist/` (or configurable). The emitted code has **no `@lorien/runtime` dependency** — `defineNode`/`defineTrigger` are erased, references become inlined function calls, config becomes object literals.
 
 **v1 target: Hono.** Each workflow with HTTP triggers compiles to:
 
@@ -371,13 +371,13 @@ export default function register(app: Hono) {
 
 **TypeScript:** emitted code passes `tsc --noEmit` against the project's tsconfig. No `any`, no `@ts-expect-error`. The emitted shape is fully typed end-to-end because we inline real type-bearing references.
 
-**`cozy build --watch`** for development of the dist output (rare; the dev interpreter is usually preferred).
+**`lorien build --watch`** for development of the dist output (rare; the dev interpreter is usually preferred).
 
 **Adapters for Fastify/Express** are deferred to v2. v1 is Hono-only.
 
 ### 3.10 OpenAPI client-node import
 
-`cozy import-openapi <spec.json>` reads a JSON OpenAPI 3.x spec and generates one node per operation under `nodes/<api-slug>/`. Each generated node:
+`lorien import-openapi <spec.json>` reads a JSON OpenAPI 3.x spec and generates one node per operation under `nodes/<api-slug>/`. Each generated node:
 
 - Has `name` derived from the operation's `operationId` or `summary`
 - Has `inputs` Zod schema derived from the operation's path params, query, headers, and body
@@ -391,7 +391,7 @@ export default function register(app: Hono) {
 
 ### 3.11 The AI agent skill artifact
 
-cozy-api ships a markdown file at a known location in user repos (`AGENTS.md` at the repo root, plus `.cozy/AGENT-GUIDE.md` for the long-form reference). The file documents:
+lorien-api ships a markdown file at a known location in user repos (`AGENTS.md` at the repo root, plus `.lorien/AGENT-GUIDE.md` for the long-form reference). The file documents:
 
 - The `.workflow` file format with examples
 - The `defineNode` / `defineTrigger` contract
@@ -399,9 +399,9 @@ cozy-api ships a markdown file at a known location in user repos (`AGENTS.md` at
 - Folder conventions
 - Common node patterns
 
-The format is optimized for AI consumption — concise, explicit, example-heavy, no marketing prose. The file is generated/updated by the `cozy init` command and stays in sync with the runtime version via a header version stamp.
+The format is optimized for AI consumption — concise, explicit, example-heavy, no marketing prose. The file is generated/updated by the `lorien init` command and stays in sync with the runtime version via a header version stamp.
 
-Any AI assistant (Claude Code, Cursor, Copilot Chat) can read this file as part of its context and author cozy-api artifacts correctly. We do not ship an in-IDE AI panel in v1.
+Any AI assistant (Claude Code, Cursor, Copilot Chat) can read this file as part of its context and author lorien-api artifacts correctly. We do not ship an in-IDE AI panel in v1.
 
 ---
 
@@ -411,17 +411,17 @@ Any AI assistant (Claude Code, Cursor, Copilot Chat) can read this file as part 
 ┌──────────────────────────────────────────────────────────────┐
 │  User's workspace                                            │
 │                                                              │
-│  cozy.config.ts            services registry, target, etc.   │
+│  lorien.config.ts            services registry, target, etc.   │
 │  workflows/                .workflow files (JSON)            │
 │  nodes/                    defineNode TS files               │
 │  AGENTS.md                 AI agent skill (generated)        │
-│  .cozy/types/services.d.ts  generated ambient types          │
+│  .lorien/types/services.d.ts  generated ambient types          │
 └──────────────────────────────────────────────────────────────┘
         │                                                │
         │ dev                                            │ build
         ▼                                                ▼
 ┌────────────────────────┐                ┌──────────────────────────┐
-│ @cozy/runtime           │                │ @cozy/build               │
+│ @lorien/runtime           │                │ @lorien/build               │
 │ Interpreter (dataflow)  │                │ Codegen → dist/*.ts       │
 │ Lifecycle events ws     │                │ Erases defineNode helper  │
 │ Test helpers            │                │ Inlines config            │
@@ -430,7 +430,7 @@ Any AI assistant (Claude Code, Cursor, Copilot Chat) can read this file as part 
         │                                                │
         ▼                                                ▼
    IDE / Vitest                                  Deployed API
-                                            (no cozy-api at runtime)
+                                            (no lorien-api at runtime)
 ```
 
 ---
@@ -439,11 +439,11 @@ Any AI assistant (Claude Code, Cursor, Copilot Chat) can read this file as part 
 
 A monorepo with these packages:
 
-- `@cozy/runtime` — `defineNode`, `defineTrigger`, `defineConfig`, lifecycle types, interpreter (dev-only), testing helpers
-- `@cozy/build` — `cozy build` CLI, codegen, Hono adapter, type generation
-- `@cozy/openapi` — `cozy import-openapi` command, OpenAPI → node generator
-- `@cozy/ide` — the browser IDE (later sub-projects)
-- `@cozy/ide-server` — local dev server that powers the IDE (later sub-projects)
+- `@lorien/runtime` — `defineNode`, `defineTrigger`, `defineConfig`, lifecycle types, interpreter (dev-only), testing helpers
+- `@lorien/build` — `lorien build` CLI, codegen, Hono adapter, type generation
+- `@lorien/openapi` — `lorien import-openapi` command, OpenAPI → node generator
+- `@lorien/ide` — the browser IDE (later sub-projects)
+- `@lorien/ide-server` — local dev server that powers the IDE (later sub-projects)
 
 The first three constitute sub-project #1's deliverable.
 
@@ -459,7 +459,7 @@ Because sub-project #1 ships headless, its full value is provable via tests:
 4. **DI tests** — singletons are reused, factories are called once per run, `dispose()` is awaited, type generation produces a valid `.d.ts`.
 5. **Interpreter integration tests** — end-to-end workflows execute and produce expected outputs.
 6. **Error policy tests** — fail-fast semantics, sibling cleanup.
-7. **Codegen tests** — emitted code is valid TS, passes `tsc --noEmit`, runs and produces identical results to the interpreter, has zero `@cozy/*` imports at runtime.
+7. **Codegen tests** — emitted code is valid TS, passes `tsc --noEmit`, runs and produces identical results to the interpreter, has zero `@lorien/*` imports at runtime.
 8. **Equivalence harness** — a property-based check: for a random workflow + input, the interpreter and the emitted code produce the same response.
 
 The equivalence harness is the strongest single safeguard against dev/prod drift.
@@ -553,13 +553,13 @@ These get answered in the next sub-project's design (IDE shell + graph editor).
 
 A user can, with no IDE:
 
-1. `npm install @cozy/runtime @cozy/build @cozy/openapi`
-2. Author `cozy.config.ts`, `.workflow` files, and node `.ts` files by hand (the AGENTS.md doc supports them or an AI doing this)
-3. `cozy dev` runs the interpreter against their workflows; HTTP routes are live; lifecycle events stream to stdout
+1. `npm install @darrylondil/lorien-runtime @darrylondil/lorien-build @darrylondil/lorien-openapi`
+2. Author `lorien.config.ts`, `.workflow` files, and node `.ts` files by hand (the AGENTS.md doc supports them or an AI doing this)
+3. `lorien dev` runs the interpreter against their workflows; HTTP routes are live; lifecycle events stream to stdout
 4. Write Vitest tests against workflows and nodes; tests pass
-5. `cozy build` produces a `dist/` of plain TypeScript Hono routes
+5. `lorien build` produces a `dist/` of plain TypeScript Hono routes
 6. `node dist/index.ts` (or `bun dist/index.ts`) serves the production API
-7. `cozy import-openapi petstore.json` generates `nodes/petstore/*.ts`
-8. `git diff` after deleting `@cozy/runtime` from production deps shows zero changes needed in `dist/`
+7. `lorien import-openapi petstore.json` generates `nodes/petstore/*.ts`
+8. `git diff` after deleting `@darrylondil/lorien-runtime` from production deps shows zero changes needed in `dist/`
 
 If all eight of those work end-to-end, sub-project #1 is done and we move to the IDE shell.

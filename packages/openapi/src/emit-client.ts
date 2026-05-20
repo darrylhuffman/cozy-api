@@ -6,7 +6,7 @@ export function emitClientHelper(apiSlug: string, defaultBaseUrl?: string): stri
   const envVar = `${apiSlug.toUpperCase().replace(/-/g, "_")}_BASE_URL`
   const fallback = defaultBaseUrl ?? "https://api.example.com"
   return [
-    `// cozy-openapi: generated _client helper. Edit baseUrl()/buildHeaders() to customize.`,
+    `// lorien-openapi: generated _client helper. Edit baseUrl()/buildHeaders() to customize.`,
     `// This file is preserved across re-imports unless --force is passed.`,
     ``,
     `export function baseUrl(): string {`,

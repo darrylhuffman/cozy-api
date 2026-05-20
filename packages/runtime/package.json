@@ -1,11 +1,11 @@
 {
-  "name": "@cozy/runtime",
+  "name": "@darrylondil/lorien-runtime",
   "version": "0.1.0",
-  "description": "Headless runtime for cozy-api workflows — dataflow interpreter, defineNode helper, typed testing primitives",
+  "description": "Headless runtime for lorien workflows — dataflow interpreter, defineNode helper, typed testing primitives",
   "license": "MIT",
   "author": "dyudabomb@gmail.com",
   "keywords": [
-    "cozy-api",
+    "lorien",
     "workflow",
     "dataflow",
     "api",

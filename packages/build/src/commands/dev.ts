@@ -82,18 +82,21 @@ export async function runDevWithIde(opts: {
   idePort: number
   spawnImpl?: typeof spawn
 }): Promise<RunDevResult> {
+  const devOpts: { root: string; spawnImpl?: typeof spawn } = { root: opts.root }
+  if (opts.spawnImpl !== undefined) devOpts.spawnImpl = opts.spawnImpl
+
   // Start the IDE static server first; it stays alive in the background.
   try {
     await runIde({ port: opts.idePort, open: true })
   } catch (e) {
     console.error(`Could not start the IDE: ${(e as Error).message}`)
     console.error("Falling back to dev-server-only.")
-    return runDevServer({ root: opts.root, spawnImpl: opts.spawnImpl })
+    return runDevServer(devOpts)
   }
 
   console.log("Both services started. Ctrl-C to stop.")
   // Then start the dev server — tsx logs alongside the IDE startup line.
-  return runDevServer({ root: opts.root, spawnImpl: opts.spawnImpl })
+  return runDevServer(devOpts)
 }
 
 /** Keep the old export name as an alias so any external callers aren't broken. */

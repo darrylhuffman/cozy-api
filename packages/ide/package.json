@@ -1,11 +1,11 @@
 {
-  "name": "@cozy/ide",
+  "name": "@darrylondil/lorien-ide",
   "version": "0.1.0",
-  "description": "Browser IDE for cozy-api projects — workflow graph editor, code editor, debugger UI",
+  "description": "Browser IDE for lorien projects — workflow graph editor, code editor, debugger UI",
   "license": "MIT",
   "author": "dyudabomb@gmail.com",
   "keywords": [
-    "cozy-api",
+    "lorien",
     "ide",
     "workflow-editor",
     "react",

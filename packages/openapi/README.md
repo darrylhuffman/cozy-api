@@ -1,18 +1,18 @@
-# @cozy/openapi
+# @darrylondil/lorien-openapi
 
-OpenAPI 3.x → cozy-api `defineNode` client generator.
+OpenAPI 3.x → lorien-api `defineNode` client generator.
 
 ```ts
-import { convertOpenApiSpec, writeGeneratedFiles } from "@cozy/openapi"
+import { convertOpenApiSpec, writeGeneratedFiles } from "@darrylondil/lorien-openapi"
 
 const generated = await convertOpenApiSpec(spec, { outRoot: "./nodes/petstore" })
 await writeGeneratedFiles(generated, { force: false })
 ```
 
-Or via the CLI in @cozy/build:
+Or via the CLI in @darrylondil/lorien-build:
 
 ```
-npx cozy import-openapi petstore.json
+npx lorien import-openapi petstore.json
 ```
 
-See the design spec at `docs/superpowers/specs/2026-05-20-cozy-openapi-design.md`.
+See the design spec at `docs/superpowers/specs/2026-05-20-lorien-openapi-design.md`.

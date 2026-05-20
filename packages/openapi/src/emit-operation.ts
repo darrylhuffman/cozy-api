@@ -14,7 +14,7 @@ export interface EmitResult {
   warnings: string[]
 }
 
-const HEADER_MARKER = "// cozy-openapi: generated"
+const HEADER_MARKER = "// lorien-openapi: generated"
 
 export function emitOperationNode(
   spec: OpenAPIObject,
@@ -90,8 +90,8 @@ export function emitOperationNode(
 
   const source = [
     `${HEADER_MARKER} from operation \`${opId}\`.`,
-    `// Do NOT edit manually — re-run \`cozy import-openapi <spec>\` to regenerate.`,
-    `import { defineNode } from "@cozy/runtime"`,
+    `// Do NOT edit manually — re-run \`lorien import-openapi <spec>\` to regenerate.`,
+    `import { defineNode } from "@darrylondil/lorien-runtime"`,
     `import { z } from "zod"`,
     `import { baseUrl, buildHeaders } from "./_client.js"`,
     ``,

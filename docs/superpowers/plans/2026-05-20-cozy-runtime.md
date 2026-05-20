@@ -1,14 +1,14 @@
-# @cozy/runtime Implementation Plan
+# @lorien/runtime Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `@cozy/runtime` — the headless heart of cozy-api. After this plan, a user can write `cozy.config.ts`, `.workflow` JSON files, and `defineNode` TS files by hand and run them end-to-end through a Hono-backed interpreter, with DI, lifecycle events, breakpoint-ready hooks, and Vitest test helpers.
+**Goal:** Build `@lorien/runtime` — the headless heart of lorien-api. After this plan, a user can write `lorien.config.ts`, `.workflow` JSON files, and `defineNode` TS files by hand and run them end-to-end through a Hono-backed interpreter, with DI, lifecycle events, breakpoint-ready hooks, and Vitest test helpers.
 
 **Architecture:** Single TypeScript ESM package. A dataflow scheduler walks `.workflow` files, calls user-authored node `.run()` functions in dependency order (parallel where possible), threads a typed services bag through each call, and emits lifecycle events to subscribers. Two built-in nodes (`@core/http-request`, `@core/response`) provide the HTTP entry and exit. A thin `startDevServer()` function wires the interpreter to a Hono server.
 
 **Tech Stack** (versions are current latest stable as of 2026-05-20; check `npm view <pkg> version` before re-running this plan and bump if stale):
 - TypeScript 6.0+ (strict, ES2022, NodeNext modules)
-- pnpm 11+ workspaces (monorepo, room for `@cozy/build` and `@cozy/openapi` later)
+- pnpm 11+ workspaces (monorepo, room for `@lorien/build` and `@lorien/openapi` later)
 - Vitest 4+ (test runner; the spec requires Vitest for users too, so we dogfood)
 - tsup 8.5+ (library bundler — ESM output with types, no fuss)
 - Biome 2.4+ (lint + format, single tool)
@@ -28,7 +28,7 @@
 ## File structure (after this plan completes)
 
 ```
-cozy-api/
+lorien-api/
 ├── package.json                    # root, pnpm workspace declaration
 ├── pnpm-workspace.yaml             # declares packages/*
 ├── tsconfig.base.json              # shared strict TS config
@@ -95,7 +95,7 @@ Write `package.json`:
 
 ```json
 {
-  "name": "cozy-api",
+  "name": "lorien-api",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -174,7 +174,7 @@ Write `biome.json` (v2 format — `files.includes` with negated patterns, `assis
 {
   "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
   "files": {
-    "includes": ["**", "!**/dist", "!**/node_modules", "!**/.cozy", "!**/.superpowers"]
+    "includes": ["**", "!**/dist", "!**/node_modules", "!**/.lorien", "!**/.superpowers"]
   },
   "formatter": {
     "enabled": true,
@@ -220,7 +220,7 @@ git commit -m "chore: monorepo skeleton with pnpm workspaces, tsconfig, biome"
 
 ---
 
-## Task 2: @cozy/runtime package scaffold
+## Task 2: @lorien/runtime package scaffold
 
 **Files:**
 - Create: `packages/runtime/package.json`
@@ -236,7 +236,7 @@ Write `packages/runtime/package.json`:
 
 ```json
 {
-  "name": "@cozy/runtime",
+  "name": "@darrylondil/lorien-runtime",
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -344,7 +344,7 @@ Write `packages/runtime/src/index.test.ts`:
 import { describe, expect, it } from "vitest"
 import { VERSION } from "./index.js"
 
-describe("@cozy/runtime package", () => {
+describe("@darrylondil/lorien-runtime package", () => {
   it("exports a version string", () => {
     expect(VERSION).toBe("0.0.0")
   })
@@ -358,13 +358,13 @@ Expected: workspace resolves, `packages/runtime` deps installed (hono, zod, tsup
 
 - [ ] **Step 8: Verify build + test + typecheck**
 
-Run: `pnpm --filter @cozy/runtime typecheck`
+Run: `pnpm --filter @darrylondil/lorien-runtime typecheck`
 Expected: passes.
 
-Run: `pnpm --filter @cozy/runtime test`
+Run: `pnpm --filter @darrylondil/lorien-runtime test`
 Expected: 1 test passes.
 
-Run: `pnpm --filter @cozy/runtime build`
+Run: `pnpm --filter @darrylondil/lorien-runtime build`
 Expected: `dist/index.js`, `dist/index.d.ts` produced.
 
 - [ ] **Step 9: Create stub testing entry**
@@ -375,14 +375,14 @@ Write `packages/runtime/src/testing/index.ts`:
 export const TESTING_VERSION = "0.0.0"
 ```
 
-Run: `pnpm --filter @cozy/runtime build`
+Run: `pnpm --filter @darrylondil/lorien-runtime build`
 Expected: `dist/testing/index.js` also produced.
 
 - [ ] **Step 10: Commit**
 
 ```bash
 git add packages/runtime/ pnpm-lock.yaml
-git commit -m "feat(runtime): scaffold @cozy/runtime package with tsup + vitest"
+git commit -m "feat(runtime): scaffold @darrylondil/lorien-runtime package with tsup + vitest"
 ```
 
 ---
@@ -424,7 +424,7 @@ test("Trigger has no inputs, no run", () => {
 
 test("Services interface exists and supports augmentation", () => {
   // The base interface is empty; users add fields via declaration merging
-  // (.cozy/types/services.d.ts generated by @cozy/build). Verify that
+  // (.lorien/types/services.d.ts generated by @darrylondil/lorien-build). Verify that
   // augmentation produces a structurally-typed object.
   type Augmented = Services & { db: string }
   expectTypeOf<Augmented>().toHaveProperty("db")
@@ -442,7 +442,7 @@ test("WorkflowConfig has services and target", () => {
 
 - [ ] **Step 2: Run type test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test`
+Run: `pnpm --filter @darrylondil/lorien-runtime test`
 Expected: type errors — file `types.ts` doesn't exist.
 
 - [ ] **Step 3: Write src/types.ts**
@@ -453,8 +453,8 @@ Write `packages/runtime/src/types.ts`:
 import type { z } from "zod"
 
 /**
- * Augmentable interface populated by the IDE's type generator from cozy.config.ts.
- * Users never write this themselves; .cozy/types/services.d.ts declares it.
+ * Augmentable interface populated by the IDE's type generator from lorien.config.ts.
+ * Users never write this themselves; .lorien/types/services.d.ts declares it.
  */
 export interface Services {
   // populated via declaration merging in generated .d.ts files
@@ -510,7 +510,7 @@ export type AnyNodeOrTrigger = Node | Trigger
 
 - [ ] **Step 4: Run type test to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test`
+Run: `pnpm --filter @darrylondil/lorien-runtime test`
 Expected: type tests pass.
 
 - [ ] **Step 5: Re-export from index**
@@ -600,7 +600,7 @@ describe("defineNode", () => {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test`
+Run: `pnpm --filter @darrylondil/lorien-runtime test`
 Expected: import errors — `define-node.ts` doesn't exist.
 
 - [ ] **Step 3: Write src/define-node.ts**
@@ -645,7 +645,7 @@ export function defineNode<
 
 - [ ] **Step 4: Run test to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test`
+Run: `pnpm --filter @darrylondil/lorien-runtime test`
 Expected: 3 tests pass.
 
 - [ ] **Step 5: Re-export from index**
@@ -735,7 +735,7 @@ export function defineTrigger<
 
 - [ ] **Step 3: Run defineTrigger tests**
 
-Run: `pnpm --filter @cozy/runtime test src/define-trigger.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/define-trigger.test.ts`
 Expected: 2 tests pass.
 
 - [ ] **Step 4: Write defineConfig failing test**
@@ -781,7 +781,7 @@ export function defineConfig(config: WorkflowConfig): WorkflowConfig {
 
 - [ ] **Step 6: Run defineConfig tests**
 
-Run: `pnpm --filter @cozy/runtime test src/define-config.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/define-config.test.ts`
 Expected: 2 tests pass.
 
 - [ ] **Step 7: Re-export from index**
@@ -820,7 +820,7 @@ Write `packages/runtime/src/workflow/types.ts`:
 
 ```ts
 export interface WorkflowFile {
-  cozy: 1
+  lorien: 1
   nodes: Record<string, NodeInstance>
   view?: Record<string, NodeView>
 }
@@ -934,7 +934,7 @@ describe("resolveInputValue", () => {
 
 - [ ] **Step 3: Run test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test src/workflow/reference.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/workflow/reference.test.ts`
 Expected: import error — `reference.ts` doesn't exist.
 
 - [ ] **Step 4: Write reference.ts**
@@ -989,7 +989,7 @@ export function resolveInputValue(value: unknown): ResolvedInputValue {
 
 - [ ] **Step 5: Run tests to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test src/workflow/reference.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/workflow/reference.test.ts`
 Expected: all reference tests pass.
 
 - [ ] **Step 6: Commit**
@@ -1031,7 +1031,7 @@ export const NodeViewSchema = z.object({
 })
 
 export const WorkflowFileSchema = z.object({
-  cozy: z.literal(1),
+  lorien: z.literal(1),
   nodes: z.record(z.string(), NodeInstanceSchema),
   view: z.record(z.string(), NodeViewSchema).optional(),
 })
@@ -1048,7 +1048,7 @@ import { parseWorkflow } from "./parse.js"
 describe("parseWorkflow", () => {
   it("parses a minimal workflow", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         request: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         response: { uses: "@core/response", in: { body: "request.params" } },
@@ -1060,23 +1060,23 @@ describe("parseWorkflow", () => {
 
   it("rejects unknown version", () => {
     expect(() =>
-      parseWorkflow({ cozy: 99, nodes: {} } as unknown),
-    ).toThrow(/cozy.*version/i)
+      parseWorkflow({ lorien: 99, nodes: {} } as unknown),
+    ).toThrow(/lorien.*version/i)
   })
 
   it("rejects when nodes is missing", () => {
-    expect(() => parseWorkflow({ cozy: 1 } as unknown)).toThrow()
+    expect(() => parseWorkflow({ lorien: 1 } as unknown)).toThrow()
   })
 
   it("rejects a node without `uses`", () => {
     expect(() =>
-      parseWorkflow({ cozy: 1, nodes: { x: {} as never } } as unknown),
+      parseWorkflow({ lorien: 1, nodes: { x: {} as never } } as unknown),
     ).toThrow(/uses/)
   })
 
   it("accepts optional view block", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: { r: { uses: "@core/response" } },
       view: { r: { x: 10, y: 20 } },
     })
@@ -1087,7 +1087,7 @@ describe("parseWorkflow", () => {
 
 - [ ] **Step 3: Run test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test src/workflow/parse.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/workflow/parse.test.ts`
 Expected: import error — `parse.ts` doesn't exist.
 
 - [ ] **Step 4: Write parse.ts**
@@ -1113,11 +1113,11 @@ export function parseWorkflow(input: unknown): WorkflowFile {
   const result = WorkflowFileSchema.safeParse(input)
   if (!result.success) {
     const versionIssue = result.error.issues.find(
-      (i) => i.path[0] === "cozy" && i.code === "invalid_literal",
+      (i) => i.path[0] === "lorien" && i.code === "invalid_literal",
     )
     if (versionIssue) {
       throw new WorkflowParseError(
-        `Unsupported workflow format version. This runtime expects \`cozy: 1\`.`,
+        `Unsupported workflow format version. This runtime expects \`lorien: 1\`.`,
         result.error.issues,
       )
     }
@@ -1146,7 +1146,7 @@ export function parseWorkflowFromString(source: string): WorkflowFile {
 
 - [ ] **Step 5: Run test to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test src/workflow/parse.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/workflow/parse.test.ts`
 Expected: all parse tests pass.
 
 - [ ] **Step 6: Commit**
@@ -1178,7 +1178,7 @@ import { validateWorkflow } from "./validate.js"
 describe("validateWorkflow", () => {
   it("accepts a valid workflow", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         request: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         response: { uses: "@core/response", in: { body: "request.body" } },
@@ -1190,7 +1190,7 @@ describe("validateWorkflow", () => {
 
   it("rejects references to unknown nodes", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         response: { uses: "@core/response", in: { body: "nonexistent.value" } },
       },
@@ -1202,7 +1202,7 @@ describe("validateWorkflow", () => {
 
   it("rejects after-references to unknown nodes", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         a: { uses: "@core/response", after: ["missing"] },
       },
@@ -1213,7 +1213,7 @@ describe("validateWorkflow", () => {
 
   it("detects direct cycles", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         a: { uses: "./n", in: { x: "b.y" } },
         b: { uses: "./n", in: { y: "a.x" } },
@@ -1225,7 +1225,7 @@ describe("validateWorkflow", () => {
 
   it("detects cycles through `after`", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         a: { uses: "./n", after: ["b"] },
         b: { uses: "./n", after: ["a"] },
@@ -1237,7 +1237,7 @@ describe("validateWorkflow", () => {
 
   it("allows multi-incoming dependencies (joins)", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         a: { uses: "./n", in: { v: "req.body" } },
@@ -1253,7 +1253,7 @@ describe("validateWorkflow", () => {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test src/workflow/validate.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/workflow/validate.test.ts`
 Expected: import error.
 
 - [ ] **Step 3: Write validate.ts**
@@ -1360,7 +1360,7 @@ export function validateWorkflow(wf: WorkflowFile): ValidationResult {
 
 - [ ] **Step 4: Run test to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test src/workflow/validate.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/workflow/validate.test.ts`
 Expected: all validation tests pass.
 
 - [ ] **Step 5: Commit**
@@ -1391,7 +1391,7 @@ import { computeExecutionPlan } from "./topology.js"
 describe("computeExecutionPlan", () => {
   it("groups nodes by dependency wave", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         a: { uses: "./n", in: { v: "req.body" } },
@@ -1412,7 +1412,7 @@ describe("computeExecutionPlan", () => {
 
   it("groups all independent triggers in wave 0", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         getReq: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         postReq: { uses: "@core/http-request", config: { path: "/x", method: "POST" } },
@@ -1425,7 +1425,7 @@ describe("computeExecutionPlan", () => {
 
   it("returns reachable-from-trigger node sets", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         getReq: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         postReq: { uses: "@core/http-request", config: { path: "/x", method: "POST" } },
@@ -1445,7 +1445,7 @@ describe("computeExecutionPlan", () => {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test src/exec/topology.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/exec/topology.test.ts`
 Expected: import error.
 
 - [ ] **Step 3: Write topology.ts**
@@ -1523,7 +1523,7 @@ export function computeExecutionPlan(
 
 - [ ] **Step 4: Run test to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test src/exec/topology.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/exec/topology.test.ts`
 Expected: 3 tests pass.
 
 - [ ] **Step 5: Commit**
@@ -1594,7 +1594,7 @@ describe("LifecycleEmitter", () => {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test src/exec/lifecycle.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/exec/lifecycle.test.ts`
 Expected: import error.
 
 - [ ] **Step 3: Write lifecycle.ts**
@@ -1642,7 +1642,7 @@ export class LifecycleEmitter {
 
 - [ ] **Step 4: Run test to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test src/exec/lifecycle.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/exec/lifecycle.test.ts`
 Expected: 4 tests pass.
 
 - [ ] **Step 5: Commit**
@@ -1761,7 +1761,7 @@ describe("disposeServices", () => {
 
 - [ ] **Step 3: Run test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test src/services/`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/services/`
 Expected: import errors.
 
 - [ ] **Step 4: Write resolve.ts**
@@ -1816,7 +1816,7 @@ export async function disposeServices(resolved: ResolvedServices): Promise<void>
 
 - [ ] **Step 6: Run tests to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test src/services/`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/services/`
 Expected: all 8 tests pass.
 
 - [ ] **Step 7: Commit**
@@ -1967,7 +1967,7 @@ describe("core node registry", () => {
 
 - [ ] **Step 5: Run tests to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test src/core/`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/core/`
 Expected: 5 tests pass.
 
 - [ ] **Step 6: Commit**
@@ -2041,7 +2041,7 @@ function setupSimpleAdd() {
 describe("runWorkflow", () => {
   it("executes a single trigger -> compute -> response chain", async () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/add", method: "POST" } },
         add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
@@ -2097,7 +2097,7 @@ describe("runWorkflow", () => {
     })
 
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         a: { uses: "./a", in: {} },
@@ -2131,7 +2131,7 @@ describe("runWorkflow", () => {
     emitter.on("after-node", (e) => events.push(`after:${e.nodeId}`))
 
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
         res: { uses: "@core/response", in: { body: "req.body" } },
@@ -2165,7 +2165,7 @@ describe("runWorkflow", () => {
       },
     })
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
         b: { uses: "./boom", in: {} },
@@ -2191,7 +2191,7 @@ describe("runWorkflow", () => {
 
 - [ ] **Step 3: Run test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test src/exec/run.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/exec/run.test.ts`
 Expected: import error — `run.ts` doesn't exist.
 
 - [ ] **Step 4: Write run.ts**
@@ -2349,7 +2349,7 @@ async function runOneNode(
 
 - [ ] **Step 5: Run tests to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test src/exec/run.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/exec/run.test.ts`
 Expected: 4 tests pass.
 
 - [ ] **Step 6: Commit**
@@ -2392,7 +2392,7 @@ describe("testWorkflow", () => {
       },
     })
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/add", method: "POST" } },
         add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
@@ -2417,7 +2417,7 @@ describe("testWorkflow", () => {
       },
     })
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
         n: { uses: "./n", in: {} },
@@ -2443,7 +2443,7 @@ describe("traceWorkflow", () => {
       },
     })
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
         u: { uses: "./u", in: { s: "req.body" } },
@@ -2464,7 +2464,7 @@ describe("traceWorkflow", () => {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test src/testing/`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/testing/`
 Expected: import error.
 
 - [ ] **Step 3: Write test-workflow.ts**
@@ -2639,7 +2639,7 @@ export type { TraceResult, NodeTrace } from "./trace-workflow.js"
 
 - [ ] **Step 6: Run tests to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test src/testing/`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/testing/`
 Expected: 3 tests pass.
 
 - [ ] **Step 7: Commit**
@@ -2672,7 +2672,7 @@ describe("loadWorkspace", () => {
   let dir: string
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "cozy-load-"))
+    dir = mkdtempSync(join(tmpdir(), "lorien-load-"))
   })
 
   afterEach(() => {
@@ -2684,7 +2684,7 @@ describe("loadWorkspace", () => {
     writeFileSync(
       join(dir, "workflows", "users", "create.workflow"),
       JSON.stringify({
-        cozy: 1,
+        lorien: 1,
         nodes: {
           req: { uses: "@core/http-request", config: { path: "/users", method: "POST" } },
           res: { uses: "@core/response", in: { body: "req.body" } },
@@ -2716,7 +2716,7 @@ describe("loadWorkspace", () => {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test src/dev-server/load.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/dev-server/load.test.ts`
 Expected: import error.
 
 - [ ] **Step 3: Write load.ts**
@@ -2796,7 +2796,7 @@ async function* walk(dir: string, extension: string): AsyncGenerator<string> {
 
 - [ ] **Step 4: Run tests to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test src/dev-server/load.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/dev-server/load.test.ts`
 Expected: 3 tests pass.
 
 - [ ] **Step 5: Commit**
@@ -2841,7 +2841,7 @@ describe("mountWorkflows", () => {
       absolutePath: "/fake/workflows/add.workflow",
       relativePath: "add.workflow",
       file: parseWorkflow({
-        cozy: 1,
+        lorien: 1,
         nodes: {
           req: { uses: "@core/http-request", config: { path: "/add", method: "POST" } },
           add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
@@ -2871,7 +2871,7 @@ describe("mountWorkflows", () => {
       absolutePath: "/fake/users.workflow",
       relativePath: "users.workflow",
       file: parseWorkflow({
-        cozy: 1,
+        lorien: 1,
         nodes: {
           getReq: { uses: "@core/http-request", config: { path: "/users", method: "GET" } },
           postReq: { uses: "@core/http-request", config: { path: "/users", method: "POST" } },
@@ -2898,7 +2898,7 @@ describe("mountWorkflows", () => {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pnpm --filter @cozy/runtime test src/dev-server/server.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/dev-server/server.test.ts`
 Expected: import error.
 
 - [ ] **Step 3: Write server.ts**
@@ -3006,7 +3006,7 @@ function extractParams(template: string, actual: string): Record<string, string>
 
 - [ ] **Step 4: Run tests to verify pass**
 
-Run: `pnpm --filter @cozy/runtime test src/dev-server/server.test.ts`
+Run: `pnpm --filter @darrylondil/lorien-runtime test src/dev-server/server.test.ts`
 Expected: 2 tests pass.
 
 - [ ] **Step 5: Commit**
@@ -3089,13 +3089,13 @@ export const VERSION = "0.0.0"
 
 - [ ] **Step 2: Run full test + build + typecheck**
 
-Run: `pnpm --filter @cozy/runtime test`
+Run: `pnpm --filter @darrylondil/lorien-runtime test`
 Expected: all tests across all files pass.
 
-Run: `pnpm --filter @cozy/runtime typecheck`
+Run: `pnpm --filter @darrylondil/lorien-runtime typecheck`
 Expected: clean.
 
-Run: `pnpm --filter @cozy/runtime build`
+Run: `pnpm --filter @darrylondil/lorien-runtime build`
 Expected: `dist/index.js` and `dist/testing/index.js` produced with their `.d.ts`.
 
 - [ ] **Step 3: Commit**
@@ -3112,7 +3112,7 @@ git commit -m "feat(runtime): finalize public API surface"
 **Files:**
 - Create: `examples/basic-api/package.json`
 - Create: `examples/basic-api/tsconfig.json`
-- Create: `examples/basic-api/cozy.config.ts`
+- Create: `examples/basic-api/lorien.config.ts`
 - Create: `examples/basic-api/nodes/parse-credentials.ts`
 - Create: `examples/basic-api/nodes/save-user.ts`
 - Create: `examples/basic-api/workflows/users/create.workflow`
@@ -3126,7 +3126,7 @@ Write `examples/basic-api/package.json`:
 
 ```json
 {
-  "name": "@cozy-example/basic-api",
+  "name": "@lorien-example/basic-api",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -3135,7 +3135,7 @@ Write `examples/basic-api/package.json`:
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cozy/runtime": "workspace:*",
+    "@lorien/runtime": "workspace:*",
     "hono": "^4.12.21",
     "zod": "^4.4.3"
   },
@@ -3160,16 +3160,16 @@ Write `examples/basic-api/tsconfig.json`:
     "rootDir": ".",
     "allowImportingTsExtensions": false
   },
-  "include": ["src/**/*", "nodes/**/*", "cozy.config.ts", "workflows/**/*.test.ts"]
+  "include": ["src/**/*", "nodes/**/*", "lorien.config.ts", "workflows/**/*.test.ts"]
 }
 ```
 
-- [ ] **Step 3: Create cozy.config.ts**
+- [ ] **Step 3: Create lorien.config.ts**
 
-Write `examples/basic-api/cozy.config.ts`:
+Write `examples/basic-api/lorien.config.ts`:
 
 ```ts
-import { defineConfig } from "@cozy/runtime"
+import { defineConfig } from "@darrylondil/lorien-runtime"
 
 interface User {
   id: string
@@ -3208,7 +3208,7 @@ export default defineConfig({
 Write `examples/basic-api/nodes/parse-credentials.ts`:
 
 ```ts
-import { defineNode } from "@cozy/runtime"
+import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
 
 export default defineNode({
@@ -3229,7 +3229,7 @@ export default defineNode({
 Write `examples/basic-api/nodes/save-user.ts`:
 
 ```ts
-import { defineNode } from "@cozy/runtime"
+import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
 
 export default defineNode({
@@ -3253,7 +3253,7 @@ Write `examples/basic-api/workflows/users/create.workflow`:
 
 ```json
 {
-  "cozy": 1,
+  "lorien": 1,
   "nodes": {
     "request": {
       "uses": "@core/http-request",
@@ -3286,8 +3286,8 @@ Write `examples/basic-api/workflows/users/create.test.ts`:
 import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { parseWorkflowFromString } from "@cozy/runtime"
-import { testWorkflow, traceWorkflow } from "@cozy/runtime/testing"
+import { parseWorkflowFromString } from "@darrylondil/lorien-runtime"
+import { testWorkflow, traceWorkflow } from "@lorien/runtime/testing"
 import { describe, expect, it } from "vitest"
 import parseCredentials from "../../nodes/parse-credentials.js"
 import saveUser from "../../nodes/save-user.js"
@@ -3350,10 +3350,10 @@ Write `examples/basic-api/src/server.ts`:
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { Hono } from "hono"
-import { loadWorkspace, mountWorkflows } from "@cozy/runtime"
+import { loadWorkspace, mountWorkflows } from "@darrylondil/lorien-runtime"
 import parseCredentials from "../nodes/parse-credentials.js"
 import saveUser from "../nodes/save-user.js"
-import config from "../cozy.config.js"
+import config from "../lorien.config.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -3418,10 +3418,10 @@ describe("dev server end-to-end", () => {
 Run: `pnpm install`
 Expected: example package linked.
 
-Run: `pnpm --filter @cozy-example/basic-api typecheck`
+Run: `pnpm --filter @lorien-example/basic-api typecheck`
 Expected: clean.
 
-Run: `pnpm --filter @cozy-example/basic-api test`
+Run: `pnpm --filter @lorien-example/basic-api test`
 Expected: all tests pass.
 
 - [ ] **Step 11: Run the whole monorepo's tests**
@@ -3440,26 +3440,26 @@ git commit -m "feat(examples): basic-api end-to-end example exercising workflow 
 
 ## Plan complete
 
-After Task 18, sub-project #1 (the headless `@cozy/runtime`) meets these acceptance criteria from §10 of the spec:
+After Task 18, sub-project #1 (the headless `@lorien/runtime`) meets these acceptance criteria from §10 of the spec:
 
-- [x] A user can author `cozy.config.ts`, `.workflow` JSON, and `defineNode` TS files by hand.
+- [x] A user can author `lorien.config.ts`, `.workflow` JSON, and `defineNode` TS files by hand.
 - [x] An interpreter executes those workflows; HTTP routes go live via Hono.
 - [x] Lifecycle events flow over a subscriber API (websocket bridge will come later in the IDE sub-project — for now they're emitted in-process).
 - [x] Vitest tests against workflows pass (`testWorkflow` + `traceWorkflow`).
 - [x] Programmatic node invocation works (`import myNode; myNode.run(...)`).
 
-The `cozy build` codegen, the `cozy` CLI binary, and OpenAPI import are explicitly out of scope for this plan — they're in plans #2 and #3.
+The `lorien build` codegen, the `lorien` CLI binary, and OpenAPI import are explicitly out of scope for this plan — they're in plans #2 and #3.
 
 ---
 
-## Open follow-ups (for plan #2 — `@cozy/build`)
+## Open follow-ups (for plan #2 — `@lorien/build`)
 
 These are notes for the next plan, not gaps in this one:
 
-- A `cozy` CLI entry point and `commander` setup.
+- A `lorien` CLI entry point and `commander` setup.
 - A codegen module that walks `.workflow` files and emits idiomatic TS for Hono.
 - Parallel-grouping output (the same logic as `computeExecutionPlan` but rendered as `Promise.all`).
-- The services type generator (`.cozy/types/services.d.ts`).
+- The services type generator (`.lorien/types/services.d.ts`).
 - The schema extractor that loads each node module in a controlled context and reads its Zod schemas.
-- The `cozy init` command that scaffolds `AGENTS.md` and sample structure.
+- The `lorien init` command that scaffolds `AGENTS.md` and sample structure.
 - The equivalence harness (interpreter vs codegen) as a CI gate.

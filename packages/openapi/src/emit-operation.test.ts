@@ -15,7 +15,7 @@ describe("emitOperationNode", () => {
       "get",
     )
     expect(source).toContain(OPENAPI_GENERATED_MARKER)
-    expect(source).toContain(`import { defineNode } from "@cozy/runtime"`)
+    expect(source).toContain(`import { defineNode } from "@darrylondil/lorien-runtime"`)
     expect(source).toContain(`import { z } from "zod"`)
     expect(source).toContain(`import { baseUrl, buildHeaders } from "./_client.js"`)
     expect(source).toContain(`export default defineNode(`)

@@ -9,8 +9,8 @@ build/
 !packages/build/src/build/
 *.tsbuildinfo
 
-# Generated cozy artifacts (per-workspace, never committed)
-.cozy/
+# Generated lorien artifacts (per-workspace, never committed)
+.lorien/
 
 # Brainstorm session artifacts (visual companion mockups, session state)
 .superpowers/
