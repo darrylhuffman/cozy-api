@@ -1,6 +1,6 @@
 {
   "name": "@darrylondil/lorien-runtime",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Headless runtime for lorien workflows — dataflow interpreter, defineNode helper, typed testing primitives",
   "license": "MIT",
   "author": "dyudabomb@gmail.com",

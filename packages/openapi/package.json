@@ -1,6 +1,6 @@
 {
   "name": "@darrylondil/lorien-openapi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenAPI 3.x → lorien defineNode client generator",
   "license": "MIT",
   "author": "dyudabomb@gmail.com",
