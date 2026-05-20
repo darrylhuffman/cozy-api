@@ -1,21 +1,4 @@
-export interface WorkflowFile {
-  cozy: 1
-  nodes: Record<string, NodeInstance>
-  view?: Record<string, NodeView>
-}
-
-export interface NodeInstance {
-  uses: string
-  in?: Record<string, unknown> // values can be reference strings or literals or {$literal: ...}
-  config?: Record<string, unknown>
-  after?: string[]
-  label?: string
-}
-
-export interface NodeView {
-  x: number
-  y: number
-}
+export type { NodeInstance, NodeView, WorkflowFile } from "./schema.js"
 
 /**
  * Parsed reference. Source nodes are split into instance id + path of property keys.

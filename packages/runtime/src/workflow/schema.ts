@@ -18,3 +18,7 @@ export const WorkflowFileSchema = z.object({
   nodes: z.record(z.string(), NodeInstanceSchema),
   view: z.record(z.string(), NodeViewSchema).optional(),
 })
+
+export type NodeInstance = z.infer<typeof NodeInstanceSchema>
+export type NodeView = z.infer<typeof NodeViewSchema>
+export type WorkflowFile = z.infer<typeof WorkflowFileSchema>

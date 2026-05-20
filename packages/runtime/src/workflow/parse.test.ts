@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { parseWorkflow } from "./parse.js"
+import { parseWorkflow, parseWorkflowFromString, WorkflowParseError } from "./parse.js"
 
 describe("parseWorkflow", () => {
   it("parses a minimal workflow", () => {
@@ -33,5 +33,26 @@ describe("parseWorkflow", () => {
       view: { r: { x: 10, y: 20 } },
     })
     expect(wf.view?.r).toEqual({ x: 10, y: 20 })
+  })
+})
+
+describe("parseWorkflowFromString", () => {
+  it("parses valid JSON workflow source", () => {
+    const wf = parseWorkflowFromString(
+      JSON.stringify({
+        cozy: 1,
+        nodes: { r: { uses: "@core/response" } },
+      }),
+    )
+    expect(wf.nodes.r?.uses).toBe("@core/response")
+  })
+
+  it("throws WorkflowParseError on invalid JSON syntax", () => {
+    expect(() => parseWorkflowFromString("{not json")).toThrow(WorkflowParseError)
+    expect(() => parseWorkflowFromString("{not json")).toThrow(/JSON/i)
+  })
+
+  it("throws WorkflowParseError on schema-invalid JSON", () => {
+    expect(() => parseWorkflowFromString(JSON.stringify({ cozy: 1 }))).toThrow(WorkflowParseError)
   })
 })

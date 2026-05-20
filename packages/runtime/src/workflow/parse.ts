@@ -29,7 +29,7 @@ export function parseWorkflow(input: unknown): WorkflowFile {
       result.error.issues,
     )
   }
-  return result.data as WorkflowFile
+  return result.data
 }
 
 /**
