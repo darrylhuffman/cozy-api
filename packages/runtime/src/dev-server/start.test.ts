@@ -11,7 +11,7 @@ describe("startCozyServer", () => {
     const app = await startCozyServer({ root: fixtureRoot })
     const res = await app.request("/hello")
     expect(res.status).toBe(200)
-    expect(await res.json()).toBe("hello")
+    expect(await res.json()).toBe("hello from fixture")
   })
 
   it("services from config are available (verified via override mechanic)", async () => {

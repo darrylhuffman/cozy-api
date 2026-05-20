@@ -5,6 +5,7 @@ import { Hono } from "hono"
 import type { LifecycleEmitter } from "../exec/lifecycle.js"
 import { createServiceResolver } from "../services/resolve.js"
 import type { AnyNodeOrTrigger, Services, WorkflowConfig } from "../types.js"
+import { importNodes } from "./import-nodes.js"
 import { loadWorkspace } from "./load.js"
 import { mountWorkflows } from "./server.js"
 
@@ -37,10 +38,22 @@ export async function startCozyServer(opts: StartServerOptions = {}): Promise<Ho
     }
   }
 
-  // 3. Build Hono app + mount
+  // 3. Auto-import nodes from <root>/nodes/**
+  const importResult = await importNodes(root)
+  if (importResult.errors.length > 0) {
+    for (const e of importResult.errors) {
+      console.error(`[cozy] ${e.path}: ${e.message}`)
+    }
+    if (!lenient) {
+      throw new Error(`Failed to import nodes: ${importResult.errors.length} error(s)`)
+    }
+  }
+  const nodes = { ...importResult.nodes, ...(opts.nodes ?? {}) }
+
+  // 4. Build Hono app + mount
   const app = new Hono()
   mountWorkflows(app, ws.workflows, {
-    nodes: opts.nodes ?? {},
+    nodes,
     services,
     ...(opts.lifecycle ? { lifecycle: opts.lifecycle } : {}),
   })
