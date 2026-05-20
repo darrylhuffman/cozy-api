@@ -1,5 +1,12 @@
+import {
+  Background,
+  Controls,
+  type Edge,
+  type NodeTypes,
+  ReactFlow,
+  type Node as RFNode,
+} from "@xyflow/react"
 import { useEffect, useMemo, useState } from "react"
-import { Background, Controls, ReactFlow, type Edge, type Node as RFNode, type NodeTypes } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { fetchWorkflowFile, type WorkflowFile } from "@/lib/api"
 import { useThemeStore } from "@/store/theme"
@@ -56,10 +63,7 @@ export function WorkflowEditor({ path }: Props) {
       id: `e-${i}`,
       source: r.from.nodeId,
       target: r.to.nodeId,
-      label:
-        r.from.path.length > 0
-          ? r.from.path.join(".") + " → " + r.to.field
-          : r.to.field,
+      label: r.from.path.length > 0 ? `${r.from.path.join(".")} → ${r.to.field}` : r.to.field,
       animated: false,
     }))
 
@@ -83,12 +87,13 @@ export function WorkflowEditor({ path }: Props) {
   }
 
   return (
-    <div className="h-full w-full" data-theme={theme}>
+    <div className="h-full w-full">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
+        colorMode={theme}
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={20} size={1} />

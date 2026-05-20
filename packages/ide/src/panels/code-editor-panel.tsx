@@ -1,4 +1,5 @@
 import { X } from "lucide-react"
+import { CodeEditor } from "@/code/code-editor"
 import { cn } from "@/lib/utils"
 import { useCodeTabs, useTabsStore } from "@/store/tabs"
 
@@ -20,7 +21,7 @@ export function CodeEditorPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Custom tab strip for code tabs */}
+      {/* tab strip same shape as Workflow panel */}
       <div className="flex shrink-0 items-center gap-px overflow-x-auto border-b border-border bg-muted/30">
         {tabs.map((tab) => (
           <div
@@ -53,21 +54,17 @@ export function CodeEditorPanel() {
           </div>
         ))}
       </div>
-
-      {/* Content area */}
-      <div className="flex-1 overflow-auto p-6">
-        {active && (
-          <div className="space-y-3">
+      <div className="flex-1 overflow-hidden">
+        {active?.path ? (
+          <CodeEditor path={active.path} />
+        ) : active ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
             <h2 className="text-xl font-semibold">{active.title}</h2>
             <p className="text-sm text-muted-foreground">
-              Monaco-based code editor lands in sub-project #5.
+              This tab has no file path. Re-open it from the file tree.
             </p>
-            <div className="rounded-md border border-border bg-muted/30 p-4 font-mono text-xs text-muted-foreground">
-              path: {active.path ?? "(unknown)"}
-              {"\n"}id: {active.id}
-            </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )
