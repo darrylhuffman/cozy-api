@@ -10,5 +10,5 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   splitting: false,
-  treeshake: true,
+  treeshake: false,
 })
