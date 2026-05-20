@@ -1,5 +1,5 @@
 {
-  "cozy": 1,
+  "lorien": 1,
   "nodes": {
     "request": {
       "uses": "@core/http-request",

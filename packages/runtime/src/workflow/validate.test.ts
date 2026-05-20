@@ -5,7 +5,7 @@ import { validateWorkflow } from "./validate.js"
 describe("validateWorkflow", () => {
   it("accepts a valid workflow", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         request: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         response: { uses: "@core/response", in: { body: "request.body" } },
@@ -17,7 +17,7 @@ describe("validateWorkflow", () => {
 
   it("rejects references to unknown nodes", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         response: { uses: "@core/response", in: { body: "nonexistent.value" } },
       },
@@ -29,7 +29,7 @@ describe("validateWorkflow", () => {
 
   it("rejects after-references to unknown nodes", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         a: { uses: "@core/response", after: ["missing"] },
       },
@@ -40,7 +40,7 @@ describe("validateWorkflow", () => {
 
   it("detects direct cycles", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         a: { uses: "./n", in: { x: "b.y" } },
         b: { uses: "./n", in: { y: "a.x" } },
@@ -52,7 +52,7 @@ describe("validateWorkflow", () => {
 
   it("detects cycles through `after`", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         a: { uses: "./n", after: ["b"] },
         b: { uses: "./n", after: ["a"] },
@@ -64,7 +64,7 @@ describe("validateWorkflow", () => {
 
   it("allows multi-incoming dependencies (joins)", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         a: { uses: "./n", in: { v: "req.body" } },

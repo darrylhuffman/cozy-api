@@ -6,7 +6,7 @@ import { computeExecutionPlan } from "./topology.js"
 describe("computeExecutionPlan", () => {
   it("groups nodes by dependency wave", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         a: { uses: "./n", in: { v: "req.body" } },
@@ -27,7 +27,7 @@ describe("computeExecutionPlan", () => {
 
   it("groups all independent triggers in wave 0", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         getReq: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         postReq: { uses: "@core/http-request", config: { path: "/x", method: "POST" } },
@@ -40,7 +40,7 @@ describe("computeExecutionPlan", () => {
 
   it("returns reachable-from-trigger node sets", () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         getReq: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         postReq: { uses: "@core/http-request", config: { path: "/x", method: "POST" } },

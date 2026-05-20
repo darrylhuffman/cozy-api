@@ -23,7 +23,7 @@ function setupSimpleAdd() {
 describe("runWorkflow", () => {
   it("executes a single trigger -> compute -> response chain", async () => {
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/add", method: "POST" } },
         add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
@@ -79,7 +79,7 @@ describe("runWorkflow", () => {
     })
 
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
         a: { uses: "./a", in: {} },
@@ -120,7 +120,7 @@ describe("runWorkflow", () => {
     emitter.on("after-node", (e) => events.push(`after:${e.nodeId}`))
 
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
         res: { uses: "@core/response", in: { body: "req.body" } },
@@ -170,7 +170,7 @@ describe("runWorkflow", () => {
       },
     })
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
         slow: { uses: "./slow", in: {}, after: ["req"] },
@@ -221,7 +221,7 @@ describe("runWorkflow", () => {
       run: bFn as never,
     })
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         reqA: { uses: "@core/http-request", config: { path: "/a", method: "GET" } },
         reqB: { uses: "@core/http-request", config: { path: "/b", method: "GET" } },
@@ -264,7 +264,7 @@ describe("runWorkflow", () => {
       },
     })
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
         b: { uses: "./boom", in: {} },

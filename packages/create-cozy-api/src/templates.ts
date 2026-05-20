@@ -1,5 +1,5 @@
 export interface TemplateContext {
-  name: string
+  name: string;
 }
 
 export function renderPackageJson(ctx: TemplateContext): string {
@@ -19,14 +19,14 @@ export function renderPackageJson(ctx: TemplateContext): string {
       zod: "^4.4.3",
     },
     devDependencies: {
-      "@cozy/runtime": "latest",
+      "@darrylondil/lorien-runtime": "latest",
       "@types/node": "^25.9.1",
       tsx: "^4.20.0",
       typescript: "^6.0.3",
       vitest: "^4.1.7",
     },
-  }
-  return `${JSON.stringify(pkg, null, 2)}\n`
+  };
+  return `${JSON.stringify(pkg, null, 2)}\n`;
 }
 
 export function renderTsconfig(): string {
@@ -41,16 +41,21 @@ export function renderTsconfig(): string {
       skipLibCheck: true,
       types: ["node"],
     },
-    include: ["src/**/*", "nodes/**/*", "cozy.config.ts", "workflows/**/*.test.ts"],
-  }
-  return `${JSON.stringify(tsconfig, null, 2)}\n`
+    include: [
+      "src/**/*",
+      "nodes/**/*",
+      "lorien.config.ts",
+      "workflows/**/*.test.ts",
+    ],
+  };
+  return `${JSON.stringify(tsconfig, null, 2)}\n`;
 }
 
 export function renderBiomeJson(): string {
   const biome = {
     $schema: "https://biomejs.dev/schemas/2.4.15/schema.json",
     files: {
-      includes: ["**", "!**/dist", "!**/node_modules", "!**/.cozy"],
+      includes: ["**", "!**/dist", "!**/node_modules", "!**/.lorien"],
     },
     formatter: {
       enabled: true,
@@ -70,8 +75,8 @@ export function renderBiomeJson(): string {
       rules: { recommended: true },
     },
     assist: { actions: { source: { organizeImports: "on" } } },
-  }
-  return `${JSON.stringify(biome, null, 2)}\n`
+  };
+  return `${JSON.stringify(biome, null, 2)}\n`;
 }
 
 export function renderGitignore(): string {
@@ -79,18 +84,18 @@ export function renderGitignore(): string {
     "node_modules/",
     "dist/",
     "*.tsbuildinfo",
-    ".cozy/",
+    ".lorien/",
     "*.log",
     ".env",
     ".env.local",
     ".DS_Store",
     "Thumbs.db",
     "",
-  ].join("\n")
+  ].join("\n");
 }
 
-export function renderCozyConfig(): string {
-  return `import { defineConfig } from "@cozy/runtime"
+export function renderLorienConfig(): string {
+  return `import { defineConfig } from "@darrylondil/lorien-runtime"
 
 export default defineConfig({
   target: "hono",
@@ -100,12 +105,12 @@ export default defineConfig({
     // logger: (ctx) => createLogger(ctx.requestId),
   },
 })
-`
+`;
 }
 
 export function renderHelloWorkflow(): string {
   const wf = {
-    cozy: 1,
+    lorien: 1,
     nodes: {
       request: {
         uses: "@core/http-request",
@@ -120,12 +125,12 @@ export function renderHelloWorkflow(): string {
         in: { body: "say.greeting" },
       },
     },
-  }
-  return `${JSON.stringify(wf, null, 2)}\n`
+  };
+  return `${JSON.stringify(wf, null, 2)}\n`;
 }
 
 export function renderSayHelloNode(): string {
-  return `import { defineNode } from "@cozy/runtime"
+  return `import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
 
 export default defineNode({
@@ -133,42 +138,42 @@ export default defineNode({
   inputs: z.object({}),
   outputs: z.object({ greeting: z.string() }),
   async run() {
-    return { greeting: "Hello from cozy-api!" }
+    return { greeting: "Hello from lorien-api!" }
   },
 })
-`
+`;
 }
 
 export function renderServerEntry(): string {
   return `import { serve } from "@hono/node-server"
-import { startCozyServer } from "@cozy/runtime"
+import { startLorienServer } from "@darrylondil/lorien-runtime"
 
-const app = await startCozyServer()
+const app = await startLorienServer()
 const port = Number(process.env.PORT) || 3000
 serve({ fetch: app.fetch, port }, ({ port }) => {
-  console.log(\`cozy-api listening on http://localhost:\${port}\`)
+  console.log(\`lorien-api listening on http://localhost:\${port}\`)
 })
-`
+`;
 }
 
 export function renderAgentsMd(ctx: TemplateContext): string {
   return `# AI agent guide for ${ctx.name}
 
-This project uses **cozy-api**: a file-based API framework where \`.workflow\`
+This project uses **lorien-api**: a file-based API framework where \`.workflow\`
 files define HTTP endpoints as dependency graphs of typed nodes.
 
 ## Layout
 
 - \`workflows/**/*.workflow\` — HTTP routes as JSON dependency graphs
-- \`nodes/**/*.ts\` — typed compute units (via \`defineNode\` from \`@cozy/runtime\`)
-- \`cozy.config.ts\` — service registry (db, logger, etc.)
+- \`nodes/**/*.ts\` — typed compute units (via \`defineNode\` from \`@darrylondil/lorien-runtime\`)
+- \`lorien.config.ts\` — service registry (db, logger, etc.)
 
 ## Adding a new endpoint
 
 1. Create a node in \`nodes/\` (e.g., \`nodes/calculate.ts\`):
 
    \`\`\`ts
-   import { defineNode } from "@cozy/runtime"
+   import { defineNode } from "@darrylondil/lorien-runtime"
    import { z } from "zod"
 
    export default defineNode({
@@ -185,7 +190,7 @@ files define HTTP endpoints as dependency graphs of typed nodes.
 
    \`\`\`json
    {
-     "cozy": 1,
+     "lorien": 1,
      "nodes": {
        "req": { "uses": "@core/http-request", "config": { "path": "/calc", "method": "POST" } },
        "calc": { "uses": "./nodes/calculate", "in": { "x": "req.body.x" } },
@@ -198,24 +203,24 @@ files define HTTP endpoints as dependency graphs of typed nodes.
 
 ## References
 
-- Documentation: https://cozy-api.dev (placeholder)
-- @cozy/runtime API: \`testWorkflow\`, \`traceWorkflow\`, \`defineNode\`, \`defineConfig\`
-`
+- Documentation: https://lorien-api.dev (placeholder)
+- @darrylondil/lorien-runtime API: \`testWorkflow\`, \`traceWorkflow\`, \`defineNode\`, \`defineConfig\`
+`;
 }
 
 /** Returns the correct run prefix for the given package manager. */
 function runCmd(pm: string, script: string): string {
-  if (pm === "npm") return `npm run ${script}`
-  if (pm === "yarn") return `yarn ${script}`
-  if (pm === "bun") return `bun run ${script}`
+  if (pm === "npm") return `npm run ${script}`;
+  if (pm === "yarn") return `yarn ${script}`;
+  if (pm === "bun") return `bun run ${script}`;
   // pnpm and others
-  return `${pm} ${script}`
+  return `${pm} ${script}`;
 }
 
 export function renderReadme(ctx: TemplateContext, pm: string): string {
   return `# ${ctx.name}
 
-API project built with [cozy-api](https://cozy-api.dev).
+API project built with [lorien-api](https://lorien-api.dev).
 
 ## Quickstart
 
@@ -228,15 +233,15 @@ Then:
 
 \`\`\`
 curl http://localhost:3000/hello
-# { "greeting": "Hello from cozy-api!" }
+# { "greeting": "Hello from lorien-api!" }
 \`\`\`
 
 ## Layout
 
 - \`workflows/\` — HTTP routes as \`.workflow\` JSON files
 - \`nodes/\` — typed compute units (\`defineNode\` modules)
-- \`cozy.config.ts\` — service registry
+- \`lorien.config.ts\` — service registry
 
 See [AGENTS.md](./AGENTS.md) for the author's guide.
-`
+`;
 }

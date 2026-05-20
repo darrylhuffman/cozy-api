@@ -20,7 +20,7 @@ describe("mountWorkflows", () => {
       absolutePath: "/fake/workflows/add.workflow",
       relativePath: "add.workflow",
       file: parseWorkflow({
-        cozy: 1,
+        lorien: 1,
         nodes: {
           req: { uses: "@core/http-request", config: { path: "/add", method: "POST" } },
           add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
@@ -50,7 +50,7 @@ describe("mountWorkflows", () => {
       absolutePath: "/fake/users.workflow",
       relativePath: "users.workflow",
       file: parseWorkflow({
-        cozy: 1,
+        lorien: 1,
         nodes: {
           getReq: { uses: "@core/http-request", config: { path: "/users", method: "GET" } },
           postReq: { uses: "@core/http-request", config: { path: "/users", method: "POST" } },

@@ -14,7 +14,7 @@ describe("testWorkflow", () => {
       },
     })
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/add", method: "POST" } },
         add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
@@ -39,7 +39,7 @@ describe("testWorkflow", () => {
       },
     })
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
         n: { uses: "./n", in: {} },
@@ -65,7 +65,7 @@ describe("traceWorkflow", () => {
       },
     })
     const wf = parseWorkflow({
-      cozy: 1,
+      lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
         u: { uses: "./u", in: { s: "req.body" } },

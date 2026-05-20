@@ -1,5 +1,5 @@
 {
-  "cozy": 1,
+  "lorien": 1,
   "nodes": {
     "req": { "uses": "@core/http-request", "config": { "path": "/hello", "method": "GET" } },
     "say": { "uses": "./nodes/say-hello", "in": {} },
