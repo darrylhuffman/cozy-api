@@ -4,6 +4,7 @@ import { useCallback } from "react"
 import { EditorPanel } from "@/panels/editor-panel"
 import { FilesPanel } from "@/panels/files-panel"
 import { InspectorPanel } from "@/panels/inspector-panel"
+import { useThemeStore } from "@/store/theme"
 import { buildDefaultLayout, loadSavedLayout, saveLayout } from "./default-layout"
 
 const components = {
@@ -13,6 +14,8 @@ const components = {
 }
 
 export function DockView() {
+  const theme = useThemeStore((s) => s.theme)
+
   const onReady = useCallback((event: DockviewReadyEvent) => {
     const { api } = event
     const saved = loadSavedLayout()
@@ -33,6 +36,10 @@ export function DockView() {
   }, [])
 
   return (
-    <DockviewReact onReady={onReady} components={components} className="dockview-theme-abyss" />
+    <DockviewReact
+      onReady={onReady}
+      components={components}
+      className={theme === "dark" ? "dockview-theme-abyss" : "dockview-theme-light"}
+    />
   )
 }

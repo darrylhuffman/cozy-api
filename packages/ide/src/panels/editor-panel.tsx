@@ -1,6 +1,7 @@
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTabsStore } from "@/store/tabs"
+import { WorkflowEditor } from "@/workflow/workflow-editor"
 
 export function EditorPanel() {
   const tabs = useTabsStore((s) => s.tabs)
@@ -20,12 +21,13 @@ export function EditorPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center gap-px overflow-x-auto border-b bg-muted/30">
+      {/* Tab strip — all colors via shadcn semantic tokens */}
+      <div className="flex shrink-0 items-center gap-px overflow-x-auto border-b border-border bg-muted/30">
         {tabs.map((tab) => (
           <div
             key={tab.id}
             className={cn(
-              "group flex shrink-0 items-center gap-2 border-r bg-background/50 px-3 py-1.5 text-sm",
+              "group flex shrink-0 items-center gap-2 border-r border-border bg-muted px-3 py-1.5 text-sm",
               tab.id === activeId && "bg-background",
             )}
           >
@@ -53,27 +55,39 @@ export function EditorPanel() {
         ))}
       </div>
 
-      <div className="flex-1 overflow-auto p-6">
-        {active && <ActiveTabPlaceholder tab={active} />}
+      {/* Content area */}
+      <div className="flex-1 overflow-auto">
+        {active && <ActiveTabContent tab={active} />}
       </div>
     </div>
   )
 }
 
-function ActiveTabPlaceholder({
+function ActiveTabContent({
   tab,
 }: {
-  tab: { id: string; title: string; kind: "workflow" | "node" }
+  tab: { id: string; title: string; kind: "workflow" | "node"; path?: string }
 }) {
-  const message =
-    tab.kind === "workflow"
-      ? "Visual workflow editor lands in sub-project #4."
-      : "Monaco-based code editor lands in sub-project #5."
+  if (tab.kind === "workflow") {
+    if (!tab.path) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
+          <h2 className="text-xl font-semibold">{tab.title}</h2>
+          <p className="text-sm text-muted-foreground">
+            No file path available for this tab. Open from the file tree to see the workflow graph.
+          </p>
+        </div>
+      )
+    }
+    return <WorkflowEditor path={tab.path} />
+  }
+
+  // node kind — Monaco editor comes in sub-project #5
   return (
-    <div className="space-y-3">
+    <div className="p-6 space-y-3">
       <h2 className="text-xl font-semibold">{tab.title}</h2>
-      <p className="text-sm text-muted-foreground">{message}</p>
-      <div className="rounded-md border bg-muted/30 p-4 font-mono text-xs text-muted-foreground">
+      <p className="text-sm text-muted-foreground">Monaco-based code editor lands in sub-project #5.</p>
+      <div className="rounded-md border border-border bg-muted/30 p-4 font-mono text-xs text-muted-foreground">
         kind: {tab.kind}
         {"\n"}id: {tab.id}
       </div>

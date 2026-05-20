@@ -12,10 +12,14 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "dev:demo": "concurrently --kill-others-on-fail --names \"backend,frontend\" --prefix-colors \"cyan,magenta\" \"pnpm run dev:demo:backend\" \"pnpm run dev:demo:frontend\"",
+    "dev:demo:backend": "node packages/build/dist/cli.js ide --no-open --root examples/basic-api --port 3737",
+    "dev:demo:frontend": "pnpm --filter @darrylondil/lorien-ide dev"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
+    "concurrently": "^9.2.1",
     "typescript": "^6.0.3"
   }
 }

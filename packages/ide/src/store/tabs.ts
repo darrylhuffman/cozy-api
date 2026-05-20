@@ -6,6 +6,7 @@ export interface OpenTab {
   id: string; // file id from the tree
   title: string; // display label
   kind: FileKind;
+  path?: string; // relative path from workspace root (e.g., "workflows/users/create.workflow")
 }
 
 interface TabsState {

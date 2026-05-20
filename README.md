@@ -77,6 +77,24 @@ cd packages/ide
 pnpm dev              # Vite dev server with HMR on http://localhost:5173
 ```
 
+### IDE development with live workspace data
+
+To develop the IDE with real file data from the `examples/basic-api` workspace (HMR + real backend):
+
+```bash
+# From the repo root — builds lorien-build first if needed
+pnpm -r build
+
+# Then start both the backend API server and the Vite dev server in parallel:
+pnpm dev:demo
+```
+
+This launches:
+- **Backend** (`lorien ide --no-open --root examples/basic-api --port 3737`) — serves the workspace API at `http://localhost:3737/api/*`
+- **Frontend** (Vite dev on port 5173) — proxies `/api/*` requests to the backend, HMR enabled
+
+Open `http://localhost:5173` to see the IDE with the real `examples/basic-api` file tree.
+
 ## Status
 
 v0.1.0 — runtime + build + openapi + IDE shell are shipped. Sub-projects remaining:

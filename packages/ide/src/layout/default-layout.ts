@@ -38,12 +38,17 @@ export function saveLayout(api: DockviewApi): void {
 
 /**
  * Builds the default Layout B arrangement.
+ *
+ * Files sidebar: 250 px (left)
+ * Inspector:     400 px (right)
+ * Editor:        remaining space (centre)
  */
 export function buildDefaultLayout(api: DockviewApi): void {
   api.addPanel({
     id: "files",
     component: "files",
     title: "Files",
+    initialWidth: 250,
   });
   api.addPanel({
     id: "editor",
@@ -56,6 +61,7 @@ export function buildDefaultLayout(api: DockviewApi): void {
     component: "inspector",
     title: "Inspector",
     position: { referencePanel: "editor", direction: "right" },
+    initialWidth: 400,
   });
 }
 

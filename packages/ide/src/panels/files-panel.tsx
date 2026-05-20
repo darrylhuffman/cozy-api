@@ -1,18 +1,61 @@
-import { ChevronDown, ChevronRight, FileCode, FileText, Folder, FolderOpen } from "lucide-react"
-import { useState } from "react"
+import { ChevronDown, ChevronRight, FileCode, FileText, Folder, FolderOpen, WifiOff } from "lucide-react"
+import { useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { type FileNode, mockNodes, mockWorkflows } from "@/data/mock-files"
+import { type FileFolder, type FileNode, mockNodes, mockWorkflows } from "@/data/mock-files"
+import { fetchWorkspaceTree } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useTabsStore } from "@/store/tabs"
 
+type LoadState = "loading" | "ready" | "fallback"
+
 export function FilesPanel() {
+  const [workflows, setWorkflows] = useState<FileFolder>(mockWorkflows)
+  const [nodes, setNodes] = useState<FileFolder>(mockNodes)
+  const [loadState, setLoadState] = useState<LoadState>("loading")
+
+  useEffect(() => {
+    let cancelled = false
+    fetchWorkspaceTree()
+      .then((tree) => {
+        if (cancelled) return
+        setWorkflows(tree.workflows)
+        setNodes(tree.nodes)
+        setLoadState("ready")
+      })
+      .catch(() => {
+        if (cancelled) return
+        setLoadState("fallback")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
-    <ScrollArea className="h-full w-full">
-      <div className="p-2">
-        <Section title="WORKFLOWS" tree={mockWorkflows} />
-        <Section title="NODES" tree={mockNodes} />
-      </div>
-    </ScrollArea>
+    <div className="flex h-full flex-col">
+      {loadState === "fallback" && (
+        <div className="flex items-center gap-1.5 border-b bg-amber-500/10 px-2 py-1 text-[10px] text-amber-600 dark:text-amber-400">
+          <WifiOff className="h-3 w-3 shrink-0" />
+          <span>Backend not available — showing demo data</span>
+        </div>
+      )}
+      <ScrollArea className="flex-1">
+        <div className="p-2">
+          {loadState === "loading" ? (
+            <div className="space-y-1 px-1 py-2">
+              <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+            </div>
+          ) : (
+            <>
+              <Section title="WORKFLOWS" tree={workflows} />
+              <Section title="NODES" tree={nodes} />
+            </>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
   )
 }
 
@@ -87,7 +130,11 @@ function Leaf({ node, depth }: { node: Extract<FileNode, { type: "file" }>; dept
   return (
     <button
       type="button"
-      onClick={() => openTab({ id: node.id, title: node.name, kind: node.kind })}
+      onClick={() => {
+          const tab: Parameters<typeof openTab>[0] = { id: node.id, title: node.name, kind: node.kind }
+          if (node.path !== undefined) tab.path = node.path
+          openTab(tab)
+        }}
       className={cn(
         "flex w-full items-center gap-1.5 rounded-sm px-1 py-0.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
         isActive && "bg-accent text-accent-foreground",
