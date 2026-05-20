@@ -1,9 +1,12 @@
 import { defineConfig } from "tsup"
 
 export default defineConfig({
-  entry: { cli: "src/cli.ts" },
+  entry: {
+    cli: "src/cli.ts",
+    "run-build": "src/build/run-build.ts",
+  },
   format: ["esm"],
-  dts: false,
+  dts: true,
   clean: true,
   sourcemap: false,
   splitting: false,

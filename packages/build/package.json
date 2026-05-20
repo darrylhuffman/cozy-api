@@ -3,6 +3,16 @@
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/cli.js",
+  "exports": {
+    ".": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    },
+    "./run-build": {
+      "types": "./dist/run-build.d.ts",
+      "default": "./dist/run-build.js"
+    }
+  },
   "bin": {
     "cozy": "./dist/cli.js"
   },
