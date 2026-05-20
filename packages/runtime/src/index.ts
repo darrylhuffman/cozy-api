@@ -46,6 +46,7 @@ export {
   parseWorkflowFromString,
   WorkflowParseError,
 } from "./workflow/parse.js"
+export { parseReference, resolveInputValue } from "./workflow/reference.js"
 export type {
   NodeInstance,
   NodeView,
