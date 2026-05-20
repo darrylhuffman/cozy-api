@@ -6,9 +6,7 @@ export default defineNode({
   inputs: z.object({ raw: z.unknown() }),
   outputs: z.object({ email: z.string(), password: z.string() }),
   async run({ raw }) {
-    const parsed = z
-      .object({ email: z.string().email(), password: z.string().min(6) })
-      .parse(raw)
+    const parsed = z.object({ email: z.string().email(), password: z.string().min(6) }).parse(raw)
     return parsed
   },
 })

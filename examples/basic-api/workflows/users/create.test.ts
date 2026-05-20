@@ -8,9 +8,7 @@ import parseCredentials from "../../nodes/parse-credentials.js"
 import saveUser from "../../nodes/save-user.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const workflow = parseWorkflowFromString(
-  readFileSync(join(__dirname, "create.workflow"), "utf-8"),
-)
+const workflow = parseWorkflowFromString(readFileSync(join(__dirname, "create.workflow"), "utf-8"))
 
 const nodes = {
   "./nodes/parse-credentials": parseCredentials,
