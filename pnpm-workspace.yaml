@@ -1,3 +1,12 @@
 packages:
   - "packages/*"
   - "examples/*"
+
+# Greenfield project — we want latest versions of everything.
+# Default pnpm 11 minimum-release-age policy would block recent packages
+# (e.g. vite 6+, which vitest 4 requires).
+minimumReleaseAge: 0
+
+# Allow build scripts for packages that need them
+allowBuilds:
+  esbuild: true
