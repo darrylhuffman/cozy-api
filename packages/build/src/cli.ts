@@ -1,6 +1,7 @@
 import { Command } from "commander"
 import { registerBuild } from "./commands/build.js"
 import { registerDev } from "./commands/dev.js"
+import { registerIde } from "./commands/ide.js"
 import { registerImportOpenapi } from "./commands/import-openapi.js"
 import { registerInit } from "./commands/init.js"
 
@@ -15,6 +16,7 @@ function createProgram(): Command {
 
   registerBuild(program)
   registerDev(program)
+  registerIde(program)
   registerInit(program)
   registerImportOpenapi(program)
 

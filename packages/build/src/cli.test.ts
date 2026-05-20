@@ -11,6 +11,12 @@ describe("cozy CLI program", () => {
     expect(names).toContain("import-openapi")
   })
 
+  it("registers the ide subcommand", () => {
+    const program = createProgram()
+    const names = program.commands.map((c) => c.name())
+    expect(names).toContain("ide")
+  })
+
   it("exposes the version", () => {
     expect(VERSION).toBe("0.0.0")
   })
