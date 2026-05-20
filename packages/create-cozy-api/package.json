@@ -1,0 +1,24 @@
+{
+  "name": "create-cozy-api",
+  "version": "0.0.0",
+  "type": "module",
+  "bin": {
+    "create-cozy-api": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.7"
+  }
+}
