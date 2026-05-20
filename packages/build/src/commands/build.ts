@@ -1,4 +1,11 @@
 import type { Command } from "commander"
+import { runBuild } from "../build/run-build.js"
+
+export interface BuildOptions {
+  root: string
+  outDir: string
+  skipTypes?: boolean
+}
 
 export function registerBuild(program: Command): void {
   program
@@ -7,7 +14,8 @@ export function registerBuild(program: Command): void {
     .option("--root <path>", "project root", process.cwd())
     .option("--outDir <path>", "output directory", "./dist")
     .option("--skip-types", "skip services type generation")
-    .action(async (_opts) => {
-      console.log("cozy build not yet implemented (Plan #2 Task 10)")
+    .action(async (opts: BuildOptions) => {
+      const result = await runBuild(opts)
+      if (!result.ok) process.exit(1)
     })
 }

@@ -5,6 +5,7 @@ node_modules/
 dist/
 build/
 !packages/build/
+!packages/build/src/build/
 *.tsbuildinfo
 
 # Generated cozy artifacts (per-workspace, never committed)
