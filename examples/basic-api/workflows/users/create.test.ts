@@ -8,7 +8,7 @@ import {
 } from "@darrylondil/lorien-runtime/testing";
 import { describe, expect, it } from "vitest";
 import parseCredentials from "../../nodes/parse-credentials.js";
-import saveUser from "../../nodes/save-user.js";
+import saveUser from "../../nodes/users/save-user.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const workflow = parseWorkflowFromString(
@@ -17,7 +17,7 @@ const workflow = parseWorkflowFromString(
 
 const nodes = {
   "./nodes/parse-credentials": parseCredentials,
-  "./nodes/save-user": saveUser,
+  "./nodes/users/save-user": saveUser,
 };
 
 const services = {

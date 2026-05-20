@@ -10,7 +10,7 @@
       "in": { "raw": "request.body" }
     },
     "save": {
-      "uses": "./nodes/save-user",
+      "uses": "./nodes/users/save-user",
       "in": {
         "email": "creds.email",
         "passwordHash": "creds.password"

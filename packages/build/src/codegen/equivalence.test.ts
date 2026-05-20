@@ -41,7 +41,7 @@ describe("equivalence: interpreter == codegen", () => {
     ).default;
     const saveUser = (
       await import(
-        pathToFileURL(join(basicApiRoot, "nodes", "save-user.ts")).href
+        pathToFileURL(join(basicApiRoot, "nodes", "users", "save-user.ts")).href
       )
     ).default;
 
@@ -62,7 +62,7 @@ describe("equivalence: interpreter == codegen", () => {
       request: { body: requestBody },
       nodes: {
         "./nodes/parse-credentials": parseCredentials,
-        "./nodes/save-user": saveUser,
+        "./nodes/users/save-user": saveUser,
       },
       services,
     });
