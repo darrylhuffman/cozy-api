@@ -1,0 +1,46 @@
+{
+  "name": "@cozy/ide",
+  "version": "0.1.0",
+  "description": "Browser IDE for cozy-api projects — workflow graph editor, code editor, debugger UI",
+  "license": "MIT",
+  "author": "dyudabomb@gmail.com",
+  "keywords": [
+    "cozy-api",
+    "ide",
+    "workflow-editor",
+    "react",
+    "vite"
+  ],
+  "private": false,
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.5.0",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "jsdom": "^25.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^6.0.0",
+    "vitest": "^4.1.7"
+  }
+}
