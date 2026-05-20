@@ -6,12 +6,9 @@ import { FilesPanel } from "./files-panel.js"
 // Simulate backend being unavailable so the component falls back to mock data
 beforeEach(() => {
   localStorage.clear()
-  useTabsStore.setState({ tabs: [], activeId: null })
+  useTabsStore.setState({ tabs: [], activeWorkflowId: null, activeCodeId: null })
   // fetch will reject — component falls back to mock data
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockRejectedValue(new Error("fetch not available in tests")),
-  )
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("fetch not available in tests")))
 })
 afterEach(() => {
   cleanup()
@@ -39,6 +36,6 @@ describe("FilesPanel", () => {
     fireEvent.click(link)
     expect(useTabsStore.getState().tabs).toHaveLength(1)
     expect(useTabsStore.getState().tabs[0]?.id).toBe("n-shared-parseBody")
-    expect(useTabsStore.getState().activeId).toBe("n-shared-parseBody")
+    expect(useTabsStore.getState().activeCodeId).toBe("n-shared-parseBody")
   })
 })

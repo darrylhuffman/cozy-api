@@ -1,9 +1,18 @@
-import { ChevronDown, ChevronRight, FileCode, FileText, Folder, FolderOpen, WifiOff } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  FileCode,
+  FileText,
+  Folder,
+  FolderOpen,
+  WifiOff,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { type FileFolder, type FileNode, mockNodes, mockWorkflows } from "@/data/mock-files"
 import { fetchWorkspaceTree } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { useDockviewApi } from "@/store/dockview-api"
 import { useTabsStore } from "@/store/tabs"
 
 type LoadState = "loading" | "ready" | "fallback"
@@ -122,8 +131,10 @@ function Folder_({
 
 function Leaf({ node, depth }: { node: Extract<FileNode, { type: "file" }>; depth: number }) {
   const openTab = useTabsStore((s) => s.openTab)
-  const activeId = useTabsStore((s) => s.activeId)
-  const isActive = activeId === node.id
+  const activeWorkflowId = useTabsStore((s) => s.activeWorkflowId)
+  const activeCodeId = useTabsStore((s) => s.activeCodeId)
+  const isActive =
+    node.kind === "workflow" ? activeWorkflowId === node.id : activeCodeId === node.id
 
   const Icon = node.kind === "workflow" ? FileText : FileCode
 
@@ -131,10 +142,22 @@ function Leaf({ node, depth }: { node: Extract<FileNode, { type: "file" }>; dept
     <button
       type="button"
       onClick={() => {
-          const tab: Parameters<typeof openTab>[0] = { id: node.id, title: node.name, kind: node.kind }
-          if (node.path !== undefined) tab.path = node.path
-          openTab(tab)
-        }}
+        const tab: Parameters<typeof openTab>[0] = {
+          id: node.id,
+          title: node.name,
+          kind: node.kind,
+        }
+        if (node.path !== undefined) tab.path = node.path
+        openTab(tab)
+
+        // Focus the corresponding dockview panel so the user sees the right area
+        const api = useDockviewApi.getState().api
+        if (api) {
+          const panelId = node.kind === "workflow" ? "workflow" : "code"
+          const panel = api.getPanel(panelId)
+          if (panel) panel.api.setActive()
+        }
+      }}
       className={cn(
         "flex w-full items-center gap-1.5 rounded-sm px-1 py-0.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
         isActive && "bg-accent text-accent-foreground",

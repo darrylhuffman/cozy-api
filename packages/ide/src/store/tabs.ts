@@ -1,58 +1,109 @@
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import type { FileKind } from "@/data/mock-files";
+import { create } from "zustand"
+import { persist } from "zustand/middleware"
+import { useShallow } from "zustand/react/shallow"
+import type { FileKind } from "@/data/mock-files"
 
 export interface OpenTab {
-  id: string; // file id from the tree
-  title: string; // display label
-  kind: FileKind;
-  path?: string; // relative path from workspace root (e.g., "workflows/users/create.workflow")
+  id: string // file id from the tree
+  title: string // display label
+  kind: FileKind
+  path?: string // relative path from workspace root (e.g., "workflows/users/create.workflow")
 }
 
 interface TabsState {
-  tabs: OpenTab[];
-  activeId: string | null;
+  tabs: OpenTab[]
+  activeWorkflowId: string | null
+  activeCodeId: string | null
 
-  openTab(tab: OpenTab): void;
-  closeTab(id: string): void;
-  selectTab(id: string): void;
+  openTab(tab: OpenTab): void
+  closeTab(id: string): void
+  selectTab(id: string): void
+}
+
+/** Returns the state slice that tracks which tab is active for this tab's kind. */
+function activationUpdate(tab: OpenTab): Partial<TabsState> {
+  if (tab.kind === "workflow") return { activeWorkflowId: tab.id }
+  return { activeCodeId: tab.id }
 }
 
 export const useTabsStore = create<TabsState>()(
   persist(
     (set, get) => ({
       tabs: [],
-      activeId: null,
+      activeWorkflowId: null,
+      activeCodeId: null,
 
       openTab(tab) {
-        const exists = get().tabs.find((t) => t.id === tab.id);
-        if (exists) {
-          set({ activeId: tab.id });
-          return;
+        const existing = get().tabs.find((t) => t.id === tab.id)
+        if (existing) {
+          // Refresh existing tab with the latest fields (title, path, etc.)
+          // and activate it within its panel.
+          set((s) => ({
+            tabs: s.tabs.map((t) => (t.id === tab.id ? { ...t, ...tab } : t)),
+            ...activationUpdate(tab),
+          }))
+          return
         }
-        set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id }));
+        set((s) => ({
+          tabs: [...s.tabs, tab],
+          ...activationUpdate(tab),
+        }))
       },
 
       closeTab(id) {
         set((s) => {
-          const tabs = s.tabs.filter((t) => t.id !== id);
-          let activeId = s.activeId;
-          if (s.activeId === id) {
-            // Activate the next-rightmost remaining tab (or null if no tabs left)
-            activeId =
-              tabs.length > 0 ? (tabs[tabs.length - 1]?.id ?? null) : null;
+          const target = s.tabs.find((t) => t.id === id)
+          if (!target) return s
+
+          const tabs = s.tabs.filter((t) => t.id !== id)
+
+          if (target.kind === "workflow") {
+            const wasActive = s.activeWorkflowId === id
+            if (!wasActive) return { tabs }
+            const remaining = tabs.filter((t) => t.kind === "workflow")
+            const activeWorkflowId =
+              remaining.length > 0 ? (remaining[remaining.length - 1]?.id ?? null) : null
+            return { tabs, activeWorkflowId }
           }
-          return { tabs, activeId };
-        });
+
+          // node kind
+          const wasActive = s.activeCodeId === id
+          if (!wasActive) return { tabs }
+          const remaining = tabs.filter((t) => t.kind === "node")
+          const activeCodeId =
+            remaining.length > 0 ? (remaining[remaining.length - 1]?.id ?? null) : null
+          return { tabs, activeCodeId }
+        })
       },
 
       selectTab(id) {
-        if (get().tabs.find((t) => t.id === id)) set({ activeId: id });
+        const tab = get().tabs.find((t) => t.id === id)
+        if (!tab) return
+        set(activationUpdate(tab))
       },
     }),
     {
       name: "lorien-ide-tabs",
-      version: 1,
+      version: 2,
+      migrate(persistedState, fromVersion) {
+        const state = persistedState as {
+          tabs?: unknown
+          activeWorkflowId?: unknown
+          activeCodeId?: unknown
+        }
+        if (fromVersion < 2) {
+          // Drop all tabs from before this schema; their shape was incomplete
+          // (missing path, and activeId is now split into activeWorkflowId / activeCodeId).
+          return { tabs: [], activeWorkflowId: null, activeCodeId: null }
+        }
+        return state as never
+      },
     },
   ),
-);
+)
+
+// Convenience selectors — useShallow prevents new-array-reference infinite loops
+export const useWorkflowTabs = () =>
+  useTabsStore(useShallow((s) => s.tabs.filter((t) => t.kind === "workflow")))
+export const useCodeTabs = () =>
+  useTabsStore(useShallow((s) => s.tabs.filter((t) => t.kind === "node")))

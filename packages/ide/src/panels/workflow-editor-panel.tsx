@@ -1,18 +1,18 @@
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useTabsStore } from "@/store/tabs"
+import { useTabsStore, useWorkflowTabs } from "@/store/tabs"
 import { WorkflowEditor } from "@/workflow/workflow-editor"
 
-export function EditorPanel() {
-  const tabs = useTabsStore((s) => s.tabs)
-  const activeId = useTabsStore((s) => s.activeId)
+export function WorkflowEditorPanel() {
+  const tabs = useWorkflowTabs()
+  const activeId = useTabsStore((s) => s.activeWorkflowId)
   const selectTab = useTabsStore((s) => s.selectTab)
   const closeTab = useTabsStore((s) => s.closeTab)
 
   if (tabs.length === 0) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-muted-foreground">
-        <p>Open a file from the Files panel to begin.</p>
+        <p className="text-sm">Open a .workflow file to see its graph here.</p>
       </div>
     )
   }
@@ -21,7 +21,7 @@ export function EditorPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Tab strip — all colors via shadcn semantic tokens */}
+      {/* Custom tab strip for workflow tabs */}
       <div className="flex shrink-0 items-center gap-px overflow-x-auto border-b border-border bg-muted/30">
         {tabs.map((tab) => (
           <div
@@ -57,39 +57,16 @@ export function EditorPanel() {
 
       {/* Content area */}
       <div className="flex-1 overflow-auto">
-        {active && <ActiveTabContent tab={active} />}
-      </div>
-    </div>
-  )
-}
-
-function ActiveTabContent({
-  tab,
-}: {
-  tab: { id: string; title: string; kind: "workflow" | "node"; path?: string }
-}) {
-  if (tab.kind === "workflow") {
-    if (!tab.path) {
-      return (
-        <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
-          <h2 className="text-xl font-semibold">{tab.title}</h2>
-          <p className="text-sm text-muted-foreground">
-            No file path available for this tab. Open from the file tree to see the workflow graph.
-          </p>
-        </div>
-      )
-    }
-    return <WorkflowEditor path={tab.path} />
-  }
-
-  // node kind — Monaco editor comes in sub-project #5
-  return (
-    <div className="p-6 space-y-3">
-      <h2 className="text-xl font-semibold">{tab.title}</h2>
-      <p className="text-sm text-muted-foreground">Monaco-based code editor lands in sub-project #5.</p>
-      <div className="rounded-md border border-border bg-muted/30 p-4 font-mono text-xs text-muted-foreground">
-        kind: {tab.kind}
-        {"\n"}id: {tab.id}
+        {active?.path ? (
+          <WorkflowEditor path={active.path} />
+        ) : active ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
+            <h2 className="text-xl font-semibold">{active.title}</h2>
+            <p className="text-sm text-muted-foreground">
+              This tab has no file path. Re-open it from the file tree.
+            </p>
+          </div>
+        ) : null}
       </div>
     </div>
   )
