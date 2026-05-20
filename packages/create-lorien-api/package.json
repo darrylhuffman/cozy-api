@@ -1,0 +1,37 @@
+{
+  "name": "create-lorien",
+  "version": "0.1.0",
+  "description": "Scaffold a new lorien project — npx create-lorien <name>",
+  "license": "MIT",
+  "author": "dyudabomb@gmail.com",
+  "keywords": [
+    "lorien",
+    "scaffold",
+    "create-app",
+    "starter",
+    "typescript"
+  ],
+  "type": "module",
+  "bin": {
+    "create-lorien": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.7"
+  }
+}
