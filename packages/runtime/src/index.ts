@@ -11,6 +11,8 @@ export type { DefineNodeInput } from "./define-node.js"
 export { defineNode } from "./define-node.js"
 export type { DefineTriggerInput } from "./define-trigger.js"
 export { defineTrigger } from "./define-trigger.js"
+export type { ImportNodesResult } from "./dev-server/import-nodes.js"
+export { importNodes } from "./dev-server/import-nodes.js"
 export type { LoadedWorkflow, LoadedWorkspace } from "./dev-server/load.js"
 // Dev server
 export { loadWorkspace } from "./dev-server/load.js"
