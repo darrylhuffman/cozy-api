@@ -1,5 +1,6 @@
 export const VERSION = "0.0.0"
 export type {
+  AnyNodeOrTrigger,
   Disposable,
   Node,
   ServiceContext,
@@ -7,4 +8,5 @@ export type {
   ServiceValue,
   Trigger,
   WorkflowConfig,
+  ZodObjectAny,
 } from "./types.js"

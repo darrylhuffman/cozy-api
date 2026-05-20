@@ -32,3 +32,19 @@ test("WorkflowConfig has services and target", () => {
   expectTypeOf<WorkflowConfig>().toHaveProperty("services")
   expectTypeOf<WorkflowConfig>().toHaveProperty("target")
 })
+
+test("Node run config is typed from the config schema when provided", () => {
+  type N = Node<
+    z.ZodObject<{ a: z.ZodString }>,
+    z.ZodObject<{ b: z.ZodNumber }>,
+    z.ZodObject<{ port: z.ZodNumber }>
+  >
+  type Config = Parameters<N["run"]>[2]
+  expectTypeOf<Config>().toEqualTypeOf<{ port: number }>()
+})
+
+test("Node run config is undefined when no config schema is provided", () => {
+  type N = Node<z.ZodObject<{ a: z.ZodString }>, z.ZodObject<{ b: z.ZodNumber }>>
+  type Config = Parameters<N["run"]>[2]
+  expectTypeOf<Config>().toEqualTypeOf<undefined>()
+})
