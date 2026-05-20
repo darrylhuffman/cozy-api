@@ -6,14 +6,14 @@
 
 **Architecture:** Single TypeScript ESM package. A dataflow scheduler walks `.workflow` files, calls user-authored node `.run()` functions in dependency order (parallel where possible), threads a typed services bag through each call, and emits lifecycle events to subscribers. Two built-in nodes (`@core/http-request`, `@core/response`) provide the HTTP entry and exit. A thin `startDevServer()` function wires the interpreter to a Hono server.
 
-**Tech Stack:**
-- TypeScript 5.4+ (strict, ES2022, NodeNext modules)
-- pnpm workspaces (monorepo, room for `@cozy/build` and `@cozy/openapi` later)
-- Vitest (test runner; the spec requires Vitest for users too, so we dogfood)
-- tsup (library bundler — ESM output with types, no fuss)
-- Biome (lint + format, single tool)
-- Hono (peer dep — used by the built-in HTTP trigger and dev server)
-- Zod (peer dep — node schemas)
+**Tech Stack** (versions are current latest stable as of 2026-05-20; check `npm view <pkg> version` before re-running this plan and bump if stale):
+- TypeScript 6.0+ (strict, ES2022, NodeNext modules)
+- pnpm 11+ workspaces (monorepo, room for `@cozy/build` and `@cozy/openapi` later)
+- Vitest 4+ (test runner; the spec requires Vitest for users too, so we dogfood)
+- tsup 8.5+ (library bundler — ESM output with types, no fuss)
+- Biome 2.4+ (lint + format, single tool)
+- Hono 4.12+ (peer dep — used by the built-in HTTP trigger and dev server)
+- Zod 4+ (peer dep — node schemas; v4 has the two-arg `z.record(K, V)` form we use)
 - Node 20+ runtime target
 
 **Conventions used throughout:**
@@ -99,7 +99,7 @@ Write `package.json`:
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@11.1.3",
   "engines": {
     "node": ">=20"
   },
@@ -111,8 +111,8 @@ Write `package.json`:
     "format": "biome format --write ."
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.8.0",
-    "typescript": "^5.4.0"
+    "@biomejs/biome": "^2.4.15",
+    "typescript": "^6.0.3"
   }
 }
 ```
@@ -125,6 +125,15 @@ Write `pnpm-workspace.yaml`:
 packages:
   - "packages/*"
   - "examples/*"
+
+# Greenfield project — we want latest versions of everything.
+# Default pnpm 11 minimum-release-age policy would block recent packages
+# (e.g. vite 6+, which vitest 4 requires).
+minimumReleaseAge: 0
+
+# Allow build scripts for packages that need them
+allowBuilds:
+  esbuild: true
 ```
 
 - [ ] **Step 3: Create tsconfig.base.json**
@@ -149,26 +158,36 @@ Write `tsconfig.base.json`:
     "skipLibCheck": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "ignoreDeprecations": "6.0"
   }
 }
 ```
 
+(`ignoreDeprecations: "6.0"` silences a TS 6 deprecation warning that tsup 8.5's internal DTS pipeline still triggers via `baseUrl`. Remove once tsup catches up.)
+
 - [ ] **Step 4: Create biome.json**
 
-Write `biome.json`:
+Write `biome.json` (v2 format — `files.includes` with negated patterns, `assist.actions.source` for import organization, `javascript.formatter.semicolons: asNeeded` to keep the no-semi style used throughout the codebase):
 
 ```json
 {
-  "$schema": "https://biomejs.dev/schemas/1.8.0/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
   "files": {
-    "ignore": ["dist/**", "node_modules/**", ".cozy/**", ".superpowers/**"]
+    "includes": ["**", "!**/dist", "!**/node_modules", "!**/.cozy", "!**/.superpowers"]
   },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
     "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "semicolons": "asNeeded",
+      "quoteStyle": "double",
+      "trailingCommas": "all"
+    }
   },
   "linter": {
     "enabled": true,
@@ -180,9 +199,7 @@ Write `biome.json`:
       }
     }
   },
-  "organizeImports": {
-    "enabled": true
-  }
+  "assist": { "actions": { "source": { "organizeImports": "on" } } }
 }
 ```
 
@@ -234,7 +251,11 @@ Write `packages/runtime/package.json`:
       "default": "./dist/testing/index.js"
     }
   },
-  "files": ["dist", "src", "README.md"],
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
@@ -242,15 +263,15 @@ Write `packages/runtime/package.json`:
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "hono": "^4.0.0",
-    "zod": "^3.23.0"
+    "hono": "^4.12.0",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.12.0",
-    "hono": "^4.5.0",
-    "tsup": "^8.0.0",
-    "vitest": "^1.6.0",
-    "zod": "^3.23.0"
+    "@types/node": "^25.9.1",
+    "hono": "^4.12.21",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.7",
+    "zod": "^4.4.3"
   }
 }
 ```
@@ -3111,14 +3132,14 @@ Write `examples/basic-api/package.json`:
   },
   "dependencies": {
     "@cozy/runtime": "workspace:*",
-    "hono": "^4.5.0",
-    "zod": "^3.23.0"
+    "hono": "^4.12.21",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^20.12.0",
-    "tsx": "^4.7.0",
-    "typescript": "^5.4.0",
-    "vitest": "^1.6.0"
+    "@types/node": "^25.9.1",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
   }
 }
 ```
