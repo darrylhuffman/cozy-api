@@ -27,6 +27,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@cozy/openapi": "workspace:*",
     "@cozy/runtime": "workspace:*",
     "commander": "^12.1.0"
   },

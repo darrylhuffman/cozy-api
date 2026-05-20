@@ -48,6 +48,9 @@ importers:
 
   packages/build:
     dependencies:
+      '@cozy/openapi':
+        specifier: workspace:*
+        version: link:../openapi
       '@cozy/runtime':
         specifier: workspace:*
         version: link:../runtime
