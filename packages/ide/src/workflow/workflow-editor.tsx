@@ -11,7 +11,7 @@ import {
   type Node as RFNode,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { DragEvent, MouseEvent as ReactMouseEvent } from "react";
 import "@xyflow/react/dist/style.css";
 import {
   fetchWorkflowFile,
@@ -26,6 +26,7 @@ import { useThemeStore } from "@/store/theme";
 import { addNode } from "./add-node";
 import { CanvasContextMenu } from "./canvas-context-menu";
 import { CommandPalette } from "./command-palette";
+import { NewNodeDialog } from "./new-node-dialog";
 import { derivePorts } from "./derive-ports";
 import { effectiveHandle } from "./effective-handle";
 import { computeInitialExpansion } from "./initial-expansion";
@@ -94,6 +95,8 @@ export function WorkflowEditor({ path, tabId }: Props) {
     flowX: number;
     flowY: number;
   }>({ open: false, x: 0, y: 0, flowX: 0, flowY: 0 });
+  // New custom node dialog state
+  const [newNodeOpen, setNewNodeOpen] = useState(false);
 
   const markDirty = useCallback(
     (value: boolean) => {
@@ -125,6 +128,26 @@ export function WorkflowEditor({ path, tabId }: Props) {
       setMenu({ open: true, x: event.clientX, y: event.clientY, flowX, flowY });
     },
     [],
+  );
+
+  const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    if (e.dataTransfer.types.includes("application/lorien-node")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  }, []);
+
+  const onDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      const uses = e.dataTransfer.getData("application/lorien-node");
+      if (!uses) return;
+      e.preventDefault();
+      const bounds = reactFlowRef.current?.getBoundingClientRect();
+      const x = bounds ? e.clientX - bounds.left : e.clientX;
+      const y = bounds ? e.clientY - bounds.top : e.clientY;
+      addNodeAt(uses, x, y);
+    },
+    [addNodeAt],
   );
 
   const doFetch = useCallback(() => {
@@ -518,7 +541,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" onDragOver={onDragOver} onDrop={onDrop}>
       <div ref={reactFlowRef} className="h-full w-full">
         <ReactFlow
           nodes={nodes}
@@ -568,9 +591,16 @@ export function WorkflowEditor({ path, tabId }: Props) {
         y={menu.y}
         schemas={schemas}
         onPick={(uses) => addNodeAt(uses, menu.flowX, menu.flowY)}
-        onNewCustomNode={() => {
-          // Stub for Group C — wiring deferred
-          console.log("New custom node — wiring deferred to Group C")
+        onNewCustomNode={() => setNewNodeOpen(true)}
+      />
+      <NewNodeDialog
+        open={newNodeOpen}
+        onOpenChange={setNewNodeOpen}
+        onCreated={(uses) => {
+          // Re-fetch schemas so the new node type appears in the palette
+          fetchWorkspaceSchemas().then(setSchemas).catch(() => {})
+          // Add a node at the last-known context-menu position
+          addNodeAt(uses, menu.flowX, menu.flowY)
         }}
       />
     </div>

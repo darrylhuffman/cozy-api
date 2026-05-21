@@ -107,3 +107,16 @@ export async function fetchWorkspaceSchemas(): Promise<Record<string, NodeSchema
   const { schemas } = (await res.json()) as { schemas: Record<string, NodeSchemas> }
   return schemas
 }
+
+/**
+ * Creates a new file at `path` with `content`. Throws if the file already
+ * exists (backend returns 409) or if the request fails for any other reason.
+ */
+export async function createWorkspaceFile(path: string, content: string): Promise<void> {
+  const res = await fetch(`/api/workspace/file?path=${encodeURIComponent(path)}&create=true`, {
+    method: "PUT",
+    body: content,
+  })
+  if (res.status === 409) throw new Error("File already exists")
+  if (!res.ok) throw new Error(`PUT failed: ${res.status}`)
+}

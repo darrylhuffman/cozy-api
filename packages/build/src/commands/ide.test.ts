@@ -102,6 +102,47 @@ describe("PUT /api/workspace/file", () => {
   })
 })
 
+describe("PUT /api/workspace/file?create=true", () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "lorien-ide-create-"))
+    mkdirSync(join(dir, "nodes"), { recursive: true })
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  async function makeApp() {
+    const { createIdeApp } = await import("./ide.js")
+    return createIdeApp(dir)
+  }
+
+  it("PUT /api/workspace/file?create=true 409s when the file already exists", async () => {
+    const app = await makeApp()
+    writeFileSync(join(dir, "nodes", "save-user.ts"), "// existing")
+    const res = await app.request(
+      `/api/workspace/file?path=${encodeURIComponent("nodes/save-user.ts")}&create=true`,
+      { method: "PUT", body: "content" },
+    )
+    expect(res.status).toBe(409)
+    const json = (await res.json()) as { error: string }
+    expect(json.error).toMatch(/already exists/i)
+  })
+
+  it("PUT /api/workspace/file?create=true writes when the file is new", async () => {
+    const app = await makeApp()
+    const content = "export const x = 1\n"
+    const res = await app.request(
+      `/api/workspace/file?path=nodes%2Fbrand-new.ts&create=true`,
+      { method: "PUT", body: content },
+    )
+    expect(res.status).toBe(200)
+    expect(readFileSync(join(dir, "nodes", "brand-new.ts"), "utf-8")).toBe(content)
+  })
+})
+
 describe("GET /api/workspace/schemas", () => {
   let dir: string
 

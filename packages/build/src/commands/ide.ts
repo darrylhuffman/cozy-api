@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import { readdir, readFile, stat, writeFile } from "node:fs/promises"
+import { access, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { serve } from "@hono/node-server"
@@ -128,6 +128,38 @@ export function createIdeApp(workspaceRoot: string): Hono {
   })
 
   app.put("/api/workspace/file", async (c) => {
+    const createOnly = c.req.query("create") === "true"
+
+    if (createOnly) {
+      // Create-only mode: path comes from ?path= query param, body is raw text content
+      const rawPath = c.req.query("path")
+      if (!rawPath) {
+        return c.json({ error: "Missing ?path= query parameter" }, 400)
+      }
+      const abs = resolve(workspaceRoot, rawPath)
+      if (!abs.startsWith(workspaceRoot + sep) && abs !== workspaceRoot) {
+        return c.json({ error: "Path traversal denied" }, 403)
+      }
+      if (!abs.endsWith(".workflow") && !abs.endsWith(".ts")) {
+        return c.json({ error: "Only .workflow and .ts files may be written" }, 400)
+      }
+      // 409 if the file already exists
+      try {
+        await access(abs)
+        return c.json({ error: "File already exists" }, 409)
+      } catch {
+        // File does not exist — proceed to write
+      }
+      const content = await c.req.text()
+      try {
+        await writeFile(abs, content, "utf-8")
+        return c.json({ path: rawPath, bytes: content.length })
+      } catch (e) {
+        return c.json({ error: (e as Error).message }, 500)
+      }
+    }
+
+    // Default mode: JSON body { path, content }
     const body = (await c.req.json().catch(() => null)) as {
       path?: string
       content?: string
