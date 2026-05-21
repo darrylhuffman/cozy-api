@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import React from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { WorkflowFile } from "@/lib/api"
 
@@ -10,17 +11,24 @@ let capturedOnNodesChange: ((changes: unknown[]) => void) | null = null
 vi.mock("@xyflow/react", () => ({
   ReactFlow: ({
     nodes,
+    nodeTypes,
     onNodesChange,
   }: {
-    nodes: { id: string }[]
+    nodes: { id: string; type?: string; data: Record<string, unknown> }[]
+    nodeTypes?: Record<string, (props: { data: Record<string, unknown> }) => React.ReactNode>
     onNodesChange?: (changes: unknown[]) => void
   }) => {
     capturedOnNodesChange = onNodesChange ?? null
     return (
       <div data-testid="react-flow" data-nodecount={nodes.length}>
-        {nodes.map((n) => (
-          <div key={n.id} data-testid={`rf-node-${n.id}`} />
-        ))}
+        {nodes.map((n) => {
+          const NodeComponent = n.type && nodeTypes?.[n.type]
+          return (
+            <div key={n.id} data-testid={`rf-node-${n.id}`}>
+              {NodeComponent ? <NodeComponent data={n.data} /> : null}
+            </div>
+          )
+        })}
       </div>
     )
   },
@@ -75,6 +83,31 @@ const sampleWorkflow: WorkflowFile = {
     parseBody: { x: 40, y: 40 },
     validate: { x: 300, y: 40 },
     save: { x: 560, y: 40 },
+  },
+}
+
+/** Mirrors the basic-api create.workflow fixture for port-label tests. */
+const createWorkflow: WorkflowFile = {
+  lorien: 1,
+  nodes: {
+    request: {
+      uses: "@core/http-request",
+      config: { path: "/users", method: "POST" },
+    },
+    save: {
+      uses: "./nodes/users/save-user",
+      in: {
+        email: "request.body.email",
+        password: "request.body.password",
+      },
+    },
+    response: {
+      uses: "@core/response",
+      in: {
+        body: "save.user",
+        status: 201,
+      },
+    },
   },
 }
 
@@ -266,5 +299,36 @@ describe("WorkflowEditor", () => {
     })
 
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+  })
+
+  it("renders named input/output port labels on nodes from create.workflow", async () => {
+    vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+    render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+
+    // Wait until the 3 nodes are rendered
+    await waitFor(() => {
+      expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+    })
+
+    // The save node should show its input ports: "email" and "password"
+    const saveNodeEl = screen.getByTestId("rf-node-save")
+    // Use getAllByText since "email"/"password" are unique across the rendered tree
+    expect(saveNodeEl).toContainElement(screen.getByText("email"))
+    expect(saveNodeEl).toContainElement(screen.getByText("password"))
+
+    // The save node should also show its output port: "user"
+    expect(saveNodeEl).toContainElement(screen.getByText("user"))
+
+    // The request node should show its output port: "body"
+    const requestNodeEl = screen.getByTestId("rf-node-request")
+    expect(requestNodeEl.textContent).toContain("body")
+
+    // The response node should show its input port: "body"
+    const responseNodeEl = screen.getByTestId("rf-node-response")
+    expect(responseNodeEl.textContent).toContain("body")
+
+    // The request node (trigger) should have no input ports — no stray port labels
+    expect(requestNodeEl.textContent).not.toContain("email")
+    expect(requestNodeEl.textContent).not.toContain("password")
   })
 })

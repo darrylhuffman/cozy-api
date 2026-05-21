@@ -14,6 +14,7 @@ import { fetchWorkflowFile, saveFile, type WorkflowFile } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
 import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
+import { derivePorts } from "./derive-ports"
 import { extractReferences } from "./parse-references"
 import { WorkflowNode } from "./workflow-node"
 
@@ -84,13 +85,14 @@ export function WorkflowEditor({ path, tabId }: Props) {
   // Initialise nodes whenever workflow loads
   useEffect(() => {
     if (!workflow) return
+    const portsByNode = derivePorts(workflow)
     const initial: RFNode[] = Object.entries(workflow.nodes).map(([id, instance], i) => {
       const view = workflow.view?.[id]
       return {
         id,
         type: "workflow",
         position: view ?? autoPosition(i),
-        data: { id, instance },
+        data: { id, instance, ports: portsByNode.get(id) ?? { inputs: [], outputs: [] } },
       }
     })
     setNodes(initial)
@@ -102,9 +104,13 @@ export function WorkflowEditor({ path, tabId }: Props) {
     const refs = extractReferences(workflow)
     return refs.map((r, i) => ({
       id: `e-${i}`,
-      source: r.from.nodeId,
-      target: r.to.nodeId,
-      label: r.from.path.length > 0 ? `${r.from.path.join(".")} → ${r.to.field}` : r.to.field,
+      source: r.source.nodeId,
+      sourceHandle: r.source.portId,
+      target: r.target.nodeId,
+      targetHandle: r.target.portId,
+      label:
+        r.source.remainingPath.length > 0 ? r.source.remainingPath.join(".") : undefined,
+      type: "default",
       animated: false,
     }))
   }, [workflow])

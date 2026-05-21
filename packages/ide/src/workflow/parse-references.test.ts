@@ -15,7 +15,7 @@ describe("extractReferences", () => {
     expect(extractReferences(wf)).toEqual([])
   })
 
-  it("extracts a simple node reference (nodeId only, no path)", () => {
+  it("extracts a simple node reference (nodeId only, no path) — portId defaults to 'out'", () => {
     const wf = baseWorkflow({
       a: { uses: "@core/http-request" },
       b: { uses: "@core/transform", in: { input: "a" } },
@@ -23,12 +23,25 @@ describe("extractReferences", () => {
     const refs = extractReferences(wf)
     expect(refs).toHaveLength(1)
     expect(refs[0]).toMatchObject({
-      from: { nodeId: "a", path: [] },
-      to: { nodeId: "b", field: "input" },
+      source: { nodeId: "a", portId: "out", remainingPath: [] },
+      target: { nodeId: "b", portId: "input" },
     })
   })
 
-  it("extracts a dotted reference (nodeId.output.nested)", () => {
+  it("extracts a single-level dotted reference (nodeId.port)", () => {
+    const wf = baseWorkflow({
+      parseBody: { uses: "@core/parse-body" },
+      validate: { uses: "./validateEmail", in: { email: "parseBody.body" } },
+    })
+    const refs = extractReferences(wf)
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({
+      source: { nodeId: "parseBody", portId: "body", remainingPath: [] },
+      target: { nodeId: "validate", portId: "email" },
+    })
+  })
+
+  it("extracts a deep dotted reference (nodeId.port.nested) with remainingPath", () => {
     const wf = baseWorkflow({
       parseBody: { uses: "@core/parse-body" },
       validate: { uses: "./validateEmail", in: { email: "parseBody.body.email" } },
@@ -36,8 +49,8 @@ describe("extractReferences", () => {
     const refs = extractReferences(wf)
     expect(refs).toHaveLength(1)
     expect(refs[0]).toMatchObject({
-      from: { nodeId: "parseBody", path: ["body", "email"] },
-      to: { nodeId: "validate", field: "email" },
+      source: { nodeId: "parseBody", portId: "body", remainingPath: ["email"] },
+      target: { nodeId: "validate", portId: "email" },
     })
   })
 
@@ -49,7 +62,6 @@ describe("extractReferences", () => {
         in: {
           url: "https://example.com/api",   // URL — not a reference
           method: "POST",                    // plain string
-          count: "123",                      // numeric string — not a valid identifier start... wait, "123" starts with digit
           template: "Hello, world!",         // contains space — not a reference
         },
       },
@@ -87,7 +99,7 @@ describe("extractReferences", () => {
     })
     const refs = extractReferences(wf)
     expect(refs).toHaveLength(2)
-    const nodeIds = refs.map((r) => r.from.nodeId).sort()
+    const nodeIds = refs.map((r) => r.source.nodeId).sort()
     expect(nodeIds).toEqual(["a", "c"])
   })
 
@@ -99,6 +111,47 @@ describe("extractReferences", () => {
     })
     const refs = extractReferences(wf)
     expect(refs).toHaveLength(2)
-    expect(refs.every((r) => r.from.nodeId === "source")).toBe(true)
+    expect(refs.every((r) => r.source.nodeId === "source")).toBe(true)
+  })
+
+  it("basic-api create.workflow references — portId and remainingPath correct", () => {
+    const wf = baseWorkflow({
+      request: { uses: "@core/http-request" },
+      save: {
+        uses: "./nodes/users/save-user",
+        in: {
+          email: "request.body.email",
+          password: "request.body.password",
+        },
+      },
+      response: {
+        uses: "@core/response",
+        in: {
+          body: "save.user",
+          status: 201,
+        },
+      },
+    })
+    const refs = extractReferences(wf)
+    // 3 string references (status: 201 is a literal, skipped)
+    expect(refs).toHaveLength(3)
+
+    const emailRef = refs.find((r) => r.target.portId === "email")!
+    expect(emailRef).toMatchObject({
+      source: { nodeId: "request", portId: "body", remainingPath: ["email"] },
+      target: { nodeId: "save", portId: "email" },
+    })
+
+    const passwordRef = refs.find((r) => r.target.portId === "password")!
+    expect(passwordRef).toMatchObject({
+      source: { nodeId: "request", portId: "body", remainingPath: ["password"] },
+      target: { nodeId: "save", portId: "password" },
+    })
+
+    const bodyRef = refs.find((r) => r.target.portId === "body")!
+    expect(bodyRef).toMatchObject({
+      source: { nodeId: "save", portId: "user", remainingPath: [] },
+      target: { nodeId: "response", portId: "body" },
+    })
   })
 })
