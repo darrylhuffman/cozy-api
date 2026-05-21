@@ -115,18 +115,6 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
     return c
   }
 
-  async function pumpProcess(
-    chatId: string,
-    proc: ClaudeProcess,
-  ): Promise<void> {
-    for await (const event of proc.events) {
-      await appendChatEvent(opts.projectRoot, chatId, event).catch(() => {
-        /* swallow disk errors — event already in flight to subscribers */
-      })
-      emit(chatId, { type: "event", chatId, event })
-    }
-  }
-
   async function startProcess(
     chatId: string,
     lifecycle: ChatLifecycle,
@@ -141,22 +129,49 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
       ...(override ?? {}),
     })
     lifecycle.proc = proc
-    void pumpProcess(chatId, proc).catch(() => {
-      /* iteration ended; close handled below */
-    })
-    proc.exit.then((code) => {
-      // Distinguish "we're still the active process" (subprocess exited on its own)
-      // from "we've been cancelled and lifecycle.proc was already cleared" (the
-      // cancel handler already emitted chat_closed).
+
+    // Track whether any normalized events arrived before exit.
+    // An immediate exit with zero events strongly indicates the CLI
+    // couldn't start (ENOENT, auth missing, etc.) — surface as agent_error.
+    let sawEvent = false
+    void (async () => {
+      try {
+        for await (const event of proc.events) {
+          sawEvent = true
+          await appendChatEvent(opts.projectRoot, chatId, event).catch(() => {
+            /* swallow disk errors — event already in flight to subscribers */
+          })
+          emit(chatId, { type: "event", chatId, event })
+        }
+      } catch {
+        /* iteration ended */
+      }
+    })()
+
+    void proc.exit.then((code) => {
       const ownedByUs = chats.get(chatId)?.proc === proc
       if (ownedByUs) {
-        emit(chatId, { type: "chat_closed", chatId, reason: "subprocess_exit" })
+        if (!sawEvent) {
+          // Subprocess died without producing any normalized output.
+          // Most common cause: `claude` CLI not installed or not authenticated.
+          emit(chatId, {
+            type: "agent_error",
+            chatId,
+            message:
+              "The agent CLI exited without producing any output. Check that `claude` is installed and signed in.",
+            recoverable: true,
+          })
+        }
+        emit(chatId, {
+          type: "chat_closed",
+          chatId,
+          reason: "subprocess_exit",
+        })
         lifecycle.proc = null
       }
-      // Capture session id from the process for future resume.
       const sid = proc.sessionId()
       if (sid) lifecycle.sessionId = sid
-      void code // unused
+      void code
     })
     return proc
   }
