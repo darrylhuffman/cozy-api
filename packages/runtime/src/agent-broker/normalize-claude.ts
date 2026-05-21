@@ -12,6 +12,36 @@ function classifyTool(name: string): ToolKind {
   return KNOWN_TOOLS.has(name as ToolKind) ? (name as ToolKind) : "Other"
 }
 
+const SUMMARY_MAX_CHARS = 200
+
+/**
+ * Extract a string summary from Claude's tool_result.content, which may be:
+ * - a plain string
+ * - an array of content blocks like [{ type: "text", text: "..." }]
+ * - anything else (returns undefined)
+ *
+ * Truncates to SUMMARY_MAX_CHARS for UI display.
+ */
+function extractToolResultSummary(content: unknown): string | undefined {
+  if (typeof content === "string") {
+    return content.slice(0, SUMMARY_MAX_CHARS)
+  }
+  if (Array.isArray(content)) {
+    const text = content
+      .filter(
+        (block): block is { type: string; text: string } =>
+          typeof block === "object" &&
+          block !== null &&
+          (block as { type?: unknown }).type === "text" &&
+          typeof (block as { text?: unknown }).text === "string",
+      )
+      .map((block) => block.text)
+      .join("")
+    return text.length > 0 ? text.slice(0, SUMMARY_MAX_CHARS) : undefined
+  }
+  return undefined
+}
+
 function now(): string {
   return new Date().toISOString()
 }
@@ -86,8 +116,7 @@ export function normalizeClaude(line: string): AgentEvent[] {
       const b = block as Record<string, unknown>
       if (b.type === "tool_result" && typeof b.tool_use_id === "string") {
         const isError = b.is_error === true
-        const summary =
-          typeof b.content === "string" ? b.content.slice(0, 200) : undefined
+        const summary = extractToolResultSummary(b.content)
         events.push({
           kind: "tool_result",
           toolUseId: b.tool_use_id,

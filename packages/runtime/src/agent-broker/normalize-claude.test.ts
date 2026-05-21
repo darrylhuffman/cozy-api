@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { normalizeClaude } from "./normalize-claude.js"
+import { extractClaudeSessionId, normalizeClaude } from "./normalize-claude.js"
 import type { AgentEvent } from "./types.js"
 
 const FIXTURE_PATH = join(
@@ -128,5 +128,45 @@ describe("normalizeClaude", () => {
     expect((out[0] as Extract<AgentEvent, { kind: "tool_use" }>).tool).toBe(
       "Other",
     )
+  })
+
+  it("extractClaudeSessionId returns the session_id from a system/init line", () => {
+    expect(extractClaudeSessionId(FIXTURE_LINES[0]!)).toBe("sess_abc123")
+  })
+
+  it("extractClaudeSessionId returns null for non-system lines and malformed input", () => {
+    expect(extractClaudeSessionId(FIXTURE_LINES[1]!)).toBeNull()
+    expect(extractClaudeSessionId("not json")).toBeNull()
+    expect(extractClaudeSessionId("")).toBeNull()
+  })
+
+  it("extracts string summary from array-form tool_result.content", () => {
+    const line = JSON.stringify({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu_arr",
+            content: [
+              { type: "text", text: "first part. " },
+              { type: "text", text: "second part." },
+            ],
+            is_error: false,
+          },
+        ],
+      },
+      session_id: "s",
+    })
+    const out = normalizeClaude(line)
+    expect(out).toHaveLength(1)
+    const e = out[0]!
+    if (e.kind === "tool_result") {
+      expect(e.summary).toBe("first part. second part.")
+      expect(e.ok).toBe(true)
+    } else {
+      throw new Error(`expected tool_result, got ${e.kind}`)
+    }
   })
 })
