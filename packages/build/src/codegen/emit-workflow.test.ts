@@ -149,6 +149,8 @@ describe("emitWorkflow — handler shape", () => {
     });
     expect(source).toMatch(/services as never/);
     expect(source).toMatch(/as never,\n\s*\)\) as Record<string, unknown>/);
+    // inputs.parse() is called before run()
+    expect(source).toMatch(/foo\.inputs\.parse\(\{\}\)/);
   });
 });
 
@@ -249,6 +251,8 @@ describe("emitWorkflow — parallel waves", () => {
       }),
       relativePath: "x",
     });
+    // inputs.parse() is called before run()
+    expect(source).toMatch(/const _aInput = foo\.inputs\.parse\(\{\}\)/);
     expect(source).toMatch(/const a_outputs = \(await foo\.run\(/);
     expect(source).not.toMatch(/Promise\.allSettled/);
   });
@@ -269,6 +273,9 @@ describe("emitWorkflow — parallel waves", () => {
       }),
       relativePath: "x",
     });
+    // inputs.parse() is called for each parallel node before allSettled
+    expect(source).toMatch(/const _aInput = foo\.inputs\.parse\(\{ x: req_outputs\.body \}\)/);
+    expect(source).toMatch(/const _bInput = bar\.inputs\.parse\(\{ x: req_outputs\.body \}\)/);
     expect(source).toMatch(/Promise\.allSettled\(\[/);
     expect(source).toMatch(/a_settled/);
     expect(source).toMatch(/b_settled/);
@@ -358,13 +365,12 @@ describe("emitWorkflow — full example matches the spec shape", () => {
             uses: "@core/http-request",
             config: { path: "/users", method: "POST" },
           },
-          creds: {
-            uses: "./nodes/parse-credentials",
-            in: { raw: "request.body" },
-          },
           save: {
-            uses: "./nodes/save-user",
-            in: { email: "creds.email", passwordHash: "creds.password" },
+            uses: "./nodes/users/save-user",
+            in: {
+              email: "request.body.email",
+              password: "request.body.password",
+            },
           },
           response: {
             uses: "@core/response",
@@ -375,19 +381,15 @@ describe("emitWorkflow — full example matches the spec shape", () => {
       relativePath: "users/create",
     });
     expect(source).toMatch(
-      /import parseCredentials from "\.\.\/\.\.\/\.\.\/nodes\/parse-credentials\.js"/,
-    );
-    expect(source).toMatch(
-      /import saveUser from "\.\.\/\.\.\/\.\.\/nodes\/save-user\.js"/,
+      /import saveUser from "\.\.\/\.\.\/\.\.\/nodes\/users\/save-user\.js"/,
     );
     expect(source).toMatch(/export function register\(app: Hono\): void/);
+    // inputs.parse() is called before run() — validation is embedded in emitted code
     expect(source).toMatch(
-      /const creds_outputs = \(await parseCredentials\.run\(/,
+      /const _saveInput = saveUser\.inputs\.parse\(\{ email: request_outputs\.body\.email, password: request_outputs\.body\.password \}\)/,
     );
-    expect(source).toMatch(/raw: request_outputs\.body/);
     expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/);
-    expect(source).toMatch(/email: creds_outputs\.email/);
-    expect(source).toMatch(/passwordHash: creds_outputs\.password/);
+    expect(source).toMatch(/_saveInput as never/);
     expect(source).toMatch(/_bodyValue = save_outputs\.user/);
   });
 });

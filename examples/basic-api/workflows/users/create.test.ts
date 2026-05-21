@@ -7,7 +7,6 @@ import {
   traceWorkflow,
 } from "@darrylondil/lorien-runtime/testing";
 import { describe, expect, it } from "vitest";
-import parseCredentials from "../../nodes/parse-credentials.js";
 import saveUser from "../../nodes/users/save-user.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -16,7 +15,6 @@ const workflow = parseWorkflowFromString(
 );
 
 const nodes = {
-  "./nodes/parse-credentials": parseCredentials,
   "./nodes/users/save-user": saveUser,
 };
 
@@ -55,10 +53,6 @@ describe("POST /users workflow", () => {
       request: { body: { email: "ada@example.com", password: "hunter2" } },
       nodes,
       services,
-    });
-    expect(trace.at("creds").output).toEqual({
-      email: "ada@example.com",
-      password: "hunter2",
     });
     expect(trace.at("save").output).toEqual({
       user: { id: "test-id", email: "ada@example.com" },

@@ -34,11 +34,6 @@ describe("equivalence: interpreter == codegen", () => {
     const wfSource = await readFile(wfPath, "utf-8");
     const workflow = parseWorkflowFromString(wfSource);
 
-    const parseCredentials = (
-      await import(
-        pathToFileURL(join(basicApiRoot, "nodes", "parse-credentials.ts")).href
-      )
-    ).default;
     const saveUser = (
       await import(
         pathToFileURL(join(basicApiRoot, "nodes", "users", "save-user.ts")).href
@@ -61,7 +56,6 @@ describe("equivalence: interpreter == codegen", () => {
     const interpreterRes = await testWorkflow(workflow, {
       request: { body: requestBody },
       nodes: {
-        "./nodes/parse-credentials": parseCredentials,
         "./nodes/users/save-user": saveUser,
       },
       services,

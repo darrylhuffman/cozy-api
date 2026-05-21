@@ -255,6 +255,82 @@ describe("runWorkflow", () => {
     expect(bFn).not.toHaveBeenCalled()
   })
 
+  it("rejects input that fails the node's Zod schema", async () => {
+    const strict = defineNode({
+      inputs: z.object({ email: z.string().email() }),
+      outputs: z.object({ ok: z.boolean() }),
+      async run({ email }) {
+        return { ok: email.length > 0 }
+      },
+    })
+
+    const wf = parseWorkflow({
+      lorien: 1,
+      nodes: {
+        req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+        n: { uses: "./strict", in: { email: "req.body.email" } },
+        r: { uses: "@core/response", in: { body: "n.ok" } },
+      },
+    })
+    const { depsByNode } = validateWorkflow(wf)
+    const plan = computeExecutionPlan(wf, depsByNode)
+    await expect(
+      runWorkflow({
+        workflow: wf,
+        plan,
+        triggerNodeId: "req",
+        triggerOutputs: {
+          body: { email: "not-an-email" },
+          params: {},
+          query: {},
+          headers: {},
+          context: { requestId: "", timestamp: 0 },
+        },
+        services: {},
+        resolveNode: (u) => resolveCoreNode(u) ?? ({ "./strict": strict } as Record<string, ReturnType<typeof defineNode>>)[u] ?? null,
+      }),
+    ).rejects.toThrow(/input validation failed.*email/i)
+  })
+
+  it("passes the parsed (and coerced) input to run()", async () => {
+    // z.coerce.number() converts a string "5" to number 5
+    let received: unknown = null
+    const coerced = defineNode({
+      inputs: z.object({ count: z.coerce.number() }),
+      outputs: z.object({ ok: z.boolean() }),
+      async run(input) {
+        received = input
+        return { ok: true }
+      },
+    })
+
+    const wf = parseWorkflow({
+      lorien: 1,
+      nodes: {
+        req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+        n: { uses: "./coerced", in: { count: "req.body.n" } },
+        r: { uses: "@core/response", in: { body: "n.ok" } },
+      },
+    })
+    const { depsByNode } = validateWorkflow(wf)
+    const plan = computeExecutionPlan(wf, depsByNode)
+    await runWorkflow({
+      workflow: wf,
+      plan,
+      triggerNodeId: "req",
+      triggerOutputs: {
+        body: { n: "42" },
+        params: {},
+        query: {},
+        headers: {},
+        context: { requestId: "", timestamp: 0 },
+      },
+      services: {},
+      resolveNode: (u) => resolveCoreNode(u) ?? ({ "./coerced": coerced } as Record<string, ReturnType<typeof defineNode>>)[u] ?? null,
+    })
+    expect(received).toEqual({ count: 42 }) // string → number via coerce
+  })
+
   it("fail-fast: a node throw aborts the workflow with NodeRunError", async () => {
     const boom = defineNode({
       inputs: z.object({}),

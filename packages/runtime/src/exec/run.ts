@@ -216,12 +216,28 @@ async function runOneNode(
     return null
   }
 
-  lifecycle?.emit({ type: "before-node", nodeId, input })
+  // Validate the resolved input bag against the node's Zod schema before run().
+  let validatedInput: Record<string, unknown> = input
+  if (nodeDef.inputs) {
+    const result = (nodeDef as Node).inputs.safeParse(input)
+    if (!result.success) {
+      const issue = result.error.issues[0]
+      const path = issue?.path?.join(".") ?? "<root>"
+      const message = issue?.message ?? "validation failed"
+      throw new NodeRunError(
+        nodeId,
+        new Error(`input validation failed at \`${path}\`: ${message}`),
+      )
+    }
+    validatedInput = result.data as Record<string, unknown>
+  }
+
+  lifecycle?.emit({ type: "before-node", nodeId, input: validatedInput })
   const t0 = Date.now()
   let output: Record<string, unknown>
   try {
     output = (await (nodeDef as Node).run(
-      input as never,
+      validatedInput as never,
       opts.services,
       (instance.config ?? undefined) as never,
     )) as Record<string, unknown>

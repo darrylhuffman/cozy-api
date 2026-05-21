@@ -48,7 +48,7 @@ export function DockView() {
     <DockviewReact
       onReady={onReady}
       components={components}
-      className={theme === "dark" ? "dockview-theme-abyss" : "dockview-theme-light"}
+      className={theme === "dark" ? "dockview-theme-dark" : "dockview-theme-light"}
     />
   )
 }

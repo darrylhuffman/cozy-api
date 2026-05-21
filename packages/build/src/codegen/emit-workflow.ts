@@ -248,12 +248,14 @@ function renderSingleNodeCall(
   const ident = usesToIdent.get(inst.uses)
   if (!ident) throw new Error(`emit-workflow: no identifier for uses \`${inst.uses}\``)
   const outVar = outputsVar(nodeId)
+  const inputVar = `_${nodeId}Input`
   const inputExpr = renderInputObject(inst.in ?? {})
   const configExpr = inst.config !== undefined ? renderJsonLiteral(inst.config) : "undefined"
 
   return [
+    `${indent}const ${inputVar} = ${ident}.inputs.parse(${inputExpr})`,
     `${indent}const ${outVar} = (await ${ident}.run(`,
-    `${indent}  ${inputExpr},`,
+    `${indent}  ${inputVar} as never,`,
     `${indent}  services as never,`,
     `${indent}  ${configExpr} as never,`,
     `${indent})) as Record<string, unknown>`,
@@ -267,15 +269,24 @@ function renderParallelWave(
   indent: string,
 ): string[] {
   const lines: string[] = []
+  // Emit inputs.parse() for each node before the allSettled block.
+  for (const id of nodeIds) {
+    const inst = workflow.nodes[id]!
+    const ident = usesToIdent.get(inst.uses)
+    if (!ident) throw new Error(`emit-workflow: no identifier for uses \`${inst.uses}\``)
+    const inputVar = `_${id}Input`
+    const inputExpr = renderInputObject(inst.in ?? {})
+    lines.push(`${indent}const ${inputVar} = ${ident}.inputs.parse(${inputExpr})`)
+  }
   const settledNames = nodeIds.map((id) => `${id}_settled`)
   lines.push(`${indent}const [${settledNames.join(", ")}] = await Promise.allSettled([`)
   for (const id of nodeIds) {
     const inst = workflow.nodes[id]!
     const ident = usesToIdent.get(inst.uses)
     if (!ident) throw new Error(`emit-workflow: no identifier for uses \`${inst.uses}\``)
-    const inputExpr = renderInputObject(inst.in ?? {})
+    const inputVar = `_${id}Input`
     const configExpr = inst.config !== undefined ? renderJsonLiteral(inst.config) : "undefined"
-    lines.push(`${indent}  ${ident}.run(${inputExpr}, services as never, ${configExpr} as never),`)
+    lines.push(`${indent}  ${ident}.run(${inputVar} as never, services as never, ${configExpr} as never),`)
   }
   lines.push(`${indent}])`)
   lines.push(

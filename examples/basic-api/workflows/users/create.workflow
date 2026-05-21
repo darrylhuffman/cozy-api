@@ -5,15 +5,11 @@
       "uses": "@core/http-request",
       "config": { "path": "/users", "method": "POST" }
     },
-    "creds": {
-      "uses": "./nodes/parse-credentials",
-      "in": { "raw": "request.body" }
-    },
     "save": {
       "uses": "./nodes/users/save-user",
       "in": {
-        "email": "creds.email",
-        "passwordHash": "creds.password"
+        "email": "request.body.email",
+        "password": "request.body.password"
       }
     },
     "response": {
