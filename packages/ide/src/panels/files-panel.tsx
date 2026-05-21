@@ -7,7 +7,7 @@ import {
   FolderOpen,
   WifiOff,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { type MouseEvent as ReactMouseEvent, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { type FileFolder, type FileNode, mockNodes, mockWorkflows } from "@/data/mock-files"
 import { fetchWorkspaceTree } from "@/lib/api"
@@ -16,13 +16,36 @@ import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
 import { useDockviewApi } from "@/store/dockview-api"
 import { useTabsStore } from "@/store/tabs"
+import { NewFolderDialog } from "@/workflow/new-folder-dialog"
+import { NewNodeDialog } from "@/workflow/new-node-dialog"
+import { NewWorkflowDialog } from "@/workflow/new-workflow-dialog"
+import { TreeContextMenu } from "./tree-context-menu"
 
 type LoadState = "loading" | "ready" | "fallback"
+type TreeKind = "workflows" | "nodes"
+
+interface MenuState {
+  open: boolean
+  x: number
+  y: number
+  tree: TreeKind
+  folder: string
+}
+
+type DialogKind = "none" | "new-folder" | "new-workflow" | "new-node"
 
 export function FilesPanel() {
   const [workflows, setWorkflows] = useState<FileFolder>(mockWorkflows)
   const [nodes, setNodes] = useState<FileFolder>(mockNodes)
   const [loadState, setLoadState] = useState<LoadState>("loading")
+  const [menu, setMenu] = useState<MenuState>({
+    open: false,
+    x: 0,
+    y: 0,
+    tree: "workflows",
+    folder: "workflows",
+  })
+  const [dialog, setDialog] = useState<DialogKind>("none")
 
   const refreshTree = () => {
     fetchWorkspaceTree()
@@ -54,16 +77,23 @@ export function FilesPanel() {
     }
   }, [])
 
-  // Re-fetch the tree when files are added or removed
   useEffect(() => {
     return subscribeToFileEvents((e) => {
       if (e.type === "add" || e.type === "unlink") {
         refreshTree()
       }
     })
-    // refreshTree is stable (defined outside effect); no deps needed
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const openMenu = (e: ReactMouseEvent, tree: TreeKind, folder: string) => {
+    if (loadState !== "ready") return
+    e.preventDefault()
+    e.stopPropagation()
+    setMenu({ open: true, x: e.clientX, y: e.clientY, tree, folder })
+  }
+
+  const itemTree = menu.tree === "workflows" ? workflows : nodes
 
   return (
     <div className="flex h-full flex-col">
@@ -83,23 +113,104 @@ export function FilesPanel() {
             </div>
           ) : (
             <>
-              <Section title="WORKFLOWS" tree={workflows} />
-              <Section title="NODES" tree={nodes} />
+              <Section
+                title="WORKFLOWS"
+                treeKind="workflows"
+                tree={workflows}
+                onContextMenu={openMenu}
+                autoExpand={loadState === "ready"}
+              />
+              <Section
+                title="NODES"
+                treeKind="nodes"
+                tree={nodes}
+                onContextMenu={openMenu}
+                autoExpand={loadState === "ready"}
+              />
             </>
           )}
         </div>
       </ScrollArea>
+      <TreeContextMenu
+        open={menu.open}
+        onOpenChange={(o) => setMenu((m) => ({ ...m, open: o }))}
+        x={menu.x}
+        y={menu.y}
+        tree={menu.tree}
+        onNewFolder={() => setDialog("new-folder")}
+        onNewItem={() => setDialog(menu.tree === "workflows" ? "new-workflow" : "new-node")}
+      />
+      <NewFolderDialog
+        open={dialog === "new-folder"}
+        onOpenChange={(o) => !o && setDialog("none")}
+        onCreated={() => refreshTree()}
+        defaultFolder={menu.folder}
+        root={itemTree}
+      />
+      <NewWorkflowDialog
+        open={dialog === "new-workflow"}
+        onOpenChange={(o) => !o && setDialog("none")}
+        onCreated={(path) => {
+          // refreshTree() is triggered by SSE add event; also open the new file
+          const title = path.split("/").pop() ?? path
+          useTabsStore.getState().openTab({ id: path, title, kind: "workflow", path })
+          useDockviewApi.getState().api?.getPanel("workflow")?.api.setActive()
+        }}
+        defaultFolder={menu.folder}
+        workflowsTree={workflows}
+      />
+      <NewNodeDialog
+        open={dialog === "new-node"}
+        onOpenChange={(o) => !o && setDialog("none")}
+        onCreated={(uses) => {
+          // uses is "./nodes/foo" — convert back to file path for the tab
+          const path = `${uses.replace(/^\.\//, "")}.ts`
+          openCodeFile(path)
+        }}
+        defaultFolder={menu.folder}
+        nodesTree={nodes}
+      />
     </div>
   )
 }
 
-function Section({ title, tree }: { title: string; tree: FileNode }) {
+function Section({
+  title,
+  treeKind,
+  tree,
+  onContextMenu,
+  autoExpand = false,
+}: {
+  title: string
+  treeKind: TreeKind
+  tree: FileNode
+  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
+  autoExpand?: boolean
+}) {
+  const rootPath = tree.type === "folder" ? tree.name : treeKind
+  // Render children of the root folder directly (the section header IS the root label).
+  // This avoids a redundant "workflows"/"nodes" folder button in the tree that would
+  // conflict with dialog folder labels in tests and in the UI.
+  const children = tree.type === "folder" ? tree.children : []
   return (
-    <div className="mb-3">
+    <div
+      className="mb-3"
+      onContextMenu={(e) => onContextMenu(e, treeKind, rootPath)}
+    >
       <div className="px-1 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         {title}
       </div>
-      <TreeNode node={tree} depth={0} forceOpen />
+      {children.map((child) => (
+        <TreeNode
+          key={child.id}
+          node={child}
+          depth={0}
+          path={child.type === "folder" ? `${rootPath}/${child.name}` : rootPath}
+          treeKind={treeKind}
+          onContextMenu={onContextMenu}
+          autoExpand={autoExpand}
+        />
+      ))}
     </div>
   )
 }
@@ -107,33 +218,70 @@ function Section({ title, tree }: { title: string; tree: FileNode }) {
 function TreeNode({
   node,
   depth,
+  path,
+  treeKind,
+  onContextMenu,
   forceOpen = false,
+  autoExpand = false,
 }: {
   node: FileNode
   depth: number
+  path: string
+  treeKind: TreeKind
+  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
   forceOpen?: boolean
+  autoExpand?: boolean
 }) {
   if (node.type === "folder") {
-    return <Folder_ node={node} depth={depth} forceOpen={forceOpen} />
+    return (
+      <Folder_
+        node={node}
+        depth={depth}
+        path={path}
+        treeKind={treeKind}
+        onContextMenu={onContextMenu}
+        forceOpen={forceOpen}
+        autoExpand={autoExpand}
+      />
+    )
   }
-  return <Leaf node={node} depth={depth} />
+  return (
+    <Leaf
+      node={node}
+      depth={depth}
+      parentPath={path}
+      treeKind={treeKind}
+      onContextMenu={onContextMenu}
+    />
+  )
 }
 
 function Folder_({
   node,
   depth,
+  path,
+  treeKind,
+  onContextMenu,
   forceOpen,
+  autoExpand,
 }: {
   node: Extract<FileNode, { type: "folder" }>
   depth: number
-  forceOpen: boolean
+  path: string
+  treeKind: TreeKind
+  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
+  forceOpen?: boolean
+  autoExpand?: boolean
 }) {
-  const [open, setOpen] = useState(forceOpen)
+  // When autoExpand is on, depth-0 folders (direct children of the section root)
+  // start open. Deeper levels start closed.
+  const [open, setOpen] = useState((forceOpen ?? false) || ((autoExpand ?? false) && depth === 0))
   return (
     <div>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        onContextMenu={(e) => onContextMenu(e, treeKind, path)}
         className={cn(
           "flex w-full items-center gap-1 rounded-sm px-1 py-0.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
         )}
@@ -146,7 +294,15 @@ function Folder_({
       {open && (
         <div>
           {node.children.map((child) => (
-            <TreeNode key={child.id} node={child} depth={depth + 1} />
+            <TreeNode
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              path={child.type === "folder" ? `${path}/${child.name}` : path}
+              treeKind={treeKind}
+              onContextMenu={onContextMenu}
+              autoExpand={autoExpand ?? false}
+            />
           ))}
         </div>
       )}
@@ -154,11 +310,22 @@ function Folder_({
   )
 }
 
-function Leaf({ node, depth }: { node: Extract<FileNode, { type: "file" }>; depth: number }) {
+function Leaf({
+  node,
+  depth,
+  parentPath,
+  treeKind,
+  onContextMenu,
+}: {
+  node: Extract<FileNode, { type: "file" }>
+  depth: number
+  parentPath: string
+  treeKind: TreeKind
+  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
+}) {
   const openTab = useTabsStore((s) => s.openTab)
   const activeWorkflowId = useTabsStore((s) => s.activeWorkflowId)
   const activeCodeId = useTabsStore((s) => s.activeCodeId)
-  // Node tabs use the file path as their id (matches openCodeFile convention).
   const nodeTabId = node.kind === "node" ? (node.path ?? node.id) : node.id
   const isActive =
     node.kind === "workflow" ? activeWorkflowId === node.id : activeCodeId === nodeTabId
@@ -176,10 +343,16 @@ function Leaf({ node, depth }: { node: Extract<FileNode, { type: "file" }>; dept
           e.dataTransfer.effectAllowed = "copy"
         }
       }}
+      onContextMenu={(e) => {
+        // Target = the file's parent folder. Derive from node.path when available
+        // (most accurate); fall back to parentPath threaded through TreeNode.
+        const folder = node.path
+          ? node.path.split("/").slice(0, -1).join("/") || parentPath
+          : parentPath
+        onContextMenu(e, treeKind, folder)
+      }}
       onClick={() => {
         if (node.kind === "node" && node.path) {
-          // Use openCodeFile so the tab id is always the file path — this
-          // deduplicates with View-source in the node context menu.
           openCodeFile(node.path)
           return
         }
@@ -191,7 +364,6 @@ function Leaf({ node, depth }: { node: Extract<FileNode, { type: "file" }>; dept
         if (node.path !== undefined) tab.path = node.path
         openTab(tab)
 
-        // Focus the corresponding dockview panel so the user sees the right area
         const api = useDockviewApi.getState().api
         if (api) {
           const panelId = node.kind === "workflow" ? "workflow" : "code"
