@@ -88,6 +88,11 @@ function InspectContent() {
           />
         )}
       </Section>
+      {schema?.description && (
+        <Section label="Description">
+          <div className="whitespace-pre-wrap text-xs">{schema.description}</div>
+        </Section>
+      )}
       <Section label="Inputs">
         <SchemaTree {...(schema?.inputs ? { schema: schema.inputs } : {})} />
       </Section>
@@ -127,24 +132,68 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   )
 }
 
-function SchemaTree({ schema }: { schema?: JsonSchema }) {
+function SchemaTree({ schema, depth = 0 }: { schema?: JsonSchema; depth?: number }) {
   if (!schema || schema.type !== "object" || !schema.properties) {
     return <div className="text-xs italic text-muted-foreground">(empty)</div>
   }
   return (
     <ul className="font-mono text-xs">
-      {Object.entries(schema.properties).map(([k, sub]) => (
-        <li key={k} className="py-0.5">
-          <span>{k}</span>
-          <span className="ml-2 text-muted-foreground">({typeOf(sub)})</span>
-        </li>
+      {Object.entries(schema.properties).map(([key, sub]) => (
+        <SchemaTreeRow key={key} name={key} schema={sub} depth={depth} />
       ))}
     </ul>
   )
 }
 
-function typeOf(s?: JsonSchema): string {
-  if (!s) return "any"
+function SchemaTreeRow({ name, schema, depth }: { name: string; schema: JsonSchema; depth: number }) {
+  const isObject = schema.type === "object" && schema.properties
+  const isArray = schema.type === "array" && schema.items
+  const isExpandable = Boolean(isObject ?? isArray)
+  const [expanded, setExpanded] = useState(depth === 0)
+
+  const indent = { paddingLeft: `${depth * 12}px` }
+
+  if (!isExpandable) {
+    return (
+      <li style={indent} className="py-0.5">
+        <span>{name}</span>
+        <span className="ml-2 text-muted-foreground">({describeType(schema)})</span>
+      </li>
+    )
+  }
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => setExpanded((x) => !x)}
+        style={indent}
+        className="flex w-full items-center gap-1 py-0.5 text-left hover:bg-accent/40"
+      >
+        <span className="text-muted-foreground">{expanded ? "▾" : "▸"}</span>
+        <span>{name}</span>
+        <span className="ml-2 text-muted-foreground">({describeType(schema)})</span>
+      </button>
+      {expanded && (
+        <ul>
+          {isObject &&
+            Object.entries(schema.properties!).map(([k, s]) => (
+              <SchemaTreeRow key={k} name={k} schema={s} depth={depth + 1} />
+            ))}
+          {isArray && schema.items && (
+            <SchemaTreeRow name="[]" schema={schema.items} depth={depth + 1} />
+          )}
+        </ul>
+      )}
+    </li>
+  )
+}
+
+function describeType(s: JsonSchema): string {
+  if (s.type === "object") return "object"
+  if (s.type === "array") return "array"
+  if (Array.isArray(s.enum)) return `enum(${s.enum.length})`
+  if (s.format) return `${s.type}:${s.format}`
   if (typeof s.type === "string") return s.type
   return "any"
 }

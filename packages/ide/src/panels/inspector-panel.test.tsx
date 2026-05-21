@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { WorkflowFile } from "@/lib/api"
 
@@ -213,5 +213,137 @@ describe("InspectorPanel — InspectContent", () => {
     expect(screen.getByText(/\/api\/data/)).toBeInTheDocument()
     // "not found" error must NOT appear
     expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
+  })
+})
+
+describe("InspectorPanel — Description section (A1)", () => {
+  it("renders a Description section when schemas[uses].description is set", async () => {
+    vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
+      "./nodes/save-user": {
+        inputs: { type: "object", properties: {} },
+        outputs: { type: "object", properties: {} },
+        description: "Creates a demo user record from the validated workflow inputs.",
+      },
+    })
+    useSelectionStore.setState({ selectedNodeId: "save" })
+    render(<InspectorPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Description", { exact: false })).toBeInTheDocument()
+    })
+    expect(
+      screen.getByText("Creates a demo user record from the validated workflow inputs."),
+    ).toBeInTheDocument()
+  })
+
+  it("does NOT render a Description section when description is null", async () => {
+    vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
+      "./nodes/save-user": {
+        inputs: { type: "object", properties: {} },
+        outputs: { type: "object", properties: {} },
+        description: null,
+      },
+    })
+    useSelectionStore.setState({ selectedNodeId: "save" })
+    render(<InspectorPanel />)
+
+    // Wait for async schemas to load
+    await waitFor(() => {
+      expect(screen.getByText("save")).toBeInTheDocument()
+    })
+    // "Description" section header should not appear when description is null
+    // (it appears in uppercase so match case-insensitively)
+    expect(screen.queryByText(/^description$/i)).not.toBeInTheDocument()
+  })
+
+  it("does NOT render a Description section when description is absent", async () => {
+    vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
+      "./nodes/save-user": {
+        inputs: { type: "object", properties: {} },
+        outputs: { type: "object", properties: {} },
+      },
+    })
+    useSelectionStore.setState({ selectedNodeId: "save" })
+    render(<InspectorPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText("save")).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/^description$/i)).not.toBeInTheDocument()
+  })
+})
+
+describe("InspectorPanel — Recursive SchemaTree (A2)", () => {
+  const nestedSchema = {
+    "./nodes/save-user": {
+      inputs: {
+        type: "object",
+        properties: {
+          user: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              email: { type: "string" },
+            },
+          },
+        },
+      },
+      outputs: { type: "object", properties: {} },
+    },
+  }
+
+  it("top-level `user` row is expanded by default and shows nested children", async () => {
+    vi.mocked(fetchWorkspaceSchemas).mockResolvedValue(nestedSchema)
+    useSelectionStore.setState({ selectedNodeId: "save" })
+    render(<InspectorPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText("user")).toBeInTheDocument()
+    })
+
+    // Nested children should be visible (depth=1 starts collapsed — depth=0 expands)
+    // user is at depth 0, so its children (id, email) should be visible after expand
+    // The top-level `user` button has ▾ chevron (expanded)
+    expect(screen.getByText("▾")).toBeInTheDocument()
+    expect(screen.getByText("id")).toBeInTheDocument()
+    expect(screen.getByText("email")).toBeInTheDocument()
+  })
+
+  it("(object) type label does NOT appear as the only info for nested object properties", async () => {
+    vi.mocked(fetchWorkspaceSchemas).mockResolvedValue(nestedSchema)
+    useSelectionStore.setState({ selectedNodeId: "save" })
+    render(<InspectorPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText("user")).toBeInTheDocument()
+    })
+
+    // The old flat renderer showed just "(object)" with no children visible.
+    // Now children (id, email) must be visible.
+    expect(screen.getByText("id")).toBeInTheDocument()
+    expect(screen.getByText("email")).toBeInTheDocument()
+  })
+
+  it("clicking the chevron button collapses/hides the nested rows", async () => {
+    vi.mocked(fetchWorkspaceSchemas).mockResolvedValue(nestedSchema)
+    useSelectionStore.setState({ selectedNodeId: "save" })
+    render(<InspectorPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText("user")).toBeInTheDocument()
+    })
+
+    // Children start visible (depth=0 → expanded by default)
+    expect(screen.getByText("id")).toBeInTheDocument()
+
+    // Click the expand button for "user" to collapse
+    fireEvent.click(screen.getByRole("button", { name: /user/ }))
+
+    // Children should be hidden after collapse
+    expect(screen.queryByText("id")).not.toBeInTheDocument()
+    expect(screen.queryByText("email")).not.toBeInTheDocument()
+
+    // Chevron changes to ▸
+    expect(screen.getByText("▸")).toBeInTheDocument()
   })
 })

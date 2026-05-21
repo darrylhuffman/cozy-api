@@ -91,6 +91,8 @@ export interface JsonSchema {
   properties?: Record<string, JsonSchema>
   items?: JsonSchema
   additionalProperties?: boolean | JsonSchema
+  enum?: unknown[]
+  format?: string
   [key: string]: unknown
 }
 
@@ -99,6 +101,8 @@ export interface NodeSchemas {
   outputs: JsonSchema
   /** Optional accent color string (e.g. "indigo", "#a78bfa"). */
   color?: string | null
+  /** Leading TSDoc/JSDoc extracted from the node source file. Null when absent. */
+  description?: string | null
 }
 
 export async function fetchWorkspaceSchemas(): Promise<Record<string, NodeSchemas>> {

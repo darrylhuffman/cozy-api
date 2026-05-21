@@ -8,17 +8,126 @@
  * stdout.
  *
  * Stdout shape (one JSON object per line):
- *   { "uses": "./nodes/users/save-user", "inputs": {...}, "outputs": {...} }
+ *   { "uses": "./nodes/users/save-user", "inputs": {...}, "outputs": {...}, "description": "..." }
  *
  * Errors are written to stderr but do NOT crash the worker — best-effort.
  */
+import { readFileSync } from "node:fs"
 import { readdir, stat } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { extname, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
+import * as ts from "typescript"
 
 interface ZodLike {
   toJSONSchema(schema: unknown): unknown
+}
+
+/**
+ * Extracts the leading TSDoc/JSDoc comment for a node file using the TypeScript
+ * Compiler API (so comments aren't stripped at runtime).
+ *
+ * Strategy (in order):
+ *  1. Leading JSDoc directly above `export default defineNode(...)` or
+ *     `export default <expr>`.
+ *  2. If the export default references a variable name, the leading JSDoc
+ *     above that variable declaration.
+ *  3. The first JSDoc found on any property inside the `defineNode({...})`
+ *     object literal argument (catches the common pattern where the doc sits
+ *     on the `run` method).
+ */
+export function extractTSDoc(absPath: string): string | null {
+  let source: string
+  try {
+    source = readFileSync(absPath, "utf-8")
+  } catch {
+    return null
+  }
+  const sf = ts.createSourceFile(absPath, source, ts.ScriptTarget.Latest, true)
+
+  let comment: string | null = null
+
+  for (const stmt of sf.statements) {
+    if (!ts.isExportAssignment(stmt) || stmt.isExportEquals) continue
+
+    // Strategy 1: JSDoc directly above the `export default` statement
+    const ranges = ts.getLeadingCommentRanges(source, stmt.pos)
+    if (ranges && ranges.length > 0) {
+      const last = ranges[ranges.length - 1]!
+      if (source.substring(last.pos, last.pos + 3) === "/**") {
+        comment = parseJsDocText(source.substring(last.pos, last.end))
+      }
+    }
+
+    if (!comment && ts.isIdentifier(stmt.expression)) {
+      // Strategy 2: export default is a bare identifier — look up its declaration
+      const name = stmt.expression.text
+      for (const inner of sf.statements) {
+        if (!ts.isVariableStatement(inner)) continue
+        const decl = inner.declarationList.declarations.find(
+          (d) => ts.isIdentifier(d.name) && d.name.text === name,
+        )
+        if (!decl) continue
+        const innerRanges = ts.getLeadingCommentRanges(source, inner.pos)
+        if (innerRanges && innerRanges.length > 0) {
+          const last = innerRanges[innerRanges.length - 1]!
+          if (source.substring(last.pos, last.pos + 3) === "/**") {
+            comment = parseJsDocText(source.substring(last.pos, last.end))
+          }
+        }
+        break
+      }
+    }
+
+    if (!comment) {
+      // Strategy 3: scan inside `defineNode({...})` for the first property JSDoc
+      comment = extractJsDocFromDefineNodeArg(source, stmt.expression)
+    }
+
+    break
+  }
+
+  return comment
+}
+
+/**
+ * Walks the expression looking for a `defineNode(<object>)` call and extracts
+ * the first JSDoc comment found on any property of the object literal.
+ */
+function extractJsDocFromDefineNodeArg(source: string, expr: ts.Expression): string | null {
+  // Could be `defineNode({...})` or wrapped in an await/as-expression etc.
+  // Unwrap call expression.
+  const call = findCallExpression(expr)
+  if (!call || call.arguments.length === 0) return null
+  const firstArg = call.arguments[0]!
+  if (!ts.isObjectLiteralExpression(firstArg)) return null
+
+  for (const prop of firstArg.properties) {
+    const ranges = ts.getLeadingCommentRanges(source, prop.pos)
+    if (!ranges || ranges.length === 0) continue
+    const last = ranges[ranges.length - 1]!
+    if (source.substring(last.pos, last.pos + 3) === "/**") {
+      return parseJsDocText(source.substring(last.pos, last.end))
+    }
+  }
+  return null
+}
+
+function findCallExpression(expr: ts.Expression): ts.CallExpression | null {
+  if (ts.isCallExpression(expr)) return expr
+  if (ts.isAsExpression(expr)) return findCallExpression(expr.expression)
+  if (ts.isAwaitExpression(expr)) return findCallExpression(expr.expression)
+  return null
+}
+
+export function parseJsDocText(raw: string): string {
+  // Strip /** ... */ delimiters and per-line ` * ` prefixes, keep content
+  const inner = raw.replace(/^\/\*\*\s*/, "").replace(/\s*\*\/$/, "")
+  return inner
+    .split("\n")
+    .map((line) => line.replace(/^\s*\*\s?/, ""))
+    .join("\n")
+    .trim()
 }
 
 async function main(): Promise<void> {
@@ -52,7 +161,9 @@ async function main(): Promise<void> {
       const inputs = toJsonSchemaSafe(z, inputsSchema)
       const outputs = toJsonSchemaSafe(z, outputsSchema)
 
-      process.stdout.write(`${JSON.stringify({ uses: usesKey, inputs, outputs, color })}\n`)
+      const description = extractTSDoc(abs)
+
+      process.stdout.write(`${JSON.stringify({ uses: usesKey, inputs, outputs, color, description })}\n`)
     } catch (e) {
       process.stderr.write(`introspect-worker: failed for ${abs}: ${(e as Error).message}\n`)
     }

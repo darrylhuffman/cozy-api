@@ -18,6 +18,8 @@ export interface NodeSchemas {
   outputs: JsonSchema
   /** Optional accent color (free-form CSS string). Null when unset. */
   color?: string | null
+  /** Leading TSDoc/JSDoc extracted from the node source file. Null when absent. */
+  description?: string | null
 }
 
 /** Built-in @core/* node schemas, hardcoded — they don't ship as user files. */
@@ -62,6 +64,7 @@ interface CacheEntry {
   inputs: JsonSchema
   outputs: JsonSchema
   color: string | null
+  description: string | null
 }
 
 /**
@@ -135,6 +138,7 @@ export async function introspectWorkspace(workspaceRoot: string): Promise<Intros
         inputs: entry.inputs,
         outputs: entry.outputs,
         color: entry.color,
+        description: entry.description,
       }
     }
     return { schemas: result, warnings }
@@ -159,8 +163,10 @@ export async function introspectWorkspace(workspaceRoot: string): Promise<Intros
         inputs: JsonSchema
         outputs: JsonSchema
         color?: string | null
+        description?: string | null
       }
       const color = entry.color ?? null
+      const description = entry.description ?? null
       const fileInfo = fileByUses.get(entry.uses)
       if (fileInfo) {
         cache.set(fileInfo.abs, {
@@ -169,9 +175,10 @@ export async function introspectWorkspace(workspaceRoot: string): Promise<Intros
           inputs: entry.inputs,
           outputs: entry.outputs,
           color,
+          description,
         })
       }
-      result[entry.uses] = { inputs: entry.inputs, outputs: entry.outputs, color }
+      result[entry.uses] = { inputs: entry.inputs, outputs: entry.outputs, color, description }
     } catch (e) {
       warnings.push(`Failed to parse worker output line: ${(e as Error).message}`)
     }
