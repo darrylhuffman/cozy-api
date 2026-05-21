@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"sess_abc123","tools":["Read","Edit","Bash"],"model":"claude-opus-4-7","cwd":"/tmp/proj"}
+{"type":"assistant","message":{"id":"msg_1","role":"assistant","content":[{"type":"text","text":"I'll read the file first."}]},"session_id":"sess_abc123"}
+{"type":"assistant","message":{"id":"msg_2","role":"assistant","content":[{"type":"tool_use","id":"toolu_xyz","name":"Read","input":{"path":"/tmp/proj/nodes/save-user.ts"}}]},"session_id":"sess_abc123"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_xyz","content":"export default defineNode({...})","is_error":false}]},"session_id":"sess_abc123"}
+{"type":"result","subtype":"success","duration_ms":4200,"is_error":false,"session_id":"sess_abc123","total_cost_usd":0.0042,"usage":{"input_tokens":1024,"output_tokens":256}}
