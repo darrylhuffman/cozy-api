@@ -449,4 +449,151 @@ describe("WorkflowNode", () => {
       expect(header.getAttribute("style")).toBeNull()
     })
   })
+
+  describe("inline input editing (B3)", () => {
+    /** Helper: leaf port with an attached schema */
+    const schemaLeaf = (name: string, schema: NonNullable<PortNode["schema"]>): PortNode => {
+      const port: PortNode = { id: name, label: name, children: [], isLeaf: true }
+      port.schema = schema
+      return port
+    }
+
+    it("renders a text input for an unconnected string port", () => {
+      const ports: NodePorts = {
+        inputs: inputRoot([schemaLeaf("name", { type: "string" })]),
+        outputs: [],
+      }
+      const data: Record<string, unknown> = {
+        id: "myNode",
+        instance: { uses: "./nodes/foo", in: {} },
+        ports,
+        expandedInputs: new Set([""]),
+        expandedOutputs: new Set<string>(),
+        onTogglePort: () => {},
+        onInputValueChange: () => {},
+      }
+      render(<WorkflowNode data={data} />)
+      fireEvent.click(screen.getByTestId("chevron-"))
+      const widget = screen.getByTestId("input-widget-name")
+      expect(widget).toBeInTheDocument()
+      expect(widget.getAttribute("type")).toBe("text")
+    })
+
+    it("renders a number input for an unconnected number port", () => {
+      const ports: NodePorts = {
+        inputs: inputRoot([schemaLeaf("count", { type: "number" })]),
+        outputs: [],
+      }
+      const data: Record<string, unknown> = {
+        id: "myNode",
+        instance: { uses: "./nodes/foo", in: {} },
+        ports,
+        expandedInputs: new Set([""]),
+        expandedOutputs: new Set<string>(),
+        onTogglePort: () => {},
+        onInputValueChange: () => {},
+      }
+      render(<WorkflowNode data={data} />)
+      fireEvent.click(screen.getByTestId("chevron-"))
+      const widget = screen.getByTestId("input-widget-count")
+      expect(widget).toBeInTheDocument()
+      expect(widget.getAttribute("type")).toBe("number")
+    })
+
+    it("renders a select with all enum options for an unconnected enum port", () => {
+      const ports: NodePorts = {
+        inputs: inputRoot([
+          schemaLeaf("method", {
+            type: "string",
+            enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+          }),
+        ]),
+        outputs: [],
+      }
+      const data: Record<string, unknown> = {
+        id: "req",
+        instance: { uses: "@core/http-request", in: {} },
+        ports,
+        expandedInputs: new Set([""]),
+        expandedOutputs: new Set<string>(),
+        onTogglePort: () => {},
+        onInputValueChange: () => {},
+      }
+      render(<WorkflowNode data={data} />)
+      fireEvent.click(screen.getByTestId("chevron-"))
+      const widget = screen.getByTestId("input-widget-method")
+      expect(widget.tagName.toLowerCase()).toBe("select")
+      expect(screen.getByRole("option", { name: "GET" })).toBeInTheDocument()
+      expect(screen.getByRole("option", { name: "POST" })).toBeInTheDocument()
+      expect(screen.getByRole("option", { name: "DELETE" })).toBeInTheDocument()
+    })
+
+    it("does NOT render an inline widget when the port is connected (reference value)", () => {
+      const ports: NodePorts = {
+        inputs: inputRoot([schemaLeaf("method", { type: "string", enum: ["GET", "POST"] })]),
+        outputs: [],
+      }
+      const data: Record<string, unknown> = {
+        id: "req",
+        // method is set to a reference string — should hide the widget
+        instance: { uses: "@core/http-request", in: { method: "upstream.value" } },
+        ports,
+        expandedInputs: new Set([""]),
+        expandedOutputs: new Set<string>(),
+        onTogglePort: () => {},
+        onInputValueChange: () => {},
+      }
+      render(<WorkflowNode data={data} />)
+      fireEvent.click(screen.getByTestId("chevron-"))
+      expect(screen.queryByTestId("input-widget-method")).not.toBeInTheDocument()
+    })
+
+    it("calls onInputValueChange with portId and new value when the widget changes", () => {
+      const calls: Array<{ portId: string; value: unknown }> = []
+      const ports: NodePorts = {
+        inputs: inputRoot([schemaLeaf("path", { type: "string" })]),
+        outputs: [],
+      }
+      const data: Record<string, unknown> = {
+        id: "req",
+        instance: { uses: "@core/http-request", in: {} },
+        ports,
+        expandedInputs: new Set([""]),
+        expandedOutputs: new Set<string>(),
+        onTogglePort: () => {},
+        onInputValueChange: (portId: string, value: unknown) => calls.push({ portId, value }),
+      }
+      render(<WorkflowNode data={data} />)
+      fireEvent.click(screen.getByTestId("chevron-"))
+      const widget = screen.getByTestId("input-widget-path")
+      fireEvent.change(widget, { target: { value: "/api/users" } })
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toEqual({ portId: "path", value: "/api/users" })
+    })
+
+    it("calls onInputValueChange with enum value when select changes", () => {
+      const calls: Array<{ portId: string; value: unknown }> = []
+      const ports: NodePorts = {
+        inputs: inputRoot([
+          schemaLeaf("method", { type: "string", enum: ["GET", "POST", "DELETE"] }),
+        ]),
+        outputs: [],
+      }
+      const data: Record<string, unknown> = {
+        id: "req",
+        instance: { uses: "@core/http-request", in: { method: "GET" } },
+        ports,
+        expandedInputs: new Set([""]),
+        expandedOutputs: new Set<string>(),
+        onTogglePort: () => {},
+        onInputValueChange: (portId: string, value: unknown) => calls.push({ portId, value }),
+      }
+      render(<WorkflowNode data={data} />)
+      fireEvent.click(screen.getByTestId("chevron-"))
+      const widget = screen.getByTestId("input-widget-method")
+      fireEvent.change(widget, { target: { value: "POST" } })
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toEqual({ portId: "method", value: "POST" })
+    })
+  })
 })

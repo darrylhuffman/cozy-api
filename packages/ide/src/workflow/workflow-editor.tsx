@@ -322,6 +322,33 @@ export function WorkflowEditor({ path, tabId }: Props) {
     };
   }, []);
 
+  /**
+   * Called when the user edits a literal value in an inline input widget on a
+   * workflow node. Writes the new value into the workflow's `in:` block for
+   * that port and marks the tab dirty. Connection references are never
+   * overwritten here — the widget is only shown when the port is unconnected.
+   */
+  const onInputValueChange = useCallback(
+    (nodeId: string, portId: string, value: unknown) => {
+      const wf = workflowRef.current;
+      if (!wf) return;
+      const node = wf.nodes[nodeId];
+      if (!node) return;
+      const base =
+        typeof node.in === "object" && node.in !== null && !Array.isArray(node.in)
+          ? { ...(node.in as Record<string, unknown>) }
+          : {};
+      const nextIn: Record<string, unknown> = { ...base, [portId]: value };
+      const next: WorkflowFile = {
+        ...wf,
+        nodes: { ...wf.nodes, [nodeId]: { ...node, in: nextIn } },
+      };
+      applyWorkflow(next);
+      markDirty(true);
+    },
+    [applyWorkflow, markDirty],
+  );
+
   // Toggle handler — flips the membership of `handleId` in the relevant set.
   // Uses the ref so the callback we hand down to each WorkflowNode stays
   // stable across renders (no useCallback churn from setExpansion identity).
@@ -394,13 +421,15 @@ export function WorkflowEditor({ path, tabId }: Props) {
             expandedOutputs: new Set<string>(),
             onTogglePort: (side: "input" | "output", handleId: string) =>
               onTogglePort(id, side, handleId),
+            onInputValueChange: (portId: string, value: unknown) =>
+              onInputValueChange(id, portId, value),
           },
         };
       },
     );
     setNodes(initial);
     nodesRef.current = initial;
-  }, [workflow, schemas, onTogglePort]);
+  }, [workflow, schemas, onTogglePort, onInputValueChange]);
 
   // Push the latest expansion state into each node's data so React Flow
   // re-renders the node when expansion changes.  Separated from initialise

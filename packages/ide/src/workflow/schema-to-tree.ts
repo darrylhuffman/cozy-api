@@ -9,6 +9,15 @@ export interface PortNode {
   children: PortNode[]
   /** True if this represents a leaf (scalar / unknown / array). */
   isLeaf: boolean
+  /**
+   * The JSON Schema for this port (leaf nodes only). Carried through so that
+   * the workflow node can render the correct inline input widget (text, number,
+   * select, checkbox) without re-fetching the schema.
+   *
+   * Only present when the port was derived from a schema property. Absent for
+   * ports inferred from `in:` keys (no schema available).
+   */
+  schema?: JsonSchema | undefined
 }
 
 /**
@@ -22,12 +31,15 @@ export function schemaToTree(schema: JsonSchema | undefined, parentPath = ""): P
     const id = parentPath ? `${parentPath}.${key}` : key
     const isObject = sub?.type === "object" && Boolean(sub.properties)
     const children = isObject ? schemaToTree(sub, id) : []
-    out.push({
+    const node: PortNode = {
       id,
       label: key,
       children,
       isLeaf: !isObject,
-    })
+    }
+    // Attach schema to leaf ports so the node UI can pick the right widget.
+    if (!isObject) node.schema = sub
+    out.push(node)
   }
   return out
 }

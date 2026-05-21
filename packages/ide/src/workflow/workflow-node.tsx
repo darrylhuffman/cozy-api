@@ -1,7 +1,7 @@
 import { Handle, Position } from "@xyflow/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import type { NodeInstance } from "@/lib/api";
+import type { JsonSchema, NodeInstance } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSelectionStore } from "@/store/selection";
 import type { NodePorts, PortNode } from "./derive-ports";
@@ -22,6 +22,12 @@ export interface WorkflowNodeData {
   /** Toggle callback. When provided, the node delegates toggle clicks to the
    *  editor; otherwise it falls back to local useState (for unit tests). */
   onTogglePort?: (side: "input" | "output", handleId: string) => void;
+  /**
+   * Called when the user edits a literal value in an inline input widget.
+   * The editor writes the new value into the workflow's `in:` block and marks
+   * the tab dirty.
+   */
+  onInputValueChange?: (portId: string, value: unknown) => void;
 }
 
 // Using the xyflow NodeProps generic requires the data type to extend Node which
@@ -52,6 +58,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     expandedInputs,
     expandedOutputs,
     onTogglePort,
+    onInputValueChange,
   } = data as unknown as WorkflowNodeData;
 
   const isSelected = useSelectionStore((s) => s.selectedNodeId === id);
@@ -123,6 +130,8 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
               side="input"
               expandedSet={expandedInputs}
               onToggle={onTogglePort}
+              instanceIn={instance.in}
+              onInputValueChange={onInputValueChange}
             />
           )}
         </div>
@@ -174,18 +183,46 @@ function PortTree({
   );
 }
 
+/**
+ * Determines whether an `in:` value for a port is a REFERENCE to another
+ * node's output (vs. a literal value).
+ *
+ * Heuristic (v1): a string value is treated as a REFERENCE when it looks like
+ * a dotted identifier chain with AT LEAST ONE DOT — e.g. "request.body.email"
+ * or "upstream.value".
+ *
+ * Bare words (e.g. "GET", "hello") are treated as LITERALS — they are valid
+ * enum values or short string literals and would never be a useful whole-node
+ * reference (you can't pull the whole node via a bare word in the per-field
+ * `in:` syntax).
+ *
+ * Everything else (primitives, strings with spaces, objects) is a LITERAL.
+ * This is intentionally conservative — false negatives (showing a widget for
+ * a dotless reference like "myNode") just let the user see the literal editor
+ * and are harmless for v1.
+ */
+function isReference(value: unknown): boolean {
+  if (typeof value !== "string") return false
+  // Must look like a dotted identifier chain: word.word (at least one dot)
+  return /^[a-zA-Z_$][\w$]*(\.[a-zA-Z_$][\w$]*)+$/.test(value)
+}
+
 function PortRow({
   port,
   depth,
   side,
   expandedSet,
   onToggle,
+  instanceIn,
+  onInputValueChange,
 }: {
   port: PortNode;
   depth: number;
   side: "input" | "output";
   expandedSet: ReadonlySet<string> | undefined;
   onToggle: ((side: "input" | "output", handleId: string) => void) | undefined;
+  instanceIn?: unknown;
+  onInputValueChange?: ((portId: string, value: unknown) => void) | undefined;
 }) {
   // When the editor provides controlled state, defer to it. Otherwise fall
   // back to local state (preserved for test-only usage of WorkflowNode).
@@ -247,6 +284,44 @@ function PortRow({
     : port.children.slice(0, VISIBLE_COUNT);
   const hiddenCount = port.children.length - visibleChildren.length;
 
+  // Determine whether to show an inline value editor for this leaf input port.
+  // Only shown for:
+  //   1. Input side
+  //   2. Leaf port (no children)
+  //   3. Port has a scalar schema (string/number/integer/boolean or enum)
+  //   4. The port's current in: value is NOT a reference to another node
+  const inMap =
+    !isOutput &&
+    port.isLeaf &&
+    typeof instanceIn === "object" &&
+    instanceIn !== null &&
+    !Array.isArray(instanceIn)
+      ? (instanceIn as Record<string, unknown>)
+      : null;
+  const portCurrentValue = inMap ? inMap[port.id] : undefined;
+  const portIsConnected = isReference(portCurrentValue);
+
+  const portSchema: JsonSchema | undefined = port.schema;
+  const isScalar =
+    portSchema !== undefined &&
+    (portSchema.type === "string" ||
+      portSchema.type === "number" ||
+      portSchema.type === "integer" ||
+      portSchema.type === "boolean" ||
+      Array.isArray(portSchema.enum));
+
+  const showInlineWidget =
+    !isOutput && port.isLeaf && isScalar && !portIsConnected && !!onInputValueChange;
+
+  const inlineWidget = showInlineWidget ? (
+    <InlineInputWidget
+      portId={port.id}
+      schema={portSchema!}
+      currentValue={portCurrentValue}
+      onChange={onInputValueChange!}
+    />
+  ) : null;
+
   return (
     <>
       <div
@@ -279,6 +354,7 @@ function PortRow({
           <>
             {chevron}
             {label}
+            {inlineWidget}
           </>
         )}
       </div>
@@ -292,6 +368,8 @@ function PortRow({
               side={side}
               expandedSet={expandedSet}
               onToggle={onToggle}
+              instanceIn={instanceIn}
+              onInputValueChange={onInputValueChange}
             />
           ))}
           {hiddenCount > 0 && (
@@ -317,5 +395,103 @@ function PortRow({
         </>
       )}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inline input widget — renders the right control for the port's schema type
+// ---------------------------------------------------------------------------
+
+function InlineInputWidget({
+  portId,
+  schema,
+  currentValue,
+  onChange,
+}: {
+  portId: string;
+  schema: JsonSchema;
+  currentValue: unknown;
+  onChange: (portId: string, value: unknown) => void;
+}) {
+  const baseClass =
+    "ml-1 h-4 rounded border border-border bg-background px-1 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
+
+  // Enum → select
+  if (Array.isArray(schema.enum)) {
+    return (
+      <select
+        data-testid={`input-widget-${portId}`}
+        className={`${baseClass} max-w-[80px]`}
+        value={typeof currentValue === "string" ? currentValue : ""}
+        onChange={(e) => {
+          e.stopPropagation();
+          onChange(portId, e.target.value);
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <option value="" disabled>
+          —
+        </option>
+        {(schema.enum as string[]).map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  // Boolean → checkbox
+  if (schema.type === "boolean") {
+    return (
+      <input
+        type="checkbox"
+        data-testid={`input-widget-${portId}`}
+        className="ml-1 h-3 w-3 cursor-pointer"
+        checked={typeof currentValue === "boolean" ? currentValue : false}
+        onChange={(e) => {
+          e.stopPropagation();
+          onChange(portId, e.target.checked);
+        }}
+        onClick={(e) => e.stopPropagation()}
+      />
+    );
+  }
+
+  // Number / integer → number input
+  if (schema.type === "number" || schema.type === "integer") {
+    return (
+      <input
+        type="number"
+        data-testid={`input-widget-${portId}`}
+        className={`${baseClass} w-[60px]`}
+        value={typeof currentValue === "number" ? currentValue : ""}
+        onChange={(e) => {
+          e.stopPropagation();
+          const n = schema.type === "integer"
+            ? parseInt(e.target.value, 10)
+            : parseFloat(e.target.value);
+          if (!isNaN(n)) onChange(portId, n);
+          else if (e.target.value === "") onChange(portId, undefined);
+        }}
+        onClick={(e) => e.stopPropagation()}
+      />
+    );
+  }
+
+  // String → text input
+  return (
+    <input
+      type="text"
+      data-testid={`input-widget-${portId}`}
+      className={`${baseClass} max-w-[80px]`}
+      value={typeof currentValue === "string" ? currentValue : ""}
+      placeholder="value…"
+      onChange={(e) => {
+        e.stopPropagation();
+        onChange(portId, e.target.value);
+      }}
+      onClick={(e) => e.stopPropagation()}
+    />
   );
 }
