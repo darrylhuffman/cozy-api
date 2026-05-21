@@ -10,12 +10,15 @@ vi.mock("@xyflow/react", () => ({
 }))
 
 import type { NodeInstance } from "@/lib/api"
+import { useSelectionStore } from "@/store/selection"
 import type { NodePorts, PortNode } from "./derive-ports.js"
 import { WorkflowNode } from "./workflow-node.js"
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  // Reset selection store between tests
+  useSelectionStore.getState().setSelected(null)
 })
 
 /** Convenience: build a leaf PortNode. */
@@ -366,8 +369,27 @@ describe("WorkflowNode", () => {
     })
   })
 
-  describe("color accent stripe", () => {
-    it("renders a stripe when color is set on data", () => {
+  describe("selected-node border contrast", () => {
+    const baseData = () =>
+      makeData("myNode", { uses: "./nodes/myNode" }, { inputs: emptyInputRoot, outputs: [] })
+
+    it("does NOT apply ring-primary when node is not the active selection", () => {
+      useSelectionStore.getState().setSelected("otherNode")
+      render(<WorkflowNode data={baseData()} />)
+      const card = screen.getByTestId("node-card")
+      expect(card.className).not.toContain("ring-primary")
+    })
+
+    it("applies ring-2 ring-primary when node IS the active selection", () => {
+      useSelectionStore.getState().setSelected("myNode")
+      render(<WorkflowNode data={baseData()} />)
+      const card = screen.getByTestId("node-card")
+      expect(card.className).toContain("ring-primary")
+    })
+  })
+
+  describe("accent card wash", () => {
+    it("washes the card and header with a faint accent when color is set", () => {
       const data: Record<string, unknown> = {
         id: "save",
         instance: { uses: "./save" },
@@ -375,19 +397,56 @@ describe("WorkflowNode", () => {
         color: "#a78bfa",
       }
       render(<WorkflowNode data={data} />)
-      const stripe = screen.getByTestId("accent-stripe")
-      expect(stripe).toBeInTheDocument()
-      expect(stripe.getAttribute("style")).toContain("background")
+      const card = screen.getByTestId("node-card")
+      const header = screen.getByTestId("node-header")
+      // color-mix() values are passed through verbatim by jsdom.
+      const cardStyle = card.getAttribute("style") ?? ""
+      const headerStyle = header.getAttribute("style") ?? ""
+      expect(cardStyle).toContain("color-mix")
+      expect(cardStyle).toContain("#a78bfa")
+      expect(cardStyle).toContain("var(--card)")
+      expect(headerStyle).toContain("color-mix")
+      expect(headerStyle).toContain("#a78bfa")
+      expect(headerStyle).toContain("var(--muted)")
     })
 
-    it("renders no stripe when color is missing", () => {
+    it("resolves a Tailwind color name to its 500-weight hex in the wash", () => {
+      const data: Record<string, unknown> = {
+        id: "save",
+        instance: { uses: "./save" },
+        ports: { inputs: emptyInputRoot, outputs: [] },
+        color: "amber",
+      }
+      render(<WorkflowNode data={data} />)
+      const card = screen.getByTestId("node-card")
+      // amber-500 = #f59e0b.
+      expect(card.getAttribute("style")).toContain("#f59e0b")
+    })
+
+    it("passes raw hex colors through unchanged (CORE_SCHEMAS path)", () => {
+      const data: Record<string, unknown> = {
+        id: "request",
+        instance: { uses: "@core/http-request" },
+        ports: { inputs: emptyInputRoot, outputs: [] },
+        color: "#3b82f6",
+      }
+      render(<WorkflowNode data={data} />)
+      const card = screen.getByTestId("node-card")
+      expect(card.getAttribute("style")).toContain("#3b82f6")
+    })
+
+    it("leaves the card untinted when color is missing", () => {
       const data: Record<string, unknown> = {
         id: "save",
         instance: { uses: "./save" },
         ports: { inputs: emptyInputRoot, outputs: [] },
       }
       render(<WorkflowNode data={data} />)
-      expect(screen.queryByTestId("accent-stripe")).not.toBeInTheDocument()
+      const card = screen.getByTestId("node-card")
+      const header = screen.getByTestId("node-header")
+      // No inline background override — Tailwind's bg-card / bg-muted apply.
+      expect(card.getAttribute("style") ?? "").not.toContain("color-mix")
+      expect(header.getAttribute("style")).toBeNull()
     })
   })
 })

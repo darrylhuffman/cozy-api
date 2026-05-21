@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { NodeSchemas } from "@/lib/api"
 import { AddNodePalette } from "./add-node-palette"
@@ -13,6 +14,14 @@ interface Props {
 }
 
 export function CanvasContextMenu({ open, onOpenChange, x, y, schemas, onPick, onNewCustomNode }: Props) {
+  type Mode = "menu" | "palette"
+  const [mode, setMode] = useState<Mode>("menu")
+
+  // Reset to action menu whenever the popover closes
+  useEffect(() => {
+    if (!open) setMode("menu")
+  }, [open])
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -27,27 +36,41 @@ export function CanvasContextMenu({ open, onOpenChange, x, y, schemas, onPick, o
           }}
         />
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 p-0">
-        <AddNodePalette
-          schemas={schemas}
-          onPick={(uses) => {
-            onOpenChange(false)
-            onPick(uses)
-          }}
-        />
-        <div className="border-t p-2">
-          <button
-            type="button"
-            onClick={() => {
+      <PopoverContent align="start" className="w-72 p-0">
+        {mode === "menu" ? (
+          <div className="flex flex-col p-1">
+            <MenuItem onClick={() => setMode("palette")}>+ Add existing node…</MenuItem>
+            <MenuItem
+              onClick={() => {
+                onOpenChange(false)
+                onNewCustomNode()
+              }}
+            >
+              + New custom node…
+            </MenuItem>
+          </div>
+        ) : (
+          <AddNodePalette
+            schemas={schemas}
+            onPick={(uses) => {
               onOpenChange(false)
-              onNewCustomNode()
+              onPick(uses)
             }}
-            className="w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
-          >
-            + New custom node…
-          </button>
-        </div>
+          />
+        )}
       </PopoverContent>
     </Popover>
+  )
+}
+
+function MenuItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded px-3 py-1.5 text-left text-sm hover:bg-accent"
+    >
+      {children}
+    </button>
   )
 }
