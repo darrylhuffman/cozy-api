@@ -1,15 +1,16 @@
 import { spawn } from "node:child_process"
-import { readFile, readdir, stat, writeFile } from "node:fs/promises"
+import { readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { serve } from "@hono/node-server"
 import { serveStatic } from "@hono/node-server/serve-static"
-import type { Command } from "commander"
 import chokidar from "chokidar"
+import type { Command } from "commander"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
+import { introspectWorkspace, invalidateSchemaCache } from "./introspect-workspace.js"
 
 // ── FileNode types (mirrors packages/ide/src/data/mock-files.ts) ─────────────
 export type FileKind = "workflow" | "node"
@@ -127,7 +128,10 @@ export function createIdeApp(workspaceRoot: string): Hono {
   })
 
   app.put("/api/workspace/file", async (c) => {
-    const body = await c.req.json().catch(() => null) as { path?: string; content?: string } | null
+    const body = (await c.req.json().catch(() => null)) as {
+      path?: string
+      content?: string
+    } | null
     if (!body || typeof body.path !== "string" || typeof body.content !== "string") {
       return c.json({ error: "Body must be { path: string, content: string }" }, 400)
     }
@@ -148,6 +152,17 @@ export function createIdeApp(workspaceRoot: string): Hono {
     }
   })
 
+  // ── Schemas (Zod -> JSON Schema for each node) ─────────────────────────────
+
+  app.get("/api/workspace/schemas", async (c) => {
+    try {
+      const { schemas, warnings } = await introspectWorkspace(workspaceRoot)
+      return c.json({ schemas, warnings })
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 500)
+    }
+  })
+
   // ── SSE file-change events ─────────────────────────────────────────────────
 
   app.get("/api/events", (c) => {
@@ -161,6 +176,11 @@ export function createIdeApp(workspaceRoot: string): Hono {
 
       const emit = async (kind: "change" | "add" | "unlink", absPath: string) => {
         const rel = relative(workspaceRoot, absPath).replaceAll("\\", "/")
+        // Invalidate the schema cache for any .ts node file change so the
+        // next /api/workspace/schemas call re-runs the worker.
+        if (absPath.endsWith(".ts")) {
+          invalidateSchemaCache(absPath)
+        }
         try {
           await stream.writeSSE({
             event: kind,
@@ -171,9 +191,15 @@ export function createIdeApp(workspaceRoot: string): Hono {
         }
       }
 
-      watcher.on("change", (p) => { void emit("change", p) })
-      watcher.on("add",    (p) => { void emit("add", p) })
-      watcher.on("unlink", (p) => { void emit("unlink", p) })
+      watcher.on("change", (p) => {
+        void emit("change", p)
+      })
+      watcher.on("add", (p) => {
+        void emit("add", p)
+      })
+      watcher.on("unlink", (p) => {
+        void emit("unlink", p)
+      })
 
       // Periodic keep-alive so proxies don't close the connection
       const keepAlive = setInterval(() => {

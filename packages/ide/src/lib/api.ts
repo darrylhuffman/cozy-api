@@ -66,8 +66,36 @@ export async function saveFile(path: string, content: string): Promise<SaveResul
     body: JSON.stringify({ path, content }),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string }
+    const err = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as {
+      error?: string
+    }
     throw new Error(err.error ?? `Save failed: ${res.status}`)
   }
   return res.json() as Promise<SaveResult>
+}
+
+// ── Schemas ──────────────────────────────────────────────────────────────────
+
+/**
+ * Minimal JSON Schema subset the IDE consumes. Anything not modeled here is
+ * tolerated as opaque (treated as a leaf).
+ */
+export interface JsonSchema {
+  type?: string
+  properties?: Record<string, JsonSchema>
+  items?: JsonSchema
+  additionalProperties?: boolean | JsonSchema
+  [key: string]: unknown
+}
+
+export interface NodeSchemas {
+  inputs: JsonSchema
+  outputs: JsonSchema
+}
+
+export async function fetchWorkspaceSchemas(): Promise<Record<string, NodeSchemas>> {
+  const res = await fetch("/api/workspace/schemas")
+  if (!res.ok) throw new Error(`/api/workspace/schemas returned ${res.status}`)
+  const { schemas } = (await res.json()) as { schemas: Record<string, NodeSchemas> }
+  return schemas
 }

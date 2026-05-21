@@ -46,7 +46,7 @@ describe("PUT /api/workspace/file", () => {
       body: JSON.stringify({ path: "nodes/foo.ts", content }),
     })
     expect(res.status).toBe(200)
-    const json = await res.json() as { path: string; bytes: number }
+    const json = (await res.json()) as { path: string; bytes: number }
     expect(json.path).toBe("nodes/foo.ts")
     expect(json.bytes).toBe(content.length)
     expect(readFileSync(join(dir, "nodes", "foo.ts"), "utf-8")).toBe(content)
@@ -62,7 +62,7 @@ describe("PUT /api/workspace/file", () => {
       body: JSON.stringify({ path: "workflows/create.workflow", content }),
     })
     expect(res.status).toBe(200)
-    const json = await res.json() as { path: string; bytes: number }
+    const json = (await res.json()) as { path: string; bytes: number }
     expect(json.path).toBe("workflows/create.workflow")
     expect(readFileSync(join(dir, "workflows", "create.workflow"), "utf-8")).toBe(content)
   })
@@ -75,7 +75,7 @@ describe("PUT /api/workspace/file", () => {
       body: JSON.stringify({ path: "nodes/foo.ts" }),
     })
     expect(res.status).toBe(400)
-    const json = await res.json() as { error: string }
+    const json = (await res.json()) as { error: string }
     expect(json.error).toMatch(/content/)
   })
 
@@ -97,8 +97,64 @@ describe("PUT /api/workspace/file", () => {
       body: JSON.stringify({ path: "package.json", content: "{}" }),
     })
     expect(res.status).toBe(400)
-    const json = await res.json() as { error: string }
+    const json = (await res.json()) as { error: string }
     expect(json.error).toMatch(/\.workflow.*\.ts|\.ts.*\.workflow/)
+  })
+})
+
+describe("GET /api/workspace/schemas", () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "lorien-ide-schemas-"))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it("returns @core/* schemas even when the workspace has no nodes/ folder", async () => {
+    const { createIdeApp } = await import("./ide.js")
+    const app = createIdeApp(dir)
+    const res = await app.request("/api/workspace/schemas")
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      schemas: Record<string, { inputs: unknown; outputs: unknown }>
+    }
+    expect(body.schemas["@core/http-request"]).toBeDefined()
+    expect(body.schemas["@core/response"]).toBeDefined()
+
+    // @core/http-request outputs should include the standard properties as JSON Schema
+    const httpOut = body.schemas["@core/http-request"]!.outputs as {
+      type?: string
+      properties?: Record<string, unknown>
+    }
+    expect(httpOut.type).toBe("object")
+    expect(httpOut.properties).toBeDefined()
+    expect(httpOut.properties!.body).toBeDefined()
+    expect(httpOut.properties!.headers).toBeDefined()
+    expect(httpOut.properties!.context).toBeDefined()
+
+    // @core/response inputs should include body/status/headers
+    const respIn = body.schemas["@core/response"]!.inputs as {
+      type?: string
+      properties?: Record<string, unknown>
+    }
+    expect(respIn.type).toBe("object")
+    expect(respIn.properties).toBeDefined()
+    expect(respIn.properties!.body).toBeDefined()
+    expect(respIn.properties!.status).toBeDefined()
+    expect(respIn.properties!.headers).toBeDefined()
+  })
+
+  it("returns JSON with a `schemas` object regardless of tsx availability", async () => {
+    const { createIdeApp } = await import("./ide.js")
+    mkdirSync(join(dir, "nodes"))
+    const app = createIdeApp(dir)
+    const res = await app.request("/api/workspace/schemas")
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { schemas: unknown }
+    expect(body.schemas).toBeTypeOf("object")
   })
 })
 

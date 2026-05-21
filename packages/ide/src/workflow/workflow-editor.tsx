@@ -1,6 +1,7 @@
 import {
   applyNodeChanges,
   Background,
+  type Connection,
   Controls,
   type Edge,
   type NodeChange,
@@ -10,7 +11,13 @@ import {
 } from "@xyflow/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "@xyflow/react/dist/style.css"
-import { fetchWorkflowFile, saveFile, type WorkflowFile } from "@/lib/api"
+import {
+  fetchWorkflowFile,
+  fetchWorkspaceSchemas,
+  type NodeSchemas,
+  saveFile,
+  type WorkflowFile,
+} from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
 import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
@@ -39,6 +46,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
   const [nodes, setNodes] = useState<RFNode[]>([])
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [dirty, setLocalDirty] = useState(false)
+  const [schemas, setSchemas] = useState<Record<string, NodeSchemas>>({})
   const theme = useThemeStore((s) => s.theme)
   const setDirty = useTabsStore((s) => s.setDirty)
 
@@ -82,10 +90,26 @@ export function WorkflowEditor({ path, tabId }: Props) {
     return doFetch()
   }, [doFetch])
 
-  // Initialise nodes whenever workflow loads
+  // Fetch schemas once on mount — they don't change per workflow tab
+  useEffect(() => {
+    let alive = true
+    fetchWorkspaceSchemas()
+      .then((s) => {
+        if (alive) setSchemas(s)
+      })
+      .catch(() => {
+        // Schemas are best-effort; fall back to inference if the call fails
+        if (alive) setSchemas({})
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Initialise nodes whenever workflow OR schemas change
   useEffect(() => {
     if (!workflow) return
-    const portsByNode = derivePorts(workflow)
+    const portsByNode = derivePorts(workflow, schemas)
     const initial: RFNode[] = Object.entries(workflow.nodes).map(([id, instance], i) => {
       const view = workflow.view?.[id]
       return {
@@ -97,7 +121,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
     })
     setNodes(initial)
     nodesRef.current = initial
-  }, [workflow])
+  }, [workflow, schemas])
 
   const edges = useMemo<Edge[]>(() => {
     if (!workflow) return []
@@ -108,8 +132,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
       sourceHandle: r.source.portId,
       target: r.target.nodeId,
       targetHandle: r.target.portId,
-      label:
-        r.source.remainingPath.length > 0 ? r.source.remainingPath.join(".") : undefined,
+      label: r.source.remainingPath.length > 0 ? r.source.remainingPath.join(".") : undefined,
       type: "default",
       animated: false,
     }))
@@ -166,6 +189,34 @@ export function WorkflowEditor({ path, tabId }: Props) {
     [markDirty],
   )
 
+  /**
+   * Drag-to-connect: when the user drags from a source handle to a target
+   * handle, update the target node's `in:` block with the reference string
+   * `sourceNodeId.sourcePath` and mark the tab dirty. Ctrl+S persists.
+   */
+  const onConnect = useCallback(
+    (conn: Connection) => {
+      const { source, sourceHandle, target, targetHandle } = conn
+      if (!source || !target || !sourceHandle || !targetHandle) return
+      const refString = `${source}.${sourceHandle}`
+      setWorkflow((wf) => {
+        if (!wf) return wf
+        const targetNode = wf.nodes[target]
+        if (!targetNode) return wf
+        const inBlock = { ...(targetNode.in ?? {}) }
+        inBlock[targetHandle] = refString
+        const next: WorkflowFile = {
+          ...wf,
+          nodes: { ...wf.nodes, [target]: { ...targetNode, in: inBlock } },
+        }
+        workflowRef.current = next
+        return next
+      })
+      markDirty(true)
+    },
+    [markDirty],
+  )
+
   // Subscribe to live file events — reload if the file changes externally,
   // but only when this tab doesn't have unsaved drags (don't clobber local work).
   useEffect(() => {
@@ -199,9 +250,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
+        onConnect={onConnect}
         fitView
         colorMode={theme}
-        nodesConnectable={false}
+        nodesConnectable={true}
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={20} size={1} />

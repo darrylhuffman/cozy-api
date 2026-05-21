@@ -1,10 +1,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import React from "react"
+import type React from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { WorkflowFile } from "@/lib/api"
 
-// Capture onNodesChange so tests can fire drag events
+// Capture callbacks so tests can fire events
 let capturedOnNodesChange: ((changes: unknown[]) => void) | null = null
+let capturedOnConnect:
+  | ((conn: { source: string; sourceHandle: string; target: string; targetHandle: string }) => void)
+  | null = null
 
 // Mock @xyflow/react — the actual library uses ResizeObserver + canvas APIs
 // that aren't available in jsdom. We replace with minimal stubs.
@@ -13,12 +16,20 @@ vi.mock("@xyflow/react", () => ({
     nodes,
     nodeTypes,
     onNodesChange,
+    onConnect,
   }: {
     nodes: { id: string; type?: string; data: Record<string, unknown> }[]
     nodeTypes?: Record<string, (props: { data: Record<string, unknown> }) => React.ReactNode>
     onNodesChange?: (changes: unknown[]) => void
+    onConnect?: (conn: {
+      source: string
+      sourceHandle: string
+      target: string
+      targetHandle: string
+    }) => void
   }) => {
     capturedOnNodesChange = onNodesChange ?? null
+    capturedOnConnect = onConnect ?? null
     return (
       <div data-testid="react-flow" data-nodecount={nodes.length}>
         {nodes.map((n) => {
@@ -52,12 +63,13 @@ vi.mock("@xyflow/react", () => ({
 // Mock the CSS import from @xyflow/react
 vi.mock("@xyflow/react/dist/style.css", () => ({}))
 
-// Mock fetchWorkflowFile and saveFile
+// Mock fetchWorkflowFile, fetchWorkspaceSchemas, and saveFile
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>()
   return {
     ...actual,
     fetchWorkflowFile: vi.fn(),
+    fetchWorkspaceSchemas: vi.fn().mockResolvedValue({}),
     saveFile: vi.fn().mockResolvedValue({ path: "workflows/users/create.workflow", bytes: 100 }),
   }
 })
@@ -67,7 +79,7 @@ vi.mock("@/lib/events", () => ({
   subscribeToFileEvents: vi.fn(() => () => {}),
 }))
 
-import { fetchWorkflowFile, saveFile } from "@/lib/api"
+import { fetchWorkflowFile, fetchWorkspaceSchemas, saveFile } from "@/lib/api"
 import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
 import { WorkflowEditor } from "./workflow-editor.js"
@@ -117,8 +129,10 @@ function resetStore() {
 
 beforeEach(() => {
   capturedOnNodesChange = null
+  capturedOnConnect = null
   useThemeStore.setState({ theme: "light" })
   vi.mocked(fetchWorkflowFile).mockResolvedValue(sampleWorkflow)
+  vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({})
   vi.mocked(saveFile).mockResolvedValue({ path: "workflows/users/create.workflow", bytes: 100 })
   resetStore()
   // Open a workflow tab so tabId is valid in the store
@@ -330,5 +344,124 @@ describe("WorkflowEditor", () => {
     // The request node (trigger) should have no input ports — no stray port labels
     expect(requestNodeEl.textContent).not.toContain("email")
     expect(requestNodeEl.textContent).not.toContain("password")
+  })
+
+  describe("drag-to-connect (onConnect)", () => {
+    it("updates the target node's in: block with a reference string", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Simulate dragging from request.body.email -> save.email (which is
+      // already set to that, so this should be a no-op overwrite). Then
+      // override to a new value to prove the update lands.
+      act(() => {
+        capturedOnConnect?.({
+          source: "save",
+          sourceHandle: "user.id",
+          target: "response",
+          targetHandle: "body",
+        })
+      })
+
+      // Save by Ctrl+S — the saved JSON should reflect the new reference
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => {
+        expect(vi.mocked(saveFile)).toHaveBeenCalledOnce()
+      })
+
+      const [, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+      const parsed = JSON.parse(savedContent) as WorkflowFile
+      expect(parsed.nodes.response!.in!.body).toBe("save.user.id")
+    })
+
+    it("marks the tab dirty after a connect", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
+
+      act(() => {
+        capturedOnConnect?.({
+          source: "request",
+          sourceHandle: "body.email",
+          target: "save",
+          targetHandle: "email",
+        })
+      })
+
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(true)
+      expect(screen.getByText(/unsaved changes/i)).toBeInTheDocument()
+    })
+
+    it("ignores connects with missing handles", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Missing sourceHandle → no-op
+      act(() => {
+        capturedOnConnect?.({
+          source: "request",
+          sourceHandle: "",
+          target: "save",
+          targetHandle: "email",
+        })
+      })
+
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
+    })
+
+    it("Ctrl+S persists the new in: structure after a connect", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Connect: drag from request.body.email to save.email (already there) and
+      // then from save.user to response.body
+      act(() => {
+        capturedOnConnect?.({
+          source: "save",
+          sourceHandle: "user.email",
+          target: "response",
+          targetHandle: "body",
+        })
+      })
+
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => {
+        expect(vi.mocked(saveFile)).toHaveBeenCalledOnce()
+      })
+
+      const [savedPath, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+      expect(savedPath).toBe("workflows/users/create.workflow")
+      const parsed = JSON.parse(savedContent) as WorkflowFile
+      // The other in: entries on save should be preserved
+      expect(parsed.nodes.save!.in!.email).toBe("request.body.email")
+      expect(parsed.nodes.save!.in!.password).toBe("request.body.password")
+      // The response.body should now reference save.user.email
+      expect(parsed.nodes.response!.in!.body).toBe("save.user.email")
+      // status literal should still be 201
+      expect(parsed.nodes.response!.in!.status).toBe(201)
+
+      // After the save, the tab is no longer dirty
+      await waitFor(() => {
+        const tab = useTabsStore.getState().tabs.find((t) => t.id === "test-tab")
+        expect(tab?.dirty).toBe(false)
+      })
+    })
   })
 })

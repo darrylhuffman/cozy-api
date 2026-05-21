@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     cli: "src/cli.ts",
     "run-build": "src/build/run-build.ts",
+    "introspect-worker": "src/commands/introspect-worker.ts",
   },
   format: ["esm"],
   dts: true,

@@ -1,6 +1,8 @@
 import { Handle, Position } from "@xyflow/react"
+import { ChevronDown, ChevronRight } from "lucide-react"
+import { useState } from "react"
 import type { NodeInstance } from "@/lib/api"
-import type { NodePorts } from "./derive-ports"
+import type { NodePorts, PortNode } from "./derive-ports"
 
 export interface WorkflowNodeData {
   id: string
@@ -15,7 +17,8 @@ interface WorkflowNodeProps {
   data: Record<string, unknown>
 }
 
-const PORT_ROW_HEIGHT = 22
+const ROW_HEIGHT = 22
+const INDENT_PX = 12
 
 export function WorkflowNode({ data }: WorkflowNodeProps) {
   const { id, instance, ports } = data as unknown as WorkflowNodeData
@@ -23,16 +26,12 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
   const isLocal = instance.uses.startsWith("./")
   const kindLabel = isCore ? "core" : isLocal ? "node" : "external"
   const displayName = instance.label ?? id
-
-  // Guarantee ports is always defined (graceful fallback when data is partial)
   const safePorts: NodePorts = ports ?? { inputs: [], outputs: [] }
-  const maxRows = Math.max(safePorts.inputs.length, safePorts.outputs.length, 1)
-  const bodyHeight = maxRows * PORT_ROW_HEIGHT + 12
 
   return (
     <div
       className="rounded-md border border-border bg-card text-card-foreground shadow-sm"
-      style={{ width: 200 }}
+      style={{ width: 240 }}
     >
       {/* Header */}
       <div className="border-b border-border bg-muted px-3 py-1.5 text-xs">
@@ -42,59 +41,113 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         <div className="truncate font-medium">{displayName}</div>
       </div>
 
-      {/* Body — port rows */}
-      <div className="relative" style={{ height: bodyHeight }}>
-        {/* Left column: input ports */}
-        <div className="absolute left-0 top-0 flex w-1/2 flex-col pt-[6px]">
-          {safePorts.inputs.map((port) => (
-            <div
-              key={port.id}
-              className="relative flex items-center"
-              style={{ height: PORT_ROW_HEIGHT }}
-            >
-              <Handle
-                type="target"
-                position={Position.Left}
-                id={port.id}
-                style={{
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "var(--muted-foreground)",
-                }}
-              />
-              <span className="truncate pl-3 text-xs text-muted-foreground">{port.label}</span>
-            </div>
-          ))}
+      {/* Body — port trees side by side */}
+      <div className="flex">
+        <div className="flex-1 border-r border-border py-1">
+          <PortTree ports={safePorts.inputs} side="input" />
         </div>
-
-        {/* Right column: output ports */}
-        <div className="absolute right-0 top-0 flex w-1/2 flex-col items-end pt-[6px]">
-          {safePorts.outputs.map((port) => (
-            <div
-              key={port.id}
-              className="relative flex items-center justify-end"
-              style={{ height: PORT_ROW_HEIGHT }}
-            >
-              <span className="truncate pr-3 text-xs text-muted-foreground">{port.label}</span>
-              <Handle
-                type="source"
-                position={Position.Right}
-                id={port.id}
-                style={{
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "var(--muted-foreground)",
-                }}
-              />
-            </div>
-          ))}
+        <div className="flex-1 py-1">
+          <PortTree ports={safePorts.outputs} side="output" />
         </div>
       </div>
 
       {/* Footer — uses */}
-      <div className="truncate border-t border-border px-3 py-1.5 font-mono text-[10px] text-muted-foreground">
+      <div className="truncate border-t border-border px-3 py-1 font-mono text-[10px] text-muted-foreground">
         {instance.uses}
       </div>
     </div>
+  )
+}
+
+function PortTree({ ports, side }: { ports: PortNode[]; side: "input" | "output" }) {
+  return (
+    <div>
+      {ports.map((port) => (
+        <PortRow key={port.id} port={port} depth={0} side={side} />
+      ))}
+    </div>
+  )
+}
+
+function PortRow({
+  port,
+  depth,
+  side,
+}: {
+  port: PortNode
+  depth: number
+  side: "input" | "output"
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const isBranch = port.children.length > 0
+  const isOutput = side === "output"
+  const handleType = isOutput ? "source" : "target"
+  const handlePosition = isOutput ? Position.Right : Position.Left
+
+  const chevron = isBranch ? (
+    <button
+      type="button"
+      aria-label={expanded ? `Collapse ${port.label}` : `Expand ${port.label}`}
+      data-testid={`chevron-${port.id}`}
+      onClick={(e) => {
+        e.stopPropagation()
+        setExpanded((v) => !v)
+      }}
+      className="inline-flex h-3 w-3 items-center justify-center text-muted-foreground hover:text-foreground"
+    >
+      {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+    </button>
+  ) : null
+
+  const label = (
+    <span
+      className={
+        isBranch
+          ? "truncate text-xs font-medium text-foreground"
+          : "truncate text-xs text-muted-foreground"
+      }
+    >
+      {port.label}
+    </span>
+  )
+
+  return (
+    <>
+      <div
+        className="relative flex items-center gap-1"
+        style={{
+          height: ROW_HEIGHT,
+          paddingLeft: isOutput ? 8 : 8 + depth * INDENT_PX,
+          paddingRight: isOutput ? 8 + depth * INDENT_PX : 8,
+          justifyContent: isOutput ? "flex-end" : "flex-start",
+        }}
+      >
+        <Handle
+          type={handleType}
+          position={handlePosition}
+          id={port.id}
+          style={{
+            top: "50%",
+            transform: "translateY(-50%)",
+            background: isBranch ? "var(--primary, oklch(0.6 0.2 270))" : "var(--muted-foreground)",
+          }}
+        />
+        {isOutput ? (
+          <>
+            {label}
+            {chevron}
+          </>
+        ) : (
+          <>
+            {chevron}
+            {label}
+          </>
+        )}
+      </div>
+      {expanded &&
+        port.children.map((child) => (
+          <PortRow key={child.id} port={child} depth={depth + 1} side={side} />
+        ))}
+    </>
   )
 }
