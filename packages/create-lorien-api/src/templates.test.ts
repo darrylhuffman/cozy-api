@@ -10,6 +10,7 @@ import {
   renderSayHelloNode,
   renderServerEntry,
   renderTsconfig,
+  SKILL_BODY,
 } from "./templates.js"
 
 const ctx = { name: "my-app" }
@@ -90,5 +91,19 @@ describe("template renderers", () => {
     const md = renderReadme(ctx, "yarn")
     expect(md).toMatch(/yarn dev/)
     expect(md).toMatch(/yarn test/)
+  })
+
+  it("SKILL_BODY contains the canonical authoring guide content", () => {
+    expect(SKILL_BODY).toMatch(/<!-- lorien-skill-version: 1 -->/)
+    expect(SKILL_BODY).toMatch(/# lorien-api project guide/)
+    expect(SKILL_BODY).toMatch(/## The node contract/)
+    expect(SKILL_BODY).toMatch(/## The \.workflow file format/)
+    expect(SKILL_BODY).toMatch(/## What you should NOT do/)
+    // node contract example uses the real defineNode shape
+    expect(SKILL_BODY).toMatch(/inputs: z\.object/)
+    expect(SKILL_BODY).toMatch(/outputs: z\.object/)
+    expect(SKILL_BODY).toMatch(/async run/)
+    // no YAML frontmatter — that's the SKILL.md renderer's job
+    expect(SKILL_BODY.startsWith("---")).toBe(false)
   })
 })

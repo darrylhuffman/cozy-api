@@ -2,6 +2,130 @@ export interface TemplateContext {
   name: string
 }
 
+/**
+ * Canonical authoring guide for AI agents working in a lorien-api project.
+ * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
+ * (with frontmatter wrapper). Single source of truth — both renderers must use this.
+ */
+export const SKILL_BODY = `<!-- lorien-skill-version: 1 -->
+
+# lorien-api project guide
+
+This is a lorien-api project. HTTP endpoints are defined as \`.workflow\` files: named-input JSON dependency graphs of typed nodes. Workflows compile to plain TypeScript via \`lorien build\`; the deployed code has zero runtime dependency on lorien-api.
+
+## Layout
+
+\`\`\`
+workflows/**/*.workflow   ← HTTP routes (you author these)
+nodes/**/*.ts             ← typed compute units, one defineNode per file
+lorien.config.ts          ← service registry (db, logger, etc.)
+.lorien/                  ← IDE cache, do not edit
+.lorien/chats/            ← agent chat transcripts, do not edit
+\`\`\`
+
+## The node contract
+
+Every node is exactly one file under \`nodes/\`. Filename is the node name in kebab-case. One default export, returning \`defineNode(...)\`:
+
+\`\`\`ts
+import { defineNode } from "@darrylondil/lorien-runtime"
+import { z } from "zod"
+
+export default defineNode({
+  name: "Save User",
+  inputs: z.object({
+    email: z.string().email(),
+    passwordHash: z.string(),
+  }),
+  outputs: z.object({
+    id: z.string(),
+  }),
+  async run({ email, passwordHash }, services) {
+    const row = await services.db.users.insert({ email, passwordHash })
+    return { id: row.id }
+  },
+})
+\`\`\`
+
+Rules:
+- \`inputs\` and \`outputs\` are Zod object schemas.
+- \`run\` is \`async\`; receives the typed input and the \`services\` object from \`lorien.config.ts\`.
+- Don't throw. Return shaped errors via the output schema if needed.
+- One node per file. Filename kebab-case. Export default.
+
+## The .workflow file format
+
+Named-input JSON. Each node lists where its inputs come from inline. No separate edges list:
+
+\`\`\`jsonc
+{
+  "lorien": 1,
+  "nodes": {
+    "request": {
+      "uses": "@core/http-request",
+      "values": { "path": "/users", "method": "POST" }
+    },
+    "parseBody": {
+      "uses": "./nodes/parse-body",
+      "in": { "raw": "request.body" }
+    },
+    "saveUser": {
+      "uses": "./nodes/save-user",
+      "in": {
+        "email": "parseBody.email",
+        "passwordHash": "parseBody.passwordHash"
+      }
+    },
+    "response": {
+      "uses": "@core/response",
+      "in": { "body": "saveUser" }
+    }
+  }
+}
+\`\`\`
+
+Rules:
+- Keys in \`in\` must match the target node's \`inputs\` schema.
+- Values in \`in\` are \`<nodeId>.<outputField>\` references (or just \`<nodeId>\` to pass the whole output object).
+- No cycles.
+- A \`view\` block (when present) is IDE-only layout metadata. After hand-editing, you may set it to \`null\` and the IDE will re-lay-out.
+
+## Authoring recipes
+
+**Add a new node**
+1. Create \`nodes/<name>.ts\` following the node contract.
+2. Reference it from a workflow via \`"uses": "./nodes/<name>"\`.
+
+**Wire a new node into a workflow**
+1. Add an entry under \`nodes\` with \`uses\` pointing to the node file.
+2. In its \`in\` block, reference upstream outputs as \`<id>.<field>\`.
+
+**Add a service (db, logger, etc.)**
+1. Edit \`lorien.config.ts\` and add to the \`services\` object.
+2. Destructure it from the second argument of \`run()\` in any node that needs it.
+
+**Add an OpenAPI-typed HTTP client**
+1. Run \`lorien openapi add <url-or-path>\`.
+2. Generated client nodes appear under \`nodes/<api>/\` — use them like any other node.
+
+## Verification
+
+After edits, run:
+
+\`\`\`
+pnpm typecheck && pnpm test
+\`\`\`
+
+Tests live next to nodes in \`*.test.ts\` files and use \`testWorkflow\` / \`traceWorkflow\` from \`@darrylondil/lorien-runtime/testing\`.
+
+## What you should NOT do
+
+- Don't add \`@darrylondil/lorien-runtime\` as a *runtime* dep in user code — it's build-time only. The compiled output has no runtime dep on lorien.
+- Don't hand-edit anything under \`.lorien/\` (IDE cache + chat transcripts).
+- Don't introduce an edges-array workflow format. lorien-api is named-input style: each node declares its own inputs.
+- Don't add middleware-style global error handling. Handle errors at the node level by returning shaped output.
+`
+
 export function renderPackageJson(ctx: TemplateContext): string {
   const pkg = {
     name: ctx.name,
