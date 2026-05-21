@@ -36,6 +36,17 @@ export interface WorkflowConfig {
 
 export type ZodObjectAny = z.ZodObject<z.ZodRawShape>;
 
+/**
+ * Tailwind v3/v4 palette names. The IDE resolves these to the 500-weight hex
+ * value at render time. Constrained to a literal union so editors offer
+ * typeahead in `defineNode({ color: ... })`.
+ */
+export type TailwindColor =
+  | "slate" | "gray" | "zinc" | "neutral" | "stone"
+  | "red" | "orange" | "amber" | "yellow" | "lime" | "green" | "emerald"
+  | "teal" | "cyan" | "sky" | "blue" | "indigo" | "violet" | "purple"
+  | "fuchsia" | "pink" | "rose";
+
 export interface Node<
   I extends ZodObjectAny = ZodObjectAny,
   O extends ZodObjectAny = ZodObjectAny,
@@ -46,8 +57,8 @@ export interface Node<
   readonly inputs: I;
   readonly outputs: O;
   readonly config?: C;
-  /** Optional accent color (free-form CSS string). Pure IDE metadata. */
-  readonly color?: string;
+  /** Optional Tailwind accent color, surfaced as a stripe in the IDE. */
+  readonly color?: TailwindColor;
   run(
     input: z.infer<I>,
     services: Services,

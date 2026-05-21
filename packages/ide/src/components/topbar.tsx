@@ -1,6 +1,8 @@
 import { Moon, Sun } from "lucide-react"
+import { useEffect, useState } from "react"
 import {
   Menubar,
+  MenubarCheckboxItem,
   MenubarContent,
   MenubarItem,
   MenubarMenu,
@@ -11,6 +13,8 @@ import {
   MenubarTrigger,
 } from "@/components/ui/menubar"
 import { cn } from "@/lib/utils"
+import { PANE_IDS, PANE_TITLES, type PaneId, reopenPanel } from "@/layout/default-layout"
+import { useDockviewApi } from "@/store/dockview-api"
 import { useThemeStore } from "@/store/theme"
 
 const LAYOUT_KEY = "lorien-ide-layout"
@@ -19,6 +23,28 @@ const TABS_KEY = "lorien-ide-tabs"
 export function Topbar() {
   const theme = useThemeStore((s) => s.theme)
   const toggle = useThemeStore((s) => s.toggle)
+  const api = useDockviewApi((s) => s.api)
+
+  // Re-render the Panes submenu whenever dockview's layout changes
+  // so checkbox state stays accurate as panes are opened/closed.
+  const [, forceRender] = useState(0)
+  useEffect(() => {
+    if (!api) return
+    const sub = api.onDidLayoutChange(() => forceRender((n) => n + 1))
+    return () => sub.dispose()
+  }, [api])
+
+  const isPaneOpen = (id: PaneId) => Boolean(api?.getPanel(id))
+
+  const togglePane = (id: PaneId) => {
+    if (!api) return
+    const panel = api.getPanel(id)
+    if (panel) {
+      api.removePanel(panel)
+    } else {
+      reopenPanel(api, id)
+    }
+  }
 
   const resetLayout = () => {
     const confirmed = window.confirm(
@@ -51,15 +77,21 @@ export function Topbar() {
               <MenubarSub>
                 <MenubarSubTrigger className="text-xs">Panes</MenubarSubTrigger>
                 <MenubarSubContent>
-                  <MenubarItem className="text-xs" disabled>
-                    Files
-                  </MenubarItem>
-                  <MenubarItem className="text-xs" disabled>
-                    Editor
-                  </MenubarItem>
-                  <MenubarItem className="text-xs" disabled>
-                    Inspector
-                  </MenubarItem>
+                  {PANE_IDS.map((id) => (
+                    <MenubarCheckboxItem
+                      key={id}
+                      className="text-xs"
+                      checked={isPaneOpen(id)}
+                      onSelect={(e) => {
+                        // Prevent the menu from closing so the user can toggle multiple
+                        e.preventDefault()
+                        togglePane(id)
+                      }}
+                      disabled={!api}
+                    >
+                      {PANE_TITLES[id]}
+                    </MenubarCheckboxItem>
+                  ))}
                 </MenubarSubContent>
               </MenubarSub>
               <MenubarSeparator />
