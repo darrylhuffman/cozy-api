@@ -840,12 +840,10 @@ describe("WorkflowEditor", () => {
       confirmSpy.mockRestore()
     })
 
-    it("BUG REGRESSION: dropping a source onto the collapsed root input creates a whole-object connection", async () => {
-      // Reproduces the bug where dragging request.body onto save's collapsed root
-      // input produced no connection. Root cause: the Handle was rendered with
-      // id="" (empty string), which React Flow rejects for connection events —
-      // the fix renders it as id="$root" (ROOT_HANDLE_ID) and onConnect maps
-      // "$root" → whole-object form internally.
+    it("BUG REGRESSION: dropping a source onto the collapsed root input auto-expands to per-field references", async () => {
+      // Reproduces the original bug where dragging request.body onto save's
+      // collapsed root input produced a whole-object reference. The fix
+      // auto-expands to per-field references based on the target's input schema.
       const blankSave: WorkflowFile = {
         ...createWorkflow,
         nodes: {
@@ -853,13 +851,25 @@ describe("WorkflowEditor", () => {
           save: { uses: "./nodes/users/save-user" },
         },
       }
+      vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
+        "./nodes/users/save-user": {
+          inputs: {
+            type: "object",
+            properties: {
+              email: { type: "string" },
+              password: { type: "string" },
+            },
+          },
+          outputs: { type: "object", properties: {} },
+        },
+      })
       vi.mocked(fetchWorkflowFile).mockResolvedValue(blankSave)
       render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
       await waitFor(() => {
         expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
       })
 
-      // React Flow now fires onConnect with targetHandle: "$root" (not "")
+      // React Flow fires onConnect with targetHandle: "$root"
       act(() => {
         capturedOnConnect?.({
           source: "request",
@@ -876,7 +886,47 @@ describe("WorkflowEditor", () => {
       await waitFor(() => expect(vi.mocked(saveFile)).toHaveBeenCalledOnce())
       const [, savedContent] = vi.mocked(saveFile).mock.calls[0]!
       const parsed = JSON.parse(savedContent) as WorkflowFile
-      // The whole-object form: `in: "request.body"`
+      // Auto-expansion: per-field references derived from the target schema
+      expect(parsed.nodes.save!.in).toEqual({
+        email: "request.body.email",
+        password: "request.body.password",
+      })
+    })
+
+    it("FALLBACK: dropping onto root with no target schema produces whole-object form", async () => {
+      // When the target's input schema is unknown (e.g. schemas endpoint failed
+      // or the node type isn't registered), fall back to the whole-object string
+      // reference rather than expanding to non-existent fields.
+      const blankSave: WorkflowFile = {
+        ...createWorkflow,
+        nodes: {
+          ...createWorkflow.nodes,
+          save: { uses: "./nodes/users/save-user" },
+        },
+      }
+      // Default: fetchWorkspaceSchemas returns {} — no schema for save-user
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(blankSave)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      act(() => {
+        capturedOnConnect?.({
+          source: "request",
+          sourceHandle: "body",
+          target: "save",
+          targetHandle: "$root",
+        })
+      })
+
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => expect(vi.mocked(saveFile)).toHaveBeenCalledOnce())
+      const [, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+      const parsed = JSON.parse(savedContent) as WorkflowFile
+      // Fallback: whole-object string reference
       expect(parsed.nodes.save!.in).toBe("request.body")
     })
 

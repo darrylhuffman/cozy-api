@@ -657,10 +657,12 @@ export function WorkflowEditor({ path, tabId }: Props) {
    * `sourceNodeId.sourcePath` and mark the tab dirty. Ctrl+S persists.
    *
    * Two target shapes:
-   *  - targetHandle === ""  → whole-object form: `in: "source.path"`. If the
-   *    node already has per-field `in:` entries, we confirm before discarding.
-   *  - targetHandle !== ""  → per-field form: merge into the existing object.
-   *    If `in:` is currently a string, switch to object form.
+   *  - targetHandle === ROOT_HANDLE_ID  → auto-expand form: for each top-level
+   *    property in the target's input schema, create a per-field reference that
+   *    extends the source path by that field name. Falls back to whole-object
+   *    form if no schema is available or the schema has no properties.
+   *  - targetHandle !== ROOT_HANDLE_ID  → per-field form: merge into the
+   *    existing object. If `in:` is currently a string, switch to object form.
    */
   const onConnect = useCallback(
     (conn: Connection) => {
@@ -685,23 +687,52 @@ export function WorkflowEditor({ path, tabId }: Props) {
       let nextIn: string | Record<string, unknown>;
 
       // targetHandle === ROOT_HANDLE_ID means the user dropped onto the root
-      // input port (collapsed node) — this produces the whole-object form.
+      // input port (collapsed node). Auto-expand to per-field references when
+      // the target's input schema is an object with known properties; fall back
+      // to whole-object string form otherwise.
       const isRootTarget = targetHandle === ROOT_HANDLE_ID;
       if (isRootTarget) {
-        // Whole-object form. If existing `in:` is a non-empty object,
-        // confirm before discarding per-field entries.
-        const existing = targetNode.in;
-        if (
-          existing &&
-          typeof existing === "object" &&
-          Object.keys(existing).length > 0
-        ) {
-          const ok = window.confirm(
-            `\`${target}\` currently has per-field input bindings. Replace them with the whole-object reference \`${refString}\`?`,
-          );
-          if (!ok) return;
+        const targetSchema = schemas[targetNode.uses]?.inputs;
+        const targetFields =
+          targetSchema?.type === "object" && targetSchema.properties
+            ? Object.keys(targetSchema.properties)
+            : null;
+
+        if (targetFields && targetFields.length > 0) {
+          // Auto-expand: for each target field, create a per-field reference
+          // extending the source path by that field name.
+          const existing = targetNode.in;
+          if (
+            existing &&
+            typeof existing === "object" &&
+            Object.keys(existing).length > 0
+          ) {
+            const ok = window.confirm(
+              `\`${target}\` has existing input bindings. Replace them with per-field connections from \`${refString}\`?`,
+            );
+            if (!ok) return;
+          }
+          const expanded: Record<string, unknown> = {};
+          for (const field of targetFields) {
+            expanded[field] = `${refString}.${field}`;
+          }
+          nextIn = expanded;
+        } else {
+          // Target has no known schema (or schema isn't an object with properties)
+          // — fall back to the whole-object string form.
+          const existing = targetNode.in;
+          if (
+            existing &&
+            typeof existing === "object" &&
+            Object.keys(existing).length > 0
+          ) {
+            const ok = window.confirm(
+              `\`${target}\` currently has per-field input bindings. Replace them with the whole-object reference \`${refString}\`?`,
+            );
+            if (!ok) return;
+          }
+          nextIn = refString;
         }
-        nextIn = refString;
       } else {
         // Per-field form. Convert string-form to object-form if needed.
         const base: Record<string, unknown> =
@@ -719,7 +750,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
       applyWorkflow(next);
       markDirty(true);
     },
-    [applyWorkflow, markDirty],
+    [applyWorkflow, markDirty, schemas],
   );
 
   // Subscribe to live file events — reload if the file changes externally,
