@@ -138,6 +138,7 @@ import { fetchWorkflowFile, fetchWorkspaceSchemas, saveFile } from "@/lib/api"
 import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { WorkflowEditor } from "./workflow-editor.js"
 
 const sampleWorkflow: WorkflowFile = {
@@ -212,6 +213,7 @@ afterEach(() => {
   vi.clearAllMocks()
   resetStore()
   useSelectionStore.setState({ selectedNodeId: null })
+  useLiveWorkflowStore.setState({ workflow: null, tabId: null })
 })
 
 describe("WorkflowEditor", () => {
@@ -1033,6 +1035,85 @@ describe("WorkflowEditor", () => {
 
       // Selection should be cleared
       expect(useSelectionStore.getState().selectedNodeId).toBeNull()
+    })
+  })
+
+  describe("live-workflow store publishing", () => {
+    it("publishes the fetched workflow to the live store after initial load", async () => {
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      const stored = useLiveWorkflowStore.getState()
+      expect(stored.tabId).toBe("test-tab")
+      expect(stored.workflow).not.toBeNull()
+      expect(Object.keys(stored.workflow!.nodes)).toEqual(
+        expect.arrayContaining(["parseBody", "validate", "save"]),
+      )
+    })
+
+    it("publishes to the live store when a node is added via addNodeAt (Ctrl+K / drag-from-sidebar)", async () => {
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      const canvas = screen.getByTestId("react-flow").parentElement!
+      const dataTransferMock = {
+        types: ["application/lorien-node"],
+        getData: vi.fn().mockReturnValue("@core/http-request"),
+        dropEffect: "",
+      }
+
+      act(() => {
+        fireEvent.dragOver(canvas, { dataTransfer: dataTransferMock, clientX: 250, clientY: 150 })
+      })
+      act(() => {
+        fireEvent.drop(canvas, { dataTransfer: dataTransferMock, clientX: 250, clientY: 150 })
+      })
+
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("4")
+      })
+
+      // The live store must now include the newly-added node
+      const stored = useLiveWorkflowStore.getState()
+      const nodeIds = Object.keys(stored.workflow!.nodes)
+      expect(nodeIds.some((id) => stored.workflow!.nodes[id]!.uses === "@core/http-request")).toBe(true)
+    })
+
+    it("publishes to the live store after onNodesDelete", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      act(() => {
+        capturedOnNodesDelete?.([{ id: "save" }])
+      })
+
+      const stored = useLiveWorkflowStore.getState()
+      expect(stored.workflow!.nodes.save).toBeUndefined()
+    })
+
+    it("clears the live store on unmount", async () => {
+      const { unmount } = render(
+        <WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />,
+      )
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Confirm the store is populated
+      expect(useLiveWorkflowStore.getState().workflow).not.toBeNull()
+
+      unmount()
+
+      // After unmount the store should be cleared
+      expect(useLiveWorkflowStore.getState().workflow).toBeNull()
+      expect(useLiveWorkflowStore.getState().tabId).toBeNull()
     })
   })
 

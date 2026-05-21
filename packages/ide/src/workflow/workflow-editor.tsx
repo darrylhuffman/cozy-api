@@ -38,6 +38,7 @@ import { extractReferences } from "./parse-references";
 import { PathEdge, type PathMapping } from "./path-edge";
 import { WorkflowNode } from "./workflow-node";
 import { useSelectionStore } from "@/store/selection";
+import { useLiveWorkflowStore } from "@/store/live-workflow";
 
 interface Props {
   /** API path like "workflows/users/create.workflow" */
@@ -97,10 +98,13 @@ export function WorkflowEditor({ path, tabId }: Props) {
     setSelected(null);
   }, [setSelected]);
 
-  // Clear selection when switching away from this tab
+  // Clear selection and live-workflow store when switching away from this tab
   useEffect(() => {
-    return () => setSelected(null);
-  }, [setSelected]);
+    return () => {
+      setSelected(null);
+      useLiveWorkflowStore.getState().clearIfTab(tabId);
+    };
+  }, [setSelected, tabId]);
 
   // Always-current ref so persist callbacks don't close over stale nodes
   const nodesRef = useRef<RFNode[]>([]);
@@ -129,16 +133,25 @@ export function WorkflowEditor({ path, tabId }: Props) {
     [tabId, setDirty],
   );
 
+  /** Single point that writes a new workflow state everywhere it needs to live. */
+  const applyWorkflow = useCallback(
+    (next: WorkflowFile) => {
+      workflowRef.current = next;
+      setWorkflow(next);
+      useLiveWorkflowStore.getState().setLiveWorkflow(tabId, next);
+    },
+    [tabId],
+  );
+
   const addNodeAt = useCallback(
     (uses: string, x: number, y: number) => {
       const wf = workflowRef.current;
       if (!wf) return;
       const next = addNode(wf, uses, { x, y });
-      workflowRef.current = next;
-      setWorkflow(next);
+      applyWorkflow(next);
       markDirty(true);
     },
-    [markDirty],
+    [applyWorkflow, markDirty],
   );
 
   const onNodesDelete = useCallback(
@@ -149,8 +162,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
       for (const n of deleted) {
         next = deleteNode(next, n.id);
       }
-      workflowRef.current = next;
-      setWorkflow(next);
+      applyWorkflow(next);
       markDirty(true);
       // Clear selection if the deleted node was selected
       const selected = useSelectionStore.getState().selectedNodeId;
@@ -158,7 +170,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
         useSelectionStore.getState().setSelected(null);
       }
     },
-    [markDirty],
+    [applyWorkflow, markDirty],
   );
 
   const onEdgesDelete = useCallback(
@@ -172,11 +184,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
       }
       if (allMappings.length === 0) return;
       const next = removeMappings(wf, allMappings);
-      workflowRef.current = next;
-      setWorkflow(next);
+      applyWorkflow(next);
       markDirty(true);
     },
-    [markDirty],
+    [applyWorkflow, markDirty],
   );
 
   // Track whether a reconnect completed successfully to distinguish "drop on
@@ -248,8 +259,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
     fetchWorkflowFile(path)
       .then((wf) => {
         if (alive) {
-          setWorkflow(wf);
-          workflowRef.current = wf;
+          applyWorkflow(wf);
         }
       })
       .catch((e: Error) => {
@@ -258,7 +268,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
     return () => {
       alive = false;
     };
-  }, [path, markDirty]);
+  }, [path, markDirty, applyWorkflow]);
 
   useEffect(() => {
     return doFetch();
@@ -596,11 +606,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
         ...wf,
         nodes: { ...wf.nodes, [target]: { ...targetNode, in: nextIn } },
       };
-      workflowRef.current = next;
-      setWorkflow(next);
+      applyWorkflow(next);
       markDirty(true);
     },
-    [markDirty],
+    [applyWorkflow, markDirty],
   );
 
   // Subscribe to live file events — reload if the file changes externally,

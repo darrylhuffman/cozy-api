@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-  fetchWorkflowFile,
   fetchWorkspaceSchemas,
   type JsonSchema,
   type NodeSchemas,
-  type WorkflowFile,
 } from "@/lib/api"
-import { subscribeToFileEvents } from "@/lib/events"
 import { useSelectionStore } from "@/store/selection"
-import { useTabsStore } from "@/store/tabs"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
 
 export function InspectorPanel() {
   return (
@@ -37,31 +34,8 @@ export function InspectorPanel() {
 
 function InspectContent() {
   const selectedId = useSelectionStore((s) => s.selectedNodeId)
-  const activeWorkflowId = useTabsStore((s) => s.activeWorkflowId)
-  const tabs = useTabsStore((s) => s.tabs)
-  const activeTab = tabs.find((t) => t.id === activeWorkflowId && t.kind === "workflow")
-  const path = activeTab?.path
-
-  const [workflow, setWorkflow] = useState<WorkflowFile | null>(null)
+  const workflow = useLiveWorkflowStore((s) => s.workflow)
   const [schemas, setSchemas] = useState<Record<string, NodeSchemas>>({})
-
-  useEffect(() => {
-    if (!path) {
-      setWorkflow(null)
-      return
-    }
-    let alive = true
-    fetchWorkflowFile(path)
-      .then((wf) => {
-        if (alive) setWorkflow(wf)
-      })
-      .catch(() => {
-        if (alive) setWorkflow(null)
-      })
-    return () => {
-      alive = false
-    }
-  }, [path])
 
   useEffect(() => {
     let alive = true
@@ -74,14 +48,6 @@ function InspectContent() {
       alive = false
     }
   }, [])
-
-  useEffect(() => {
-    if (!path) return
-    return subscribeToFileEvents((e) => {
-      if (e.path !== path) return
-      fetchWorkflowFile(path).then(setWorkflow).catch(() => {})
-    })
-  }, [path])
 
   if (!selectedId) {
     return (

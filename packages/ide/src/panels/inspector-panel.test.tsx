@@ -7,15 +7,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>()
   return {
     ...actual,
-    fetchWorkflowFile: vi.fn(),
     fetchWorkspaceSchemas: vi.fn().mockResolvedValue({}),
   }
 })
-
-// Mock events module — SSE isn't available in jsdom
-vi.mock("@/lib/events", () => ({
-  subscribeToFileEvents: vi.fn(() => () => {}),
-}))
 
 // Mock shadcn Tabs components inline so they render in jsdom without portals
 vi.mock("@/components/ui/tabs", () => ({
@@ -35,10 +29,9 @@ vi.mock("@/components/ui/tabs", () => ({
   ),
 }))
 
-import { fetchWorkflowFile, fetchWorkspaceSchemas } from "@/lib/api"
-import { subscribeToFileEvents } from "@/lib/events"
+import { fetchWorkspaceSchemas } from "@/lib/api"
 import { useSelectionStore } from "@/store/selection"
-import { useTabsStore } from "@/store/tabs"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { InspectorPanel } from "./inspector-panel"
 
 const sampleWorkflow: WorkflowFile = {
@@ -56,22 +49,15 @@ const sampleWorkflow: WorkflowFile = {
 }
 
 function resetStores() {
-  useTabsStore.setState({ tabs: [], activeWorkflowId: null, activeCodeId: null })
   useSelectionStore.setState({ selectedNodeId: null })
+  useLiveWorkflowStore.setState({ workflow: null, tabId: null })
 }
 
 beforeEach(() => {
-  vi.mocked(fetchWorkflowFile).mockResolvedValue(sampleWorkflow)
   vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({})
-  vi.mocked(subscribeToFileEvents).mockReturnValue(() => {})
   resetStores()
-  // Open a workflow tab
-  useTabsStore.getState().openTab({
-    id: "tab-1",
-    title: "create.workflow",
-    kind: "workflow",
-    path: "workflows/users/create.workflow",
-  })
+  // Seed the live workflow store (simulating the editor publishing its state)
+  useLiveWorkflowStore.setState({ workflow: sampleWorkflow, tabId: "tab-1" })
 })
 
 afterEach(() => {
@@ -175,32 +161,57 @@ describe("InspectorPanel — InspectContent", () => {
     })
   })
 
-  it("subscribes to SSE file events on mount and unsubscribes on unmount", async () => {
-    const unsub = vi.fn()
-    vi.mocked(subscribeToFileEvents).mockReturnValue(unsub)
-    useSelectionStore.setState({ selectedNodeId: "save" })
-
-    const { unmount } = render(<InspectorPanel />)
-    await waitFor(() => {
-      expect(subscribeToFileEvents).toHaveBeenCalledOnce()
-    })
-
-    unmount()
-    expect(unsub).toHaveBeenCalledOnce()
-  })
-
-  it("shows empty state when no workflow tab is active", async () => {
-    // Remove tabs / active workflow
-    useTabsStore.setState({ tabs: [], activeWorkflowId: null, activeCodeId: null })
+  it("shows empty state when no workflow tab is active (live store is null)", async () => {
+    // Clear the live workflow store — simulates no active editor tab
+    useLiveWorkflowStore.setState({ workflow: null, tabId: null })
     useSelectionStore.setState({ selectedNodeId: "save" })
 
     render(<InspectorPanel />)
-    // Without a path, workflow stays null → instance will be undefined → not-found or empty
-    // The node id IS set, but no workflow path exists → node not found message
+    // No workflow in store → node not found
     await waitFor(() => {
-      expect(
-        screen.getByText(/save.*not found/i),
-      ).toBeInTheDocument()
+      expect(screen.getByText(/save.*not found/i)).toBeInTheDocument()
     })
+  })
+
+  it("renders a newly-added in-memory node that has never been saved to disk", async () => {
+    // This is the bug regression test: a node added via Ctrl+K/right-click/drag
+    // lives only in the editor's in-memory state. The inspector must see it
+    // immediately without waiting for a Ctrl+S save.
+    const workflowWithNewNode: WorkflowFile = {
+      lorien: 1,
+      nodes: {
+        ...sampleWorkflow.nodes,
+        "http-request": {
+          uses: "@core/http-request",
+          config: { path: "/api/data", method: "GET" },
+        },
+      },
+    }
+    // Simulate the editor publishing the updated in-memory workflow
+    useLiveWorkflowStore.setState({ workflow: workflowWithNewNode, tabId: "tab-1" })
+
+    vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
+      "@core/http-request": {
+        inputs: { type: "object", properties: {} },
+        outputs: {
+          type: "object",
+          properties: { body: { type: "object" } },
+        },
+      },
+    })
+
+    // User clicks the newly-added node
+    useSelectionStore.setState({ selectedNodeId: "http-request" })
+    render(<InspectorPanel />)
+
+    // Inspector should show the node details, NOT the "not found" error
+    await waitFor(() => {
+      expect(screen.getByText("http-request")).toBeInTheDocument()
+    })
+    expect(screen.getByText("@core/http-request")).toBeInTheDocument()
+    // The config block should be rendered
+    expect(screen.getByText(/\/api\/data/)).toBeInTheDocument()
+    // "not found" error must NOT appear
+    expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
   })
 })
