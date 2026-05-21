@@ -27,10 +27,12 @@ import { useTabsStore } from "@/store/tabs";
 import { useThemeStore } from "@/store/theme";
 import { addNode } from "./add-node";
 import { deleteNode } from "./delete-node";
+import { resetNodeConnections } from "./reset-node-connections";
 import { removeMappings } from "./delete-edge";
 import { CanvasContextMenu } from "./canvas-context-menu";
 import { CommandPalette } from "./command-palette";
 import { NewNodeDialog } from "./new-node-dialog";
+import { NodeContextMenu } from "./node-context-menu";
 import { derivePorts } from "./derive-ports";
 import { effectiveHandle } from "./effective-handle";
 import { computeInitialExpansion } from "./initial-expansion";
@@ -123,6 +125,13 @@ export function WorkflowEditor({ path, tabId }: Props) {
   }>({ open: false, x: 0, y: 0, flowX: 0, flowY: 0 });
   // New custom node dialog state
   const [newNodeOpen, setNewNodeOpen] = useState(false);
+  // Per-node right-click context menu state
+  const [nodeMenu, setNodeMenu] = useState<{
+    open: boolean;
+    x: number;
+    y: number;
+    nodeId: string | null;
+  }>({ open: false, x: 0, y: 0, nodeId: null });
 
   const markDirty = useCallback(
     (value: boolean) => {
@@ -229,6 +238,29 @@ export function WorkflowEditor({ path, tabId }: Props) {
     },
     [],
   );
+
+  const onNodeContextMenu = useCallback(
+    (event: ReactMouseEvent, n: RFNode) => {
+      event.preventDefault();
+      setNodeMenu({ open: true, x: event.clientX, y: event.clientY, nodeId: n.id });
+    },
+    [],
+  );
+
+  const handleResetConnections = useCallback(() => {
+    const id = nodeMenu.nodeId;
+    const wf = workflowRef.current;
+    if (!id || !wf) return;
+    const next = resetNodeConnections(wf, id);
+    applyWorkflow(next);
+    markDirty(true);
+  }, [nodeMenu.nodeId, applyWorkflow, markDirty]);
+
+  const handleDeleteFromMenu = useCallback(() => {
+    const id = nodeMenu.nodeId;
+    if (!id) return;
+    onNodesDelete([{ id } as RFNode]);
+  }, [nodeMenu.nodeId, onNodesDelete]);
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     if (e.dataTransfer.types.includes("application/lorien-node")) {
@@ -656,6 +688,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           onPaneContextMenu={onPaneContextMenu}
+          onNodeContextMenu={onNodeContextMenu}
           fitView
           colorMode={theme}
           nodesConnectable={true}
@@ -707,6 +740,14 @@ export function WorkflowEditor({ path, tabId }: Props) {
           // Add a node at the last-known context-menu position
           addNodeAt(uses, menu.flowX, menu.flowY)
         }}
+      />
+      <NodeContextMenu
+        open={nodeMenu.open}
+        onOpenChange={(o) => setNodeMenu((m) => ({ ...m, open: o }))}
+        x={nodeMenu.x}
+        y={nodeMenu.y}
+        onDelete={handleDeleteFromMenu}
+        onReset={handleResetConnections}
       />
     </div>
   );

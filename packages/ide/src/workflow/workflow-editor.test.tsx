@@ -17,6 +17,9 @@ let capturedOnNodeClick:
   | ((event: unknown, node: { id: string }) => void)
   | null = null
 let capturedOnPaneClick: (() => void) | null = null
+let capturedOnNodeContextMenu:
+  | ((event: { preventDefault: () => void; clientX: number; clientY: number }, node: { id: string }) => void)
+  | null = null
 // Capture what edges/edgeTypes the editor passed to React Flow
 interface CapturedMapping {
   source: string
@@ -53,6 +56,7 @@ vi.mock("@xyflow/react", () => ({
     onReconnectEnd,
     onNodeClick,
     onPaneClick,
+    onNodeContextMenu,
   }: {
     nodes: { id: string; type?: string; data: Record<string, unknown> }[]
     edges?: CapturedEdge[]
@@ -70,6 +74,7 @@ vi.mock("@xyflow/react", () => ({
     onReconnectEnd?: (event: unknown, edge: CapturedEdge, handleType: unknown, connectionState: unknown) => void
     onNodeClick?: (event: unknown, node: { id: string }) => void
     onPaneClick?: () => void
+    onNodeContextMenu?: (event: { preventDefault: () => void; clientX: number; clientY: number }, node: { id: string }) => void
   }) => {
     capturedOnNodesChange = onNodesChange ?? null
     capturedOnConnect = onConnect ?? null
@@ -78,6 +83,7 @@ vi.mock("@xyflow/react", () => ({
     capturedOnReconnectEnd = onReconnectEnd ?? null
     capturedOnNodeClick = onNodeClick ?? null
     capturedOnPaneClick = onPaneClick ?? null
+    capturedOnNodeContextMenu = onNodeContextMenu ?? null
     capturedEdges = edges ?? null
     capturedEdgeTypes = edgeTypes ?? null
     capturedNodes = nodes ?? null
@@ -117,6 +123,40 @@ vi.mock("@xyflow/react", () => ({
 
 // Mock the CSS import from @xyflow/react
 vi.mock("@xyflow/react/dist/style.css", () => ({}))
+
+// Mock NodeContextMenu to avoid Popover portal issues in jsdom
+let capturedNodeMenuProps: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  x: number
+  y: number
+  onDelete: () => void
+  onReset: () => void
+} | null = null
+
+vi.mock("./node-context-menu", () => ({
+  NodeContextMenu: (props: {
+    open: boolean
+    onOpenChange: (o: boolean) => void
+    x: number
+    y: number
+    onDelete: () => void
+    onReset: () => void
+  }) => {
+    capturedNodeMenuProps = props
+    if (!props.open) return null
+    return (
+      <div data-testid="node-context-menu">
+        <button type="button" onClick={props.onReset}>
+          Reset connections
+        </button>
+        <button type="button" onClick={props.onDelete}>
+          Delete node
+        </button>
+      </div>
+    )
+  },
+}))
 
 // Mock fetchWorkflowFile, fetchWorkspaceSchemas, and saveFile
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -192,6 +232,8 @@ beforeEach(() => {
   capturedOnReconnectEnd = null
   capturedOnNodeClick = null
   capturedOnPaneClick = null
+  capturedOnNodeContextMenu = null
+  capturedNodeMenuProps = null
   capturedEdges = null
   capturedEdgeTypes = null
   capturedNodes = null
@@ -1152,6 +1194,110 @@ describe("WorkflowEditor", () => {
         capturedOnPaneClick?.()
       })
       expect(useSelectionStore.getState().selectedNodeId).toBeNull()
+    })
+  })
+
+  describe("node context menu (right-click → Delete + Reset connections)", () => {
+    it("right-clicking a node opens the context menu with the node's id", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Simulate right-click on the "save" node
+      act(() => {
+        capturedOnNodeContextMenu?.(
+          { preventDefault: vi.fn(), clientX: 150, clientY: 200 },
+          { id: "save" },
+        )
+      })
+
+      // The context menu should open
+      await waitFor(() => {
+        expect(screen.getByTestId("node-context-menu")).toBeInTheDocument()
+      })
+      expect(screen.getByText("Reset connections")).toBeInTheDocument()
+      expect(screen.getByText("Delete node")).toBeInTheDocument()
+    })
+
+    it("clicking Delete node removes the node and marks dirty", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Open context menu for "save"
+      act(() => {
+        capturedOnNodeContextMenu?.(
+          { preventDefault: vi.fn(), clientX: 150, clientY: 200 },
+          { id: "save" },
+        )
+      })
+
+      await waitFor(() => {
+        expect(screen.getByTestId("node-context-menu")).toBeInTheDocument()
+      })
+
+      // Click Delete node
+      act(() => {
+        fireEvent.click(screen.getByText("Delete node"))
+      })
+
+      // Node count drops to 2 (save is removed)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("2")
+      })
+
+      // Tab should be dirty
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(true)
+
+      // Workflow no longer contains "save"
+      expect(useLiveWorkflowStore.getState().workflow?.nodes.save).toBeUndefined()
+    })
+
+    it("clicking Reset connections clears in: for the node and strips refs in others", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Open context menu for "save"
+      act(() => {
+        capturedOnNodeContextMenu?.(
+          { preventDefault: vi.fn(), clientX: 150, clientY: 200 },
+          { id: "save" },
+        )
+      })
+
+      await waitFor(() => {
+        expect(screen.getByTestId("node-context-menu")).toBeInTheDocument()
+      })
+
+      // Click Reset connections
+      act(() => {
+        fireEvent.click(screen.getByText("Reset connections"))
+      })
+
+      // Node count stays at 3 — node was NOT deleted
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Tab should be dirty
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(true)
+
+      // save.in should be cleared
+      const liveWf = useLiveWorkflowStore.getState().workflow!
+      expect(liveWf.nodes.save?.in).toBeUndefined()
+
+      // response.in.body referenced "save.user" — should be stripped
+      const responseIn = liveWf.nodes.response?.in as Record<string, unknown>
+      expect(responseIn?.body).toBeUndefined()
+      // status literal remains
+      expect(responseIn?.status).toBe(201)
     })
   })
 })
