@@ -10,6 +10,14 @@ export interface DefineNodeInput<
   inputs: I
   outputs: O
   config?: C
+  /**
+   * Optional accent color for IDE display. Free-form string — typically a
+   * Tailwind/CSS color name ("blue", "rose", "amber") or a hex string
+   * ("#a78bfa"). Has no runtime effect; pure metadata surfaced by the
+   * workspace introspector and rendered as a thin accent stripe on the
+   * node card in the workflow editor.
+   */
+  color?: string
   run(
     input: z.infer<I>,
     services: Services,
@@ -28,6 +36,7 @@ export function defineNode<
     inputs: def.inputs,
     outputs: def.outputs,
     config: def.config,
+    color: def.color,
     run: def.run,
   } as Node<I, O, C>
 }

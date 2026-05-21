@@ -16,11 +16,14 @@ export interface JsonSchema {
 export interface NodeSchemas {
   inputs: JsonSchema
   outputs: JsonSchema
+  /** Optional accent color (free-form CSS string). Null when unset. */
+  color?: string | null
 }
 
 /** Built-in @core/* node schemas, hardcoded — they don't ship as user files. */
 export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
   "@core/http-request": {
+    color: "#3b82f6", // blue-500 — sensible default for the trigger
     inputs: { type: "object", properties: {} },
     outputs: {
       type: "object",
@@ -40,6 +43,7 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
     },
   },
   "@core/response": {
+    color: "#10b981", // emerald-500 — green-ish for the terminal response
     inputs: {
       type: "object",
       properties: {
@@ -57,6 +61,7 @@ interface CacheEntry {
   uses: string
   inputs: JsonSchema
   outputs: JsonSchema
+  color: string | null
 }
 
 /**
@@ -126,7 +131,11 @@ export async function introspectWorkspace(workspaceRoot: string): Promise<Intros
   if (allCached) {
     for (const file of nodeFiles) {
       const entry = cache.get(file.abs)!
-      result[entry.uses] = { inputs: entry.inputs, outputs: entry.outputs }
+      result[entry.uses] = {
+        inputs: entry.inputs,
+        outputs: entry.outputs,
+        color: entry.color,
+      }
     }
     return { schemas: result, warnings }
   }
@@ -149,7 +158,9 @@ export async function introspectWorkspace(workspaceRoot: string): Promise<Intros
         uses: string
         inputs: JsonSchema
         outputs: JsonSchema
+        color?: string | null
       }
+      const color = entry.color ?? null
       const fileInfo = fileByUses.get(entry.uses)
       if (fileInfo) {
         cache.set(fileInfo.abs, {
@@ -157,9 +168,10 @@ export async function introspectWorkspace(workspaceRoot: string): Promise<Intros
           uses: entry.uses,
           inputs: entry.inputs,
           outputs: entry.outputs,
+          color,
         })
       }
-      result[entry.uses] = { inputs: entry.inputs, outputs: entry.outputs }
+      result[entry.uses] = { inputs: entry.inputs, outputs: entry.outputs, color }
     } catch (e) {
       warnings.push(`Failed to parse worker output line: ${(e as Error).message}`)
     }

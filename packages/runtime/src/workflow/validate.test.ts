@@ -62,6 +62,59 @@ describe("validateWorkflow", () => {
     expect(result.errors.some((e) => /cycle/i.test(e.message))).toBe(true)
   })
 
+  describe("whole-object `in` (string form)", () => {
+    it("accepts a string reference to a known node and tracks the dep", () => {
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          request: { uses: "@core/http-request", config: { path: "/x", method: "POST" } },
+          save: { uses: "./nodes/save", in: "request.body" },
+        },
+      })
+      const result = validateWorkflow(wf)
+      expect(result.errors).toEqual([])
+      // dep on `request` should be tracked
+      expect(result.depsByNode.get("save")?.has("request")).toBe(true)
+    })
+
+    it("rejects a string reference to an unknown node", () => {
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          save: { uses: "./nodes/save", in: "nonexistent.body" },
+        },
+      })
+      const result = validateWorkflow(wf)
+      expect(result.errors).toHaveLength(1)
+      expect(result.errors[0]?.message).toMatch(/nonexistent/)
+      expect(result.errors[0]?.field).toBe("in")
+    })
+
+    it("rejects a literal string (not a parseable reference)", () => {
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          save: { uses: "./nodes/save", in: "not a reference!" },
+        },
+      })
+      const result = validateWorkflow(wf)
+      expect(result.errors).toHaveLength(1)
+      expect(result.errors[0]?.message).toMatch(/must be a node reference/)
+    })
+
+    it("detects cycles when whole-object `in` participates", () => {
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          a: { uses: "./n", in: "b.x" },
+          b: { uses: "./n", in: "a.y" },
+        },
+      })
+      const result = validateWorkflow(wf)
+      expect(result.errors.some((e) => /cycle/i.test(e.message))).toBe(true)
+    })
+  })
+
   it("allows multi-incoming dependencies (joins)", () => {
     const wf = parseWorkflow({
       lorien: 1,

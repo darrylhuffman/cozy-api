@@ -15,13 +15,24 @@ const leaf = (name: string) => ({
   isLeaf: true,
 })
 
+/** Empty root input port (no children — leaf). */
+const emptyRoot = { id: "", label: "input", children: [], isLeaf: true }
+
+/** Root branch input port wrapping the given children. */
+const rootBranch = (children: ReturnType<typeof leaf>[]) => ({
+  id: "",
+  label: "input",
+  children,
+  isLeaf: false,
+})
+
 describe("derivePorts (no schemas — legacy reference inference)", () => {
   it("returns empty inputs and outputs for a standalone trigger node", () => {
     const wf = baseWorkflow({
       request: { uses: "@core/http-request" },
     })
     const ports = derivePorts(wf)
-    expect(ports.get("request")).toEqual({ inputs: [], outputs: [] })
+    expect(ports.get("request")).toEqual({ inputs: emptyRoot, outputs: [] })
   })
 
   it("returns inputs from the node's in: block keys", () => {
@@ -30,7 +41,7 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
     })
     const ports = derivePorts(wf)
     const savePorts = ports.get("save")!
-    expect(savePorts.inputs).toEqual([leaf("email"), leaf("password")])
+    expect(savePorts.inputs).toEqual(rootBranch([leaf("email"), leaf("password")]))
   })
 
   it("no outputs when nobody references the node", () => {
@@ -49,7 +60,7 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
     })
     const ports = derivePorts(wf)
     expect(ports.get("request")!.outputs).toEqual([leaf("body")])
-    expect(ports.get("save")!.inputs).toEqual([leaf("body")])
+    expect(ports.get("save")!.inputs).toEqual(rootBranch([leaf("body")]))
   })
 
   it("deduplicates output ports when multiple fields reference the same source port", () => {
@@ -111,7 +122,7 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
       b: { uses: "@core/transform", in: { input: "nonexistent.value" } },
     })
     const ports = derivePorts(wf)
-    expect(ports.get("b")!.inputs).toEqual([leaf("input")])
+    expect(ports.get("b")!.inputs).toEqual(rootBranch([leaf("input")]))
     expect(ports.has("nonexistent")).toBe(false)
   })
 
@@ -148,15 +159,15 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
     const ports = derivePorts(wf)
 
     const requestPorts = ports.get("request")!
-    expect(requestPorts.inputs).toEqual([])
+    expect(requestPorts.inputs).toEqual(emptyRoot)
     expect(requestPorts.outputs).toEqual([leaf("body")])
 
     const savePorts = ports.get("save")!
-    expect(savePorts.inputs).toEqual([leaf("email"), leaf("password")])
+    expect(savePorts.inputs).toEqual(rootBranch([leaf("email"), leaf("password")]))
     expect(savePorts.outputs).toEqual([leaf("user")])
 
     const responsePorts = ports.get("response")!
-    expect(responsePorts.inputs).toEqual([leaf("body"), leaf("status")])
+    expect(responsePorts.inputs).toEqual(rootBranch([leaf("body"), leaf("status")]))
     expect(responsePorts.outputs).toEqual([])
   })
 })
@@ -194,10 +205,10 @@ describe("derivePorts (with schemas)", () => {
       },
     })
     const ports = derivePorts(wf, schemas)
-    const inputIds = ports
-      .get("save")!
-      .inputs.map((p) => p.id)
-      .sort()
+    const inputs = ports.get("save")!.inputs
+    expect(inputs.id).toBe("")
+    expect(inputs.isLeaf).toBe(false)
+    const inputIds = inputs.children.map((p) => p.id).sort()
     expect(inputIds).toEqual(["email", "password"])
   })
 
@@ -213,6 +224,59 @@ describe("derivePorts (with schemas)", () => {
     // The "user" port expands into id + email
     const childrenIds = savePorts.outputs[0]!.children.map((c) => c.id).sort()
     expect(childrenIds).toEqual(["user.email", "user.id"])
+  })
+
+  it("regression: save's output port persists after all downstream refs are removed", () => {
+    // Reproduces the bug where disconnecting the only consumer of `save.user`
+    // would cause the schema-derived "user" output port to disappear. The
+    // schema is the source of truth — outputs must remain regardless of
+    // reference inference.
+    const wf = baseWorkflow({
+      request: {
+        uses: "@core/http-request",
+        config: { path: "/users", method: "POST" },
+      },
+      save: {
+        uses: "./nodes/users/save-user",
+        in: {
+          email: "request.body.email",
+          password: "request.body.password",
+        },
+      },
+      // No `response` node and no other node references `save.user`. The
+      // legacy reference-inference path would yield zero outputs; the schema
+      // path must still produce the "user" port.
+    })
+    const ports = derivePorts(wf, schemas)
+    const userPort = ports.get("save")!.outputs.find((p) => p.id === "user")
+    expect(userPort).toBeDefined()
+    expect(userPort?.isLeaf).toBe(false)
+  })
+
+  it("string-form `in:` infers a single output port on the source", () => {
+    // Without schemas, a whole-object reference like `request.body` should
+    // still create the corresponding output port on the source node.
+    const wf = baseWorkflow({
+      request: { uses: "@core/http-request" },
+      save: { uses: "./nodes/save", in: "request.body" },
+    })
+    const ports = derivePorts(wf, {})
+    expect(ports.get("request")!.outputs).toEqual([leaf("body")])
+    // The save node's input — no schema, no per-field keys → empty leaf root.
+    expect(ports.get("save")!.inputs).toEqual(emptyRoot)
+  })
+
+  it("string-form `in:` with schema gives a root branch + output port inferred", () => {
+    const wf = baseWorkflow({
+      request: { uses: "@core/http-request" },
+      save: { uses: "./nodes/users/save-user", in: "request.body" },
+    })
+    const ports = derivePorts(wf, schemas)
+    expect(ports.get("request")!.outputs).toEqual([leaf("body")])
+    const inputs = ports.get("save")!.inputs
+    expect(inputs.id).toBe("")
+    expect(inputs.isLeaf).toBe(false)
+    expect(inputs.children.map((c) => c.id).sort()).toEqual(["email", "password"])
   })
 
   it("falls back to reference-inference when the schema is absent", () => {

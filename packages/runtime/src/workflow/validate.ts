@@ -22,18 +22,39 @@ export function validateWorkflow(wf: WorkflowFile): ValidationResult {
     depsByNode.set(nodeId, deps)
 
     // Resolve references in `in` block
-    if (instance.in) {
-      for (const [field, raw] of Object.entries(instance.in)) {
-        const resolved = resolveInputValue(raw)
-        if (resolved.kind === "reference") {
-          if (!wf.nodes[resolved.ref.nodeId]) {
-            errors.push({
-              nodeId,
-              field,
-              message: `references unknown node \`${resolved.ref.nodeId}\``,
-            })
-          } else {
-            deps.add(resolved.ref.nodeId)
+    if (instance.in !== undefined) {
+      if (typeof instance.in === "string") {
+        // Whole-object form: the entire input is a single reference.
+        // Literals are not allowed at the top level — the value must be a reference.
+        const resolved = resolveInputValue(instance.in)
+        if (resolved.kind !== "reference") {
+          errors.push({
+            nodeId,
+            field: "in",
+            message: `whole-object \`in\` must be a node reference, got literal: ${JSON.stringify(instance.in)}`,
+          })
+        } else if (!wf.nodes[resolved.ref.nodeId]) {
+          errors.push({
+            nodeId,
+            field: "in",
+            message: `references unknown node \`${resolved.ref.nodeId}\``,
+          })
+        } else {
+          deps.add(resolved.ref.nodeId)
+        }
+      } else {
+        for (const [field, raw] of Object.entries(instance.in)) {
+          const resolved = resolveInputValue(raw)
+          if (resolved.kind === "reference") {
+            if (!wf.nodes[resolved.ref.nodeId]) {
+              errors.push({
+                nodeId,
+                field,
+                message: `references unknown node \`${resolved.ref.nodeId}\``,
+              })
+            } else {
+              deps.add(resolved.ref.nodeId)
+            }
           }
         }
       }

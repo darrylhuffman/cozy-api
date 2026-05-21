@@ -31,6 +31,30 @@ describe("defineNode", () => {
     expect(result).toEqual({ sum: 5 })
   })
 
+  it("preserves the optional color field", () => {
+    const node = defineNode({
+      name: "Save User",
+      color: "indigo",
+      inputs: z.object({ email: z.string() }),
+      outputs: z.object({ ok: z.boolean() }),
+      async run() {
+        return { ok: true }
+      },
+    })
+    expect(node.color).toBe("indigo")
+  })
+
+  it("color is undefined when not provided (no runtime effect)", () => {
+    const node = defineNode({
+      inputs: z.object({}),
+      outputs: z.object({}),
+      async run() {
+        return {}
+      },
+    })
+    expect(node.color).toBeUndefined()
+  })
+
   it("infers run's input type from the inputs schema", () => {
     // This compiles only if defineNode's generics flow correctly.
     defineNode({

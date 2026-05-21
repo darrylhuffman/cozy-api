@@ -2,7 +2,14 @@ import { z } from "zod"
 
 export const NodeInstanceSchema = z.object({
   uses: z.string().min(1),
-  in: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Inputs may be supplied in either of two shapes:
+   *  - per-field object:  { fieldName: "ref-or-literal", ... }
+   *  - single reference string: "ref" — the whole resolved value is passed as
+   *    the node's input. Literals are not allowed in this form; the value
+   *    must parse as a reference (validate.ts enforces this).
+   */
+  in: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   after: z.array(z.string()).optional(),
   label: z.string().optional(),

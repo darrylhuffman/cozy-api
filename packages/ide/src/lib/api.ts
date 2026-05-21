@@ -43,7 +43,13 @@ export interface WorkflowFile {
 
 export interface NodeInstance {
   uses: string
-  in?: Record<string, unknown>
+  /**
+   * Two shapes:
+   *  - per-field object:   { fieldName: "ref-or-literal", ... }
+   *  - single reference:   "ref"  (whole-object form — the resolved value
+   *                                  is passed as the node's input)
+   */
+  in?: string | Record<string, unknown>
   config?: Record<string, unknown>
   after?: string[]
   label?: string
@@ -91,6 +97,8 @@ export interface JsonSchema {
 export interface NodeSchemas {
   inputs: JsonSchema
   outputs: JsonSchema
+  /** Optional accent color string (e.g. "indigo", "#a78bfa"). */
+  color?: string | null
 }
 
 export async function fetchWorkspaceSchemas(): Promise<Record<string, NodeSchemas>> {

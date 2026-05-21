@@ -46,11 +46,13 @@ async function main(): Promise<void> {
 
       const inputsSchema = (def as { inputs?: unknown }).inputs
       const outputsSchema = (def as { outputs?: unknown }).outputs
+      const rawColor = (def as { color?: unknown }).color
+      const color = typeof rawColor === "string" ? rawColor : null
 
       const inputs = toJsonSchemaSafe(z, inputsSchema)
       const outputs = toJsonSchemaSafe(z, outputsSchema)
 
-      process.stdout.write(`${JSON.stringify({ uses: usesKey, inputs, outputs })}\n`)
+      process.stdout.write(`${JSON.stringify({ uses: usesKey, inputs, outputs, color })}\n`)
     } catch (e) {
       process.stderr.write(`introspect-worker: failed for ${abs}: ${(e as Error).message}\n`)
     }

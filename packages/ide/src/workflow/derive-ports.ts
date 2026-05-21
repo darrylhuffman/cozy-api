@@ -1,12 +1,17 @@
 import type { NodeSchemas, WorkflowFile } from "@/lib/api"
-import { type PortNode, schemaToTree } from "./schema-to-tree"
+import { type PortNode, schemaToRootedTree, schemaToTree } from "./schema-to-tree"
 
 export type { PortNode } from "./schema-to-tree"
 
 export interface NodePorts {
-  /** Input ports (left side) */
-  inputs: PortNode[]
-  /** Output ports (right side) */
+  /**
+   * Single root input port representing the WHOLE input object. Its `id` is ""
+   * (empty path); its children are the schema's top-level fields. Connecting
+   * to the root sets `in: "ref"` (string form); connecting to a child sets
+   * the per-field form `in: { fieldName: "ref" }`.
+   */
+  inputs: PortNode
+  /** Output ports (right side) — array of top-level schema properties */
   outputs: PortNode[]
 }
 
@@ -30,26 +35,40 @@ export function derivePorts(
 ): Map<string, NodePorts> {
   const result = new Map<string, NodePorts>()
 
+  const emptyRoot = (): PortNode => ({ id: "", label: "input", children: [], isLeaf: true })
+
   for (const id of Object.keys(workflow.nodes)) {
-    result.set(id, { inputs: [], outputs: [] })
+    result.set(id, { inputs: emptyRoot(), outputs: [] })
   }
 
-  // Inputs: prefer the schema; fall back to keys of `in:`
+  // Inputs: a single ROOT port whose children are derived from the schema.
+  // Fallback (no schema): derive children from the keys of an object-form `in:`,
+  // matching the legacy behaviour for older workflow files.
   for (const [nodeId, instance] of Object.entries(workflow.nodes)) {
     const np = result.get(nodeId)!
     const schemaInputs = schemas[instance.uses]?.inputs
     const fromSchema = schemaToTree(schemaInputs)
     if (fromSchema.length > 0) {
-      np.inputs = fromSchema
+      np.inputs = {
+        id: "",
+        label: "input",
+        children: fromSchema,
+        isLeaf: false,
+      }
       continue
     }
-    // Fall back to keys of `in:`
-    if (!instance.in) continue
+    // Fall back to keys of object-form `in:` — string form has no per-field
+    // children to infer (the input IS the resolved value).
+    if (!instance.in || typeof instance.in === "string") continue
+    const children: PortNode[] = []
     const seen = new Set<string>()
     for (const fieldName of Object.keys(instance.in)) {
       if (seen.has(fieldName)) continue
       seen.add(fieldName)
-      np.inputs.push({ id: fieldName, label: fieldName, children: [], isLeaf: true })
+      children.push({ id: fieldName, label: fieldName, children: [], isLeaf: true })
+    }
+    if (children.length > 0) {
+      np.inputs = { id: "", label: "input", children, isLeaf: false }
     }
   }
 
@@ -74,7 +93,10 @@ export function derivePorts(
   }
   for (const instance of Object.values(workflow.nodes)) {
     if (!instance.in) continue
-    for (const value of Object.values(instance.in)) {
+    // Both forms can produce reference strings — collect them uniformly.
+    const refValues: unknown[] =
+      typeof instance.in === "string" ? [instance.in] : Object.values(instance.in)
+    for (const value of refValues) {
       if (typeof value !== "string") continue
       if (!REFERENCE.test(value)) continue
       const [sourceNodeId, ...rest] = value.split(".")
@@ -91,3 +113,10 @@ export function derivePorts(
 
   return result
 }
+
+/**
+ * Internal helper kept around for schemaToRootedTree consumers. Not currently
+ * used elsewhere — derivePorts inlines the equivalent logic so it can fall
+ * back to inferring children from `in:` keys when no schema is present.
+ */
+export { schemaToRootedTree }

@@ -31,3 +31,25 @@ export function schemaToTree(schema: JsonSchema | undefined, parentPath = ""): P
   }
   return out
 }
+
+/**
+ * Wraps the schema's top-level properties in a synthetic *root* PortNode whose
+ * id is "" (empty path) and label is `rootLabel` (default: "input"). Used for
+ * the input side of a node, where a single root port represents the whole
+ * input object and its children are the individual schema fields.
+ *
+ * The root is rendered as a branch when the schema has properties; otherwise
+ * it collapses to a single leaf (id = "").
+ */
+export function schemaToRootedTree(
+  schema: JsonSchema | undefined,
+  rootLabel = "input",
+): PortNode {
+  const children = schemaToTree(schema)
+  return {
+    id: "",
+    label: rootLabel,
+    children,
+    isLeaf: children.length === 0,
+  }
+}

@@ -61,10 +61,15 @@ function computeExecutionSet(
   const depsOf = new Map<string, Set<string>>()
   for (const [id, inst] of Object.entries(workflow.nodes)) {
     const deps = new Set<string>()
-    if (inst.in) {
-      for (const raw of Object.values(inst.in)) {
-        const resolved = resolveInputValue(raw)
+    if (inst.in !== undefined) {
+      if (typeof inst.in === "string") {
+        const resolved = resolveInputValue(inst.in)
         if (resolved.kind === "reference") deps.add(resolved.ref.nodeId)
+      } else {
+        for (const raw of Object.values(inst.in)) {
+          const resolved = resolveInputValue(raw)
+          if (resolved.kind === "reference") deps.add(resolved.ref.nodeId)
+        }
       }
     }
     if (inst.after) {
@@ -167,30 +172,67 @@ async function runOneNode(
   }
 
   // Resolve inputs from references and literals.
-  const input: Record<string, unknown> = {}
-  for (const [field, raw] of Object.entries(instance.in ?? {})) {
-    const resolved = resolveInputValue(raw)
-    if (resolved.kind === "literal") {
-      input[field] = resolved.value
-    } else {
-      const upstream = outputs.get(resolved.ref.nodeId)
-      if (!upstream) {
-        throw new NodeRunError(
-          nodeId,
-          new Error(`upstream \`${resolved.ref.nodeId}\` produced no output`),
-        )
+  // Two shapes are supported:
+  //  - `in: "ref"`   → resolved value becomes the *whole* input (still an object;
+  //                    a downstream Zod schema enforces shape). Edge emits with
+  //                    target field "$" (sentinel for whole-object).
+  //  - `in: {...}`   → per-field references and literals.
+  let input: Record<string, unknown> = {}
+  if (typeof instance.in === "string") {
+    const resolved = resolveInputValue(instance.in)
+    if (resolved.kind !== "reference") {
+      throw new NodeRunError(
+        nodeId,
+        new Error(
+          `whole-object \`in\` must be a node reference, got: ${JSON.stringify(instance.in)}`,
+        ),
+      )
+    }
+    const upstream = outputs.get(resolved.ref.nodeId)
+    if (!upstream) {
+      throw new NodeRunError(
+        nodeId,
+        new Error(`upstream \`${resolved.ref.nodeId}\` produced no output`),
+      )
+    }
+    let v: unknown = upstream
+    for (const seg of resolved.ref.path) {
+      v = (v as Record<string, unknown> | null | undefined)?.[seg]
+    }
+    // The resolved value IS the input bag. If it's not an object, Zod will fail
+    // shortly — we don't want to coerce here.
+    input = (v ?? {}) as Record<string, unknown>
+    lifecycle?.emit({
+      type: "edge-fired",
+      from: `${resolved.ref.nodeId}.${resolved.ref.path.join(".")}`,
+      to: `${nodeId}.$`,
+      value: v,
+    })
+  } else {
+    for (const [field, raw] of Object.entries(instance.in ?? {})) {
+      const resolved = resolveInputValue(raw)
+      if (resolved.kind === "literal") {
+        input[field] = resolved.value
+      } else {
+        const upstream = outputs.get(resolved.ref.nodeId)
+        if (!upstream) {
+          throw new NodeRunError(
+            nodeId,
+            new Error(`upstream \`${resolved.ref.nodeId}\` produced no output`),
+          )
+        }
+        let v: unknown = upstream
+        for (const seg of resolved.ref.path) {
+          v = (v as Record<string, unknown> | null | undefined)?.[seg]
+        }
+        input[field] = v
+        lifecycle?.emit({
+          type: "edge-fired",
+          from: `${resolved.ref.nodeId}.${resolved.ref.path.join(".")}`,
+          to: `${nodeId}.${field}`,
+          value: v,
+        })
       }
-      let v: unknown = upstream
-      for (const seg of resolved.ref.path) {
-        v = (v as Record<string, unknown> | null | undefined)?.[seg]
-      }
-      input[field] = v
-      lifecycle?.emit({
-        type: "edge-fired",
-        from: `${resolved.ref.nodeId}.${resolved.ref.path.join(".")}`,
-        to: `${nodeId}.${field}`,
-        value: v,
-      })
     }
   }
 

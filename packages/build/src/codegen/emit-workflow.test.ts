@@ -355,6 +355,62 @@ describe("emitWorkflow — multiple triggers", () => {
   });
 });
 
+describe("emitWorkflow — whole-object `in` (string form)", () => {
+  it("emits a raw alias + inputs.parse() pair when `in:` is a reference string", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          request: { uses: "@core/http-request", config: { path: "/u", method: "POST" } },
+          save: { uses: "./nodes/save-user", in: "request.body" },
+          response: { uses: "@core/response", in: { body: "save.user", status: 201 } },
+        },
+      }),
+      relativePath: "users/create",
+    });
+    // The raw value is captured from request_outputs.body
+    expect(source).toMatch(/const _saveInputRaw = request_outputs\.body/);
+    // Then validated through the node's Zod schema
+    expect(source).toMatch(/const _saveInput = saveUser\.inputs\.parse\(_saveInputRaw\)/);
+    // run() still gets the validated input
+    expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/);
+    expect(source).toMatch(/_saveInput as never/);
+  });
+
+  it("renders a deep dotted reference as a chained property access (whole-object form)", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+          n: { uses: "./nodes/foo", in: "req.body.user" },
+          res: { uses: "@core/response", in: { body: "n.value" } },
+        },
+      }),
+      relativePath: "x",
+    });
+    expect(source).toMatch(/const _nInputRaw = req_outputs\.body\.user/);
+  });
+
+  it("supports @core/response with whole-object `in:` (plucks body/status/headers)", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+          shape: { uses: "./nodes/shape", in: { x: "req.body" } },
+          res: { uses: "@core/response", in: "shape.result" },
+        },
+      }),
+      relativePath: "x",
+    });
+    // body/status/headers are plucked off the whole-object base expression
+    expect(source).toMatch(/_bodyValue = \(shape_outputs\.result\)\?\.body/);
+    expect(source).toMatch(/\(shape_outputs\.result\)\?\.status/);
+    expect(source).toMatch(/\(shape_outputs\.result\)\?\.headers/);
+  });
+});
+
 describe("emitWorkflow — full example matches the spec shape", () => {
   it("emits the expected pieces of the create.workflow example", () => {
     const { source } = emitWorkflow({

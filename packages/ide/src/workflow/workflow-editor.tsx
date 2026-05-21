@@ -4,235 +4,434 @@ import {
   type Connection,
   Controls,
   type Edge,
+  type EdgeTypes,
   type NodeChange,
   type NodeTypes,
   ReactFlow,
   type Node as RFNode,
-} from "@xyflow/react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import "@xyflow/react/dist/style.css"
+} from "@xyflow/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "@xyflow/react/dist/style.css";
 import {
   fetchWorkflowFile,
   fetchWorkspaceSchemas,
   type NodeSchemas,
   saveFile,
   type WorkflowFile,
-} from "@/lib/api"
-import { subscribeToFileEvents } from "@/lib/events"
-import { useTabsStore } from "@/store/tabs"
-import { useThemeStore } from "@/store/theme"
-import { derivePorts } from "./derive-ports"
-import { extractReferences } from "./parse-references"
-import { WorkflowNode } from "./workflow-node"
+} from "@/lib/api";
+import { subscribeToFileEvents } from "@/lib/events";
+import { useTabsStore } from "@/store/tabs";
+import { useThemeStore } from "@/store/theme";
+import { derivePorts } from "./derive-ports";
+import { effectiveHandle } from "./effective-handle";
+import { computeInitialExpansion } from "./initial-expansion";
+import { extractReferences } from "./parse-references";
+import { PathEdge } from "./path-edge";
+import { WorkflowNode } from "./workflow-node";
 
 interface Props {
   /** API path like "workflows/users/create.workflow" */
-  path: string
+  path: string;
   /** Tab ID so we can update dirty state in the store. */
-  tabId: string
+  tabId: string;
 }
 
 // Cast to NodeTypes to avoid the strict generic constraint mismatch.
 // WorkflowNode accepts { data: Record<string, unknown> } which is compatible
 // at runtime with what React Flow passes, but TypeScript's strict generics
 // can't verify that without the full Node extension. The cast is safe.
-const nodeTypes: NodeTypes = { workflow: WorkflowNode as NodeTypes[string] }
+const nodeTypes: NodeTypes = { workflow: WorkflowNode as NodeTypes[string] };
+const edgeTypes: EdgeTypes = { path: PathEdge as EdgeTypes[string] };
 
-type SaveState = "idle" | "saving" | "saved" | "error"
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+/**
+ * Per-node expanded state. `inputs` and `outputs` are sets of EXPANDED parent
+ * paths (the children of those paths are visible). The path "" means the
+ * synthetic root.  See `effective-handle.ts` for the visibility rule.
+ */
+interface NodeExpansion {
+  inputs: Set<string>;
+  outputs: Set<string>;
+}
+
+/** Subset of WorkflowNode's data shape that we mutate in place from the editor. */
+interface WorkflowNodeDataLike {
+  expandedInputs?: ReadonlySet<string>;
+  expandedOutputs?: ReadonlySet<string>;
+  [key: string]: unknown;
+}
 
 export function WorkflowEditor({ path, tabId }: Props) {
-  const [workflow, setWorkflow] = useState<WorkflowFile | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [nodes, setNodes] = useState<RFNode[]>([])
-  const [saveState, setSaveState] = useState<SaveState>("idle")
-  const [dirty, setLocalDirty] = useState(false)
-  const [schemas, setSchemas] = useState<Record<string, NodeSchemas>>({})
-  const theme = useThemeStore((s) => s.theme)
-  const setDirty = useTabsStore((s) => s.setDirty)
+  const [workflow, setWorkflow] = useState<WorkflowFile | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [nodes, setNodes] = useState<RFNode[]>([]);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [dirty, setLocalDirty] = useState(false);
+  const [schemas, setSchemas] = useState<Record<string, NodeSchemas>>({});
+  const [expansion, setExpansion] = useState<Map<string, NodeExpansion>>(
+    () => new Map(),
+  );
+  const theme = useThemeStore((s) => s.theme);
+  const setDirty = useTabsStore((s) => s.setDirty);
 
   // Always-current ref so persist callbacks don't close over stale nodes
-  const nodesRef = useRef<RFNode[]>([])
-  const workflowRef = useRef<WorkflowFile | null>(null)
+  const nodesRef = useRef<RFNode[]>([]);
+  const workflowRef = useRef<WorkflowFile | null>(null);
   // Track dirty in a ref too so the Ctrl+S handler always sees fresh value
-  const dirtyRef = useRef(false)
+  const dirtyRef = useRef(false);
 
   const markDirty = useCallback(
     (value: boolean) => {
-      setLocalDirty(value)
-      dirtyRef.current = value
-      setDirty(tabId, value)
+      setLocalDirty(value);
+      dirtyRef.current = value;
+      setDirty(tabId, value);
     },
     [tabId, setDirty],
-  )
+  );
 
   const doFetch = useCallback(() => {
-    let alive = true
-    setError(null)
-    setWorkflow(null)
-    setNodes([])
-    markDirty(false)
+    let alive = true;
+    setError(null);
+    setWorkflow(null);
+    setNodes([]);
+    markDirty(false);
     fetchWorkflowFile(path)
       .then((wf) => {
         if (alive) {
-          setWorkflow(wf)
-          workflowRef.current = wf
+          setWorkflow(wf);
+          workflowRef.current = wf;
         }
       })
       .catch((e: Error) => {
-        if (alive) setError(e.message)
-      })
+        if (alive) setError(e.message);
+      });
     return () => {
-      alive = false
-    }
-  }, [path, markDirty])
+      alive = false;
+    };
+  }, [path, markDirty]);
 
   useEffect(() => {
-    return doFetch()
-  }, [doFetch])
+    return doFetch();
+  }, [doFetch]);
 
   // Fetch schemas once on mount — they don't change per workflow tab
   useEffect(() => {
-    let alive = true
+    let alive = true;
     fetchWorkspaceSchemas()
       .then((s) => {
-        if (alive) setSchemas(s)
+        if (alive) setSchemas(s);
       })
       .catch(() => {
         // Schemas are best-effort; fall back to inference if the call fails
-        if (alive) setSchemas({})
-      })
+        if (alive) setSchemas({});
+      });
     return () => {
-      alive = false
-    }
-  }, [])
+      alive = false;
+    };
+  }, []);
+
+  // Toggle handler — flips the membership of `handleId` in the relevant set.
+  // Uses the ref so the callback we hand down to each WorkflowNode stays
+  // stable across renders (no useCallback churn from setExpansion identity).
+  const onTogglePort = useCallback(
+    (nodeId: string, side: "input" | "output", handleId: string) => {
+      setExpansion((m) => {
+        const next = new Map(m);
+        const entry = next.get(nodeId) ?? { inputs: new Set(), outputs: new Set() };
+        const target = side === "input" ? new Set(entry.inputs) : new Set(entry.outputs);
+        if (target.has(handleId)) target.delete(handleId);
+        else target.add(handleId);
+        next.set(nodeId, {
+          inputs: side === "input" ? target : entry.inputs,
+          outputs: side === "output" ? target : entry.outputs,
+        });
+        return next;
+      });
+    },
+    [],
+  );
 
   // Initialise nodes whenever workflow OR schemas change
   useEffect(() => {
-    if (!workflow) return
-    const portsByNode = derivePorts(workflow, schemas)
-    const initial: RFNode[] = Object.entries(workflow.nodes).map(([id, instance], i) => {
-      const view = workflow.view?.[id]
-      return {
-        id,
-        type: "workflow",
-        position: view ?? autoPosition(i),
-        data: { id, instance, ports: portsByNode.get(id) ?? { inputs: [], outputs: [] } },
+    if (!workflow) return;
+    const portsByNode = derivePorts(workflow, schemas);
+
+    // Seed expansion state for newly-introduced nodes using satisfaction
+    // defaults. Existing entries are kept (manual toggles persist).
+    setExpansion((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const [id, instance] of Object.entries(workflow.nodes)) {
+        if (next.has(id)) continue;
+        const np = portsByNode.get(id);
+        if (!np) continue;
+        const init = computeInitialExpansion(np, instance);
+        next.set(id, init);
+        changed = true;
       }
-    })
-    setNodes(initial)
-    nodesRef.current = initial
-  }, [workflow, schemas])
+      // Drop entries for nodes that no longer exist.
+      for (const id of Array.from(next.keys())) {
+        if (!workflow.nodes[id]) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    const initial: RFNode[] = Object.entries(workflow.nodes).map(
+      ([id, instance], i) => {
+        const view = workflow.view?.[id];
+        const np = portsByNode.get(id) ?? {
+          inputs: { id: "", label: "input", children: [], isLeaf: true },
+          outputs: [],
+        };
+        const color = schemas[instance.uses]?.color ?? null;
+        return {
+          id,
+          type: "workflow",
+          position: view ?? autoPosition(i),
+          data: {
+            id,
+            instance,
+            ports: np,
+            color,
+            // Filled in below via the per-node data merger when expansion
+            // updates. Initial values here come from the *just-seeded* map.
+            expandedInputs: new Set<string>(),
+            expandedOutputs: new Set<string>(),
+            onTogglePort: (side: "input" | "output", handleId: string) =>
+              onTogglePort(id, side, handleId),
+          },
+        };
+      },
+    );
+    setNodes(initial);
+    nodesRef.current = initial;
+  }, [workflow, schemas, onTogglePort]);
+
+  // Push the latest expansion state into each node's data so React Flow
+  // re-renders the node when expansion changes.  Separated from initialise
+  // so manual toggles don't reset position-from-drag state.
+  useEffect(() => {
+    setNodes((curr) => {
+      let changed = false;
+      const next = curr.map((n) => {
+        const exp = expansion.get(n.id);
+        if (!exp) return n;
+        const data = n.data as WorkflowNodeDataLike;
+        if (
+          data.expandedInputs === exp.inputs &&
+          data.expandedOutputs === exp.outputs
+        ) {
+          return n;
+        }
+        changed = true;
+        return {
+          ...n,
+          data: { ...data, expandedInputs: exp.inputs, expandedOutputs: exp.outputs },
+        };
+      });
+      if (!changed) return curr;
+      nodesRef.current = next;
+      return next;
+    });
+  }, [expansion]);
 
   const edges = useMemo<Edge[]>(() => {
-    if (!workflow) return []
-    const refs = extractReferences(workflow)
-    return refs.map((r, i) => ({
-      id: `e-${i}`,
-      source: r.source.nodeId,
-      sourceHandle: r.source.portId,
-      target: r.target.nodeId,
-      targetHandle: r.target.portId,
-      label: r.source.remainingPath.length > 0 ? r.source.remainingPath.join(".") : undefined,
-      type: "default",
-      animated: false,
-    }))
-  }, [workflow])
+    if (!workflow) return [];
+    const refs = extractReferences(workflow);
+    return refs.map((r, i) => {
+      // The reference's *logical* full path on the source (e.g. "body.email")
+      // — used as the tooltip label even when the rendered edge terminates at
+      // a collapsed parent.
+      const logicalSourcePath = [r.source.portId, ...r.source.remainingPath]
+        .filter((s) => s.length > 0)
+        .join(".");
+
+      // Route the source side: walk up from the leaf to the deepest currently-
+      // visible handle.  When no expansion state is tracked yet (first render
+      // before the effect seeds it), fall back to the logical path.
+      const srcExp = expansion.get(r.source.nodeId)?.outputs;
+      const renderedSource = srcExp
+        ? effectiveHandle(logicalSourcePath, srcExp)
+        : logicalSourcePath;
+
+      // Target side: the logical target path is just `r.target.portId` (which
+      // can be "" for the root in whole-object form, a top-level field name
+      // for per-field bindings, or a dotted path for deeper bindings).
+      const tgtExp = expansion.get(r.target.nodeId)?.inputs;
+      const renderedTarget = tgtExp
+        ? effectiveHandle(r.target.portId, tgtExp)
+        : r.target.portId;
+
+      // Tooltip label rules:
+      //   - per-field edge with deeper source path: just the deeper segments
+      //     (e.g. "email" when source is body.email and target is "email")
+      //   - whole-object edge (`in: "request.body"`, target.portId == ""):
+      //     the full reference string ("request.body", "request.body.user", ...)
+      //   - otherwise (single-segment direct ref): no label
+      let pathLabel: string | undefined;
+      if (r.source.remainingPath.length > 0) {
+        pathLabel = r.source.remainingPath.join(".");
+      } else if (r.target.portId === "" && logicalSourcePath.length > 0) {
+        pathLabel = `${r.source.nodeId}.${logicalSourcePath}`;
+      }
+
+      return {
+        id: `e-${i}`,
+        source: r.source.nodeId,
+        sourceHandle: renderedSource,
+        target: r.target.nodeId,
+        targetHandle: renderedTarget,
+        type: "path",
+        animated: false,
+        data: { pathLabel },
+      };
+    });
+  }, [workflow, expansion]);
 
   const save = useCallback(async () => {
-    const wf = workflowRef.current
-    if (!wf) return
-    setSaveState("saving")
-    const newView: Record<string, { x: number; y: number }> = {}
+    const wf = workflowRef.current;
+    if (!wf) return;
+    setSaveState("saving");
+    const newView: Record<string, { x: number; y: number }> = {};
     for (const n of nodesRef.current) {
-      newView[n.id] = { x: Math.round(n.position.x), y: Math.round(n.position.y) }
+      newView[n.id] = {
+        x: Math.round(n.position.x),
+        y: Math.round(n.position.y),
+      };
     }
-    const updated: WorkflowFile = { ...wf, view: newView }
+    const updated: WorkflowFile = { ...wf, view: newView };
     try {
-      await saveFile(path, `${JSON.stringify(updated, null, 2)}\n`)
+      await saveFile(path, `${JSON.stringify(updated, null, 2)}\n`);
       // Update the in-memory workflow so subsequent saves start from the new state
-      workflowRef.current = updated
-      markDirty(false)
-      setSaveState("saved")
-      setTimeout(() => setSaveState("idle"), 1500)
+      workflowRef.current = updated;
+      markDirty(false);
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 1500);
     } catch (e) {
-      console.error("Failed to persist workflow positions:", e)
-      setSaveState("error")
+      console.error("Failed to persist workflow positions:", e);
+      setSaveState("error");
     }
-  }, [path, markDirty])
+  }, [path, markDirty]);
 
   // Ctrl+S / Cmd+S — global listener (fine in v1; scope to div if needed later)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault()
-        void save()
+        e.preventDefault();
+        void save();
       }
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [save])
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [save]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       // Eagerly compute and store the next nodes in the ref so the Ctrl+S
       // handler always sees the latest positions.
-      const next = applyNodeChanges(changes, nodesRef.current)
-      nodesRef.current = next
-      setNodes(next)
+      const next = applyNodeChanges(changes, nodesRef.current);
+      nodesRef.current = next;
+      setNodes(next);
 
       // When any drag ends, mark the tab dirty (no autosave)
-      const dragEnded = changes.some((c) => c.type === "position" && c.dragging === false)
+      const dragEnded = changes.some(
+        (c) => c.type === "position" && c.dragging === false,
+      );
       if (dragEnded) {
-        markDirty(true)
+        markDirty(true);
       }
     },
     [markDirty],
-  )
+  );
 
   /**
    * Drag-to-connect: when the user drags from a source handle to a target
    * handle, update the target node's `in:` block with the reference string
    * `sourceNodeId.sourcePath` and mark the tab dirty. Ctrl+S persists.
+   *
+   * Two target shapes:
+   *  - targetHandle === ""  → whole-object form: `in: "source.path"`. If the
+   *    node already has per-field `in:` entries, we confirm before discarding.
+   *  - targetHandle !== ""  → per-field form: merge into the existing object.
+   *    If `in:` is currently a string, switch to object form.
    */
   const onConnect = useCallback(
     (conn: Connection) => {
-      const { source, sourceHandle, target, targetHandle } = conn
-      if (!source || !target || !sourceHandle || !targetHandle) return
-      const refString = `${source}.${sourceHandle}`
-      setWorkflow((wf) => {
-        if (!wf) return wf
-        const targetNode = wf.nodes[target]
-        if (!targetNode) return wf
-        const inBlock = { ...(targetNode.in ?? {}) }
-        inBlock[targetHandle] = refString
-        const next: WorkflowFile = {
-          ...wf,
-          nodes: { ...wf.nodes, [target]: { ...targetNode, in: inBlock } },
+      const { source, sourceHandle, target, targetHandle } = conn;
+      // sourceHandle is required (sentinel "" not allowed as a source — source
+      // ports always carry a real port id). targetHandle may be "" for root.
+      if (!source || !target || sourceHandle == null || targetHandle == null)
+        return;
+      if (!sourceHandle) return;
+      const refString =
+        sourceHandle === "" ? source : `${source}.${sourceHandle}`;
+
+      // Compute the next workflow synchronously off the ref so we can decide
+      // whether anything actually changed (e.g. a denied confirm leaves things
+      // untouched and must not dirty the tab).
+      const wf = workflowRef.current;
+      if (!wf) return;
+      const targetNode = wf.nodes[target];
+      if (!targetNode) return;
+
+      let nextIn: string | Record<string, unknown>;
+
+      if (targetHandle === "") {
+        // Whole-object form. If existing `in:` is a non-empty object,
+        // confirm before discarding per-field entries.
+        const existing = targetNode.in;
+        if (
+          existing &&
+          typeof existing === "object" &&
+          Object.keys(existing).length > 0
+        ) {
+          const ok = window.confirm(
+            `\`${target}\` currently has per-field input bindings. Replace them with the whole-object reference \`${refString}\`?`,
+          );
+          if (!ok) return;
         }
-        workflowRef.current = next
-        return next
-      })
-      markDirty(true)
+        nextIn = refString;
+      } else {
+        // Per-field form. Convert string-form to object-form if needed.
+        const base: Record<string, unknown> =
+          typeof targetNode.in === "string" || !targetNode.in
+            ? {}
+            : { ...targetNode.in };
+        base[targetHandle] = refString;
+        nextIn = base;
+      }
+
+      const next: WorkflowFile = {
+        ...wf,
+        nodes: { ...wf.nodes, [target]: { ...targetNode, in: nextIn } },
+      };
+      workflowRef.current = next;
+      setWorkflow(next);
+      markDirty(true);
     },
     [markDirty],
-  )
+  );
 
   // Subscribe to live file events — reload if the file changes externally,
   // but only when this tab doesn't have unsaved drags (don't clobber local work).
   useEffect(() => {
     return subscribeToFileEvents((e) => {
-      if (e.path !== path) return
-      if (dirtyRef.current) return // keep local state
-      doFetch()
-    })
-  }, [path, doFetch])
+      if (e.path !== path) return;
+      if (dirtyRef.current) return; // keep local state
+      doFetch();
+    });
+  }, [path, doFetch]);
 
   if (error) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-sm text-destructive">
         Error loading workflow: {error}
       </div>
-    )
+    );
   }
 
   if (!workflow) {
@@ -240,7 +439,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
       <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
         Loading {path}…
       </div>
-    )
+    );
   }
 
   return (
@@ -249,6 +448,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onConnect={onConnect}
         fitView
@@ -267,18 +467,22 @@ export function WorkflowEditor({ path, tabId }: Props) {
               : "absolute bottom-3 right-3 rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground"
           }
         >
-          {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save failed"}
+          {saveState === "saving"
+            ? "Saving…"
+            : saveState === "saved"
+              ? "Saved"
+              : "Save failed"}
         </div>
       )}
       {dirty && saveState === "idle" && (
-        <div className="absolute bottom-3 left-3 rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+        <div className="absolute bottom-3 right-3 rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
           Unsaved changes — Ctrl+S to save
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function autoPosition(i: number): { x: number; y: number } {
-  return { x: (i % 4) * 220 + 40, y: Math.floor(i / 4) * 140 + 40 }
+  return { x: (i % 4) * 220 + 40, y: Math.floor(i / 4) * 140 + 40 };
 }

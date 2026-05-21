@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { schemaToTree } from "./schema-to-tree"
+import { schemaToRootedTree, schemaToTree } from "./schema-to-tree"
 
 describe("schemaToTree", () => {
   it("returns [] for an undefined schema", () => {
@@ -75,6 +75,38 @@ describe("schemaToTree", () => {
     })
     expect(tree).toHaveLength(1)
     expect(tree[0]!.isLeaf).toBe(true)
+  })
+
+  describe("schemaToRootedTree", () => {
+    it("returns a root branch (id = '', label = 'input') with schema fields as children", () => {
+      const root = schemaToRootedTree({
+        type: "object",
+        properties: { email: { type: "string" }, password: { type: "string" } },
+      })
+      expect(root.id).toBe("")
+      expect(root.label).toBe("input")
+      expect(root.isLeaf).toBe(false)
+      expect(root.children).toHaveLength(2)
+      expect(root.children.map((c) => c.id).sort()).toEqual(["email", "password"])
+    })
+
+    it("returns a leaf root when the schema has no properties", () => {
+      const root = schemaToRootedTree({ type: "object" })
+      expect(root.id).toBe("")
+      expect(root.isLeaf).toBe(true)
+      expect(root.children).toEqual([])
+    })
+
+    it("returns a leaf root for an undefined schema", () => {
+      const root = schemaToRootedTree(undefined)
+      expect(root.id).toBe("")
+      expect(root.isLeaf).toBe(true)
+    })
+
+    it("supports a custom root label", () => {
+      const root = schemaToRootedTree({ type: "object" }, "body")
+      expect(root.label).toBe("body")
+    })
   })
 
   it("builds dotted ids for deep nesting", () => {

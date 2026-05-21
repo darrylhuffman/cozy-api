@@ -46,6 +46,8 @@ export interface Node<
   readonly inputs: I;
   readonly outputs: O;
   readonly config?: C;
+  /** Optional accent color (free-form CSS string). Pure IDE metadata. */
+  readonly color?: string;
   run(
     input: z.infer<I>,
     services: Services,

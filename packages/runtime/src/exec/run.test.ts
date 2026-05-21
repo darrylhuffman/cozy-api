@@ -331,6 +331,137 @@ describe("runWorkflow", () => {
     expect(received).toEqual({ count: 42 }) // string → number via coerce
   })
 
+  describe("whole-object `in` (string form)", () => {
+    it("passes the entire resolved value as the input bag", async () => {
+      let received: unknown = null
+      const echo = defineNode({
+        inputs: z.object({ email: z.string(), password: z.string() }),
+        outputs: z.object({ ok: z.boolean() }),
+        async run(input) {
+          received = input
+          return { ok: true }
+        },
+      })
+
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+          n: { uses: "./echo", in: "req.body" },
+          r: { uses: "@core/response", in: { body: "n.ok" } },
+        },
+      })
+      const { errors, depsByNode } = validateWorkflow(wf)
+      expect(errors).toEqual([])
+      const plan = computeExecutionPlan(wf, depsByNode)
+
+      await runWorkflow({
+        workflow: wf,
+        plan,
+        triggerNodeId: "req",
+        triggerOutputs: {
+          body: { email: "ada@example.com", password: "hunter2" },
+          params: {},
+          query: {},
+          headers: {},
+          context: { requestId: "x", timestamp: 0 },
+        },
+        services: {},
+        resolveNode: (u) =>
+          resolveCoreNode(u) ??
+          ({ "./echo": echo } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+          null,
+      })
+
+      expect(received).toEqual({ email: "ada@example.com", password: "hunter2" })
+    })
+
+    it("emits an edge-fired event with the whole-object sentinel `$`", async () => {
+      const emitter = new LifecycleEmitter()
+      const edges: { from: string; to: string }[] = []
+      emitter.on("edge-fired", (e) => edges.push({ from: e.from, to: e.to }))
+
+      const echo = defineNode({
+        inputs: z.object({}).passthrough(),
+        outputs: z.object({ ok: z.boolean() }),
+        async run() {
+          return { ok: true }
+        },
+      })
+
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+          n: { uses: "./echo", in: "req.body" },
+          r: { uses: "@core/response", in: { body: "n.ok" } },
+        },
+      })
+      const { depsByNode } = validateWorkflow(wf)
+      const plan = computeExecutionPlan(wf, depsByNode)
+      await runWorkflow({
+        workflow: wf,
+        plan,
+        triggerNodeId: "req",
+        triggerOutputs: {
+          body: { anything: 1 },
+          params: {},
+          query: {},
+          headers: {},
+          context: { requestId: "x", timestamp: 0 },
+        },
+        services: {},
+        resolveNode: (u) =>
+          resolveCoreNode(u) ??
+          ({ "./echo": echo } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+          null,
+        lifecycle: emitter,
+      })
+
+      // The whole-object edge fires with target sentinel `$`
+      expect(edges.some((e) => e.to === "n.$" && e.from.startsWith("req."))).toBe(true)
+    })
+
+    it("Zod validation still applies to the whole-object form", async () => {
+      const strict = defineNode({
+        inputs: z.object({ email: z.string().email() }),
+        outputs: z.object({ ok: z.boolean() }),
+        async run() {
+          return { ok: true }
+        },
+      })
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+          n: { uses: "./strict", in: "req.body" },
+          r: { uses: "@core/response", in: { body: "n.ok" } },
+        },
+      })
+      const { depsByNode } = validateWorkflow(wf)
+      const plan = computeExecutionPlan(wf, depsByNode)
+      await expect(
+        runWorkflow({
+          workflow: wf,
+          plan,
+          triggerNodeId: "req",
+          triggerOutputs: {
+            body: { email: "not-an-email" },
+            params: {},
+            query: {},
+            headers: {},
+            context: { requestId: "", timestamp: 0 },
+          },
+          services: {},
+          resolveNode: (u) =>
+            resolveCoreNode(u) ??
+            ({ "./strict": strict } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+            null,
+        }),
+      ).rejects.toThrow(/input validation failed.*email/i)
+    })
+  })
+
   it("fail-fast: a node throw aborts the workflow with NodeRunError", async () => {
     const boom = defineNode({
       inputs: z.object({}),

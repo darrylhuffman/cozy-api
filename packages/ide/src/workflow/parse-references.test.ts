@@ -114,6 +114,48 @@ describe("extractReferences", () => {
     expect(refs.every((r) => r.source.nodeId === "source")).toBe(true)
   })
 
+  describe("whole-object `in` (string form)", () => {
+    it("emits one reference with target.portId = '' (root) when `in:` is a string", () => {
+      const wf = baseWorkflow({
+        request: { uses: "@core/http-request" },
+        save: { uses: "./nodes/save", in: "request.body" },
+      })
+      const refs = extractReferences(wf)
+      expect(refs).toHaveLength(1)
+      expect(refs[0]).toMatchObject({
+        source: { nodeId: "request", portId: "body", remainingPath: [] },
+        target: { nodeId: "save", portId: "" },
+      })
+    })
+
+    it("handles deep dotted whole-object reference", () => {
+      const wf = baseWorkflow({
+        req: { uses: "@core/http-request" },
+        save: { uses: "./nodes/save", in: "req.body.user" },
+      })
+      const refs = extractReferences(wf)
+      expect(refs).toHaveLength(1)
+      expect(refs[0]).toMatchObject({
+        source: { nodeId: "req", portId: "body", remainingPath: ["user"] },
+        target: { nodeId: "save", portId: "" },
+      })
+    })
+
+    it("ignores whole-object form that doesn't parse as a reference", () => {
+      const wf = baseWorkflow({
+        save: { uses: "./nodes/save", in: "not a reference" },
+      })
+      expect(extractReferences(wf)).toHaveLength(0)
+    })
+
+    it("ignores whole-object form pointing at an unknown node", () => {
+      const wf = baseWorkflow({
+        save: { uses: "./nodes/save", in: "unknown.body" },
+      })
+      expect(extractReferences(wf)).toHaveLength(0)
+    })
+  })
+
   it("basic-api create.workflow references — portId and remainingPath correct", () => {
     const wf = baseWorkflow({
       request: { uses: "@core/http-request" },

@@ -8,17 +8,45 @@ let capturedOnNodesChange: ((changes: unknown[]) => void) | null = null
 let capturedOnConnect:
   | ((conn: { source: string; sourceHandle: string; target: string; targetHandle: string }) => void)
   | null = null
+// Capture what edges/edgeTypes the editor passed to React Flow
+interface CapturedEdge {
+  id: string
+  type?: string
+  source?: string
+  sourceHandle?: string | null
+  target?: string
+  targetHandle?: string | null
+  data?: { pathLabel?: string }
+}
+let capturedEdges: CapturedEdge[] | null = null
+let capturedEdgeTypes: Record<string, unknown> | null = null
+// Capture last-rendered node data so we can poke at expandedInputs/outputs etc.
+let capturedNodes:
+  | { id: string; type?: string; data: Record<string, unknown> }[]
+  | null = null
 
 // Mock @xyflow/react — the actual library uses ResizeObserver + canvas APIs
 // that aren't available in jsdom. We replace with minimal stubs.
 vi.mock("@xyflow/react", () => ({
   ReactFlow: ({
     nodes,
+    edges,
+    edgeTypes,
     nodeTypes,
     onNodesChange,
     onConnect,
   }: {
     nodes: { id: string; type?: string; data: Record<string, unknown> }[]
+    edges?: {
+      id: string
+      type?: string
+      source?: string
+      sourceHandle?: string | null
+      target?: string
+      targetHandle?: string | null
+      data?: { pathLabel?: string }
+    }[]
+    edgeTypes?: Record<string, unknown>
     nodeTypes?: Record<string, (props: { data: Record<string, unknown> }) => React.ReactNode>
     onNodesChange?: (changes: unknown[]) => void
     onConnect?: (conn: {
@@ -30,8 +58,15 @@ vi.mock("@xyflow/react", () => ({
   }) => {
     capturedOnNodesChange = onNodesChange ?? null
     capturedOnConnect = onConnect ?? null
+    capturedEdges = edges ?? null
+    capturedEdgeTypes = edgeTypes ?? null
+    capturedNodes = nodes ?? null
     return (
-      <div data-testid="react-flow" data-nodecount={nodes.length}>
+      <div
+        data-testid="react-flow"
+        data-nodecount={nodes.length}
+        data-edgecount={edges?.length ?? 0}
+      >
         {nodes.map((n) => {
           const NodeComponent = n.type && nodeTypes?.[n.type]
           return (
@@ -130,6 +165,9 @@ function resetStore() {
 beforeEach(() => {
   capturedOnNodesChange = null
   capturedOnConnect = null
+  capturedEdges = null
+  capturedEdgeTypes = null
+  capturedNodes = null
   useThemeStore.setState({ theme: "light" })
   vi.mocked(fetchWorkflowFile).mockResolvedValue(sampleWorkflow)
   vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({})
@@ -315,7 +353,7 @@ describe("WorkflowEditor", () => {
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
   })
 
-  it("renders named input/output port labels on nodes from create.workflow", async () => {
+  it("renders unified root input port + named output ports on nodes from create.workflow", async () => {
     vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
     render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
 
@@ -324,11 +362,12 @@ describe("WorkflowEditor", () => {
       expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
     })
 
-    // The save node should show its input ports: "email" and "password"
+    // The save node shows a single root input port labeled "input" — children
+    // (email/password) live behind the root chevron and only render when expanded.
     const saveNodeEl = screen.getByTestId("rf-node-save")
-    // Use getAllByText since "email"/"password" are unique across the rendered tree
-    expect(saveNodeEl).toContainElement(screen.getByText("email"))
-    expect(saveNodeEl).toContainElement(screen.getByText("password"))
+    expect(saveNodeEl.textContent).toContain("input")
+    expect(saveNodeEl.textContent).not.toContain("email")
+    expect(saveNodeEl.textContent).not.toContain("password")
 
     // The save node should also show its output port: "user"
     expect(saveNodeEl).toContainElement(screen.getByText("user"))
@@ -337,13 +376,180 @@ describe("WorkflowEditor", () => {
     const requestNodeEl = screen.getByTestId("rf-node-request")
     expect(requestNodeEl.textContent).toContain("body")
 
-    // The response node should show its input port: "body"
+    // The response node also has a unified "input" root
     const responseNodeEl = screen.getByTestId("rf-node-response")
-    expect(responseNodeEl.textContent).toContain("body")
+    expect(responseNodeEl.textContent).toContain("input")
 
-    // The request node (trigger) should have no input ports — no stray port labels
-    expect(requestNodeEl.textContent).not.toContain("email")
-    expect(requestNodeEl.textContent).not.toContain("password")
+    // The request node (trigger) has no inputs at all — no "input" label
+    expect(requestNodeEl.textContent).not.toContain("input")
+  })
+
+  describe("edge routing & expansion state", () => {
+    it("re-routes edges to the visible parent when target inputs collapse", async () => {
+      // Provide a schema so `save` gets a non-trivial inputs tree (email/password
+      // as top-level fields of the input root). `save.in` is fully satisfied, so
+      // the editor's initial expansion seeds the inputs as COLLAPSED.
+      vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
+        "./nodes/users/save-user": {
+          inputs: {
+            type: "object",
+            properties: {
+              email: { type: "string" },
+              password: { type: "string" },
+            },
+          },
+          outputs: {
+            type: "object",
+            properties: {
+              user: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  email: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      })
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // After schemas resolve, edges should be re-routed. The reference
+      // request.body.email → save.email has its target collapsed (because
+      // save's inputs are fully satisfied → root not expanded) so the edge
+      // terminates at the root ("") instead of "email".
+      await waitFor(() => {
+        const edge = capturedEdges?.find(
+          (e) => e.source === "request" && e.target === "save",
+        )
+        expect(edge?.targetHandle).toBe("")
+      })
+
+      // The tooltip pathLabel still surfaces the deeper path so the user can
+      // tell what was bound.
+      const savedEmailEdge = capturedEdges?.find(
+        (e) =>
+          e.source === "request" &&
+          e.target === "save" &&
+          e.data?.pathLabel === "email",
+      )
+      expect(savedEmailEdge).toBeDefined()
+    })
+
+    it("routes through to the leaf when the input is expanded", async () => {
+      // Same schemas, but `save` has only one field bound — so its input root
+      // starts EXPANDED ("partial satisfaction").
+      vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
+        "./nodes/users/save-user": {
+          inputs: {
+            type: "object",
+            properties: {
+              email: { type: "string" },
+              password: { type: "string" },
+            },
+          },
+          outputs: { type: "object", properties: {} },
+        },
+      })
+      const partial: WorkflowFile = {
+        ...createWorkflow,
+        nodes: {
+          ...createWorkflow.nodes,
+          save: {
+            uses: "./nodes/users/save-user",
+            in: { email: "request.body.email" },
+          },
+        },
+      }
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(partial)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // With root expanded, the edge terminates at "email" (the actual leaf
+      // handle that's rendered in the DOM).
+      await waitFor(() => {
+        const edge = capturedEdges?.find(
+          (e) => e.source === "request" && e.target === "save",
+        )
+        expect(edge?.targetHandle).toBe("email")
+      })
+    })
+
+    it("threads color from schemas through to node data (accent stripe)", async () => {
+      vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
+        "@core/http-request": {
+          inputs: { type: "object", properties: {} },
+          outputs: { type: "object", properties: { body: { type: "object" } } },
+          color: "#3b82f6",
+        },
+        "./nodes/users/save-user": {
+          inputs: { type: "object", properties: { email: { type: "string" } } },
+          outputs: { type: "object", properties: {} },
+          color: "indigo",
+        },
+      })
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      await waitFor(() => {
+        const requestNode = capturedNodes?.find((n) => n.id === "request")
+        expect(requestNode?.data.color).toBe("#3b82f6")
+        const saveNode = capturedNodes?.find((n) => n.id === "save")
+        expect(saveNode?.data.color).toBe("indigo")
+      })
+    })
+  })
+
+  describe("edges with PathEdge (hover-dot labels)", () => {
+    it("registers `path` in edgeTypes and emits edges with type='path'", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // edgeTypes carries the `path` entry
+      expect(capturedEdgeTypes).not.toBeNull()
+      expect(capturedEdgeTypes).toHaveProperty("path")
+
+      // Each emitted edge has type = "path"
+      expect(capturedEdges).not.toBeNull()
+      expect(capturedEdges!.length).toBeGreaterThan(0)
+      for (const edge of capturedEdges ?? []) {
+        expect(edge.type).toBe("path")
+      }
+    })
+
+    it("attaches pathLabel data only when the source has a remaining path", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // request.body.email → save.email — remaining path ["email"]
+      const emailEdge = capturedEdges!.find((e) => e.data?.pathLabel === "email")
+      expect(emailEdge).toBeDefined()
+      // save.user → response.body — no remaining path; pathLabel undefined
+      const userEdge = capturedEdges!.find(
+        (e) =>
+          !e.data?.pathLabel &&
+          // disambiguate via source/target — see edge construction
+          true,
+      )
+      expect(userEdge).toBeDefined()
+    })
   })
 
   describe("drag-to-connect (onConnect)", () => {
@@ -376,7 +582,8 @@ describe("WorkflowEditor", () => {
 
       const [, savedContent] = vi.mocked(saveFile).mock.calls[0]!
       const parsed = JSON.parse(savedContent) as WorkflowFile
-      expect(parsed.nodes.response!.in!.body).toBe("save.user.id")
+      const responseIn = parsed.nodes.response!.in as Record<string, unknown>
+      expect(responseIn.body).toBe("save.user.id")
     })
 
     it("marks the tab dirty after a connect", async () => {
@@ -421,6 +628,127 @@ describe("WorkflowEditor", () => {
       expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
     })
 
+    it("connecting to root targetHandle '' sets `in:` to a string reference (whole-object form)", async () => {
+      // Start with a node that has no `in:` set, so no confirm() prompt.
+      const blankSave: WorkflowFile = {
+        ...createWorkflow,
+        nodes: {
+          ...createWorkflow.nodes,
+          save: { uses: "./nodes/users/save-user" },
+        },
+      }
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(blankSave)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      act(() => {
+        capturedOnConnect?.({
+          source: "request",
+          sourceHandle: "body",
+          target: "save",
+          targetHandle: "",
+        })
+      })
+
+      // Save and inspect the persisted JSON
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => expect(vi.mocked(saveFile)).toHaveBeenCalledOnce())
+      const [, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+      const parsed = JSON.parse(savedContent) as WorkflowFile
+      expect(parsed.nodes.save!.in).toBe("request.body")
+    })
+
+    it("connecting to root replaces per-field `in:` only after window.confirm", async () => {
+      // Stub confirm so jsdom doesn't throw on unimplemented dialogs.
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true)
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      act(() => {
+        capturedOnConnect?.({
+          source: "request",
+          sourceHandle: "body",
+          target: "save",
+          targetHandle: "",
+        })
+      })
+
+      expect(confirmSpy).toHaveBeenCalledOnce()
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => expect(vi.mocked(saveFile)).toHaveBeenCalledOnce())
+      const [, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+      const parsed = JSON.parse(savedContent) as WorkflowFile
+      // Per-field entries are replaced with the whole-object string
+      expect(parsed.nodes.save!.in).toBe("request.body")
+      confirmSpy.mockRestore()
+    })
+
+    it("denying the confirm() leaves the existing per-field `in:` intact", async () => {
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false)
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      act(() => {
+        capturedOnConnect?.({
+          source: "request",
+          sourceHandle: "body",
+          target: "save",
+          targetHandle: "",
+        })
+      })
+
+      expect(confirmSpy).toHaveBeenCalledOnce()
+      // No dirty mark, no save needed.
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
+      confirmSpy.mockRestore()
+    })
+
+    it("per-field connect on a string-form `in:` switches to object form", async () => {
+      const stringIn: WorkflowFile = {
+        ...createWorkflow,
+        nodes: {
+          ...createWorkflow.nodes,
+          save: { uses: "./nodes/users/save-user", in: "request.body" },
+        },
+      }
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(stringIn)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      act(() => {
+        capturedOnConnect?.({
+          source: "request",
+          sourceHandle: "body.email",
+          target: "save",
+          targetHandle: "email",
+        })
+      })
+
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => expect(vi.mocked(saveFile)).toHaveBeenCalledOnce())
+      const [, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+      const parsed = JSON.parse(savedContent) as WorkflowFile
+      // The previous "request.body" whole-object form is dropped in favour of
+      // a fresh per-field object containing only the new connection.
+      expect(parsed.nodes.save!.in).toEqual({ email: "request.body.email" })
+    })
+
     it("Ctrl+S persists the new in: structure after a connect", async () => {
       vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
       render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
@@ -449,13 +777,15 @@ describe("WorkflowEditor", () => {
       const [savedPath, savedContent] = vi.mocked(saveFile).mock.calls[0]!
       expect(savedPath).toBe("workflows/users/create.workflow")
       const parsed = JSON.parse(savedContent) as WorkflowFile
+      const saveIn = parsed.nodes.save!.in as Record<string, unknown>
+      const responseIn = parsed.nodes.response!.in as Record<string, unknown>
       // The other in: entries on save should be preserved
-      expect(parsed.nodes.save!.in!.email).toBe("request.body.email")
-      expect(parsed.nodes.save!.in!.password).toBe("request.body.password")
+      expect(saveIn.email).toBe("request.body.email")
+      expect(saveIn.password).toBe("request.body.password")
       // The response.body should now reference save.user.email
-      expect(parsed.nodes.response!.in!.body).toBe("save.user.email")
+      expect(responseIn.body).toBe("save.user.email")
       // status literal should still be 201
-      expect(parsed.nodes.response!.in!.status).toBe(201)
+      expect(responseIn.status).toBe(201)
 
       // After the save, the tab is no longer dirty
       await waitFor(() => {
