@@ -179,7 +179,7 @@ import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
-import { WorkflowEditor } from "./workflow-editor.js"
+import { defaultPathForWorkflow, WorkflowEditor } from "./workflow-editor.js"
 
 const sampleWorkflow: WorkflowFile = {
   lorien: 1,
@@ -256,6 +256,21 @@ afterEach(() => {
   resetStore()
   useSelectionStore.setState({ selectedNodeId: null })
   useLiveWorkflowStore.setState({ workflow: null, tabId: null })
+})
+
+describe("defaultPathForWorkflow", () => {
+  it('strips "workflows/" prefix, ".workflow" suffix, and drops create verb', () => {
+    expect(defaultPathForWorkflow("workflows/users/create.workflow")).toBe("/users")
+  })
+  it("drops list verb", () => {
+    expect(defaultPathForWorkflow("workflows/posts/list.workflow")).toBe("/posts")
+  })
+  it("keeps single non-verb segment", () => {
+    expect(defaultPathForWorkflow("workflows/health.workflow")).toBe("/health")
+  })
+  it("preserves multi-segment non-verb path", () => {
+    expect(defaultPathForWorkflow("workflows/admin/users/delete.workflow")).toBe("/admin/users")
+  })
 })
 
 describe("WorkflowEditor", () => {
@@ -1298,6 +1313,68 @@ describe("WorkflowEditor", () => {
       expect(responseIn?.body).toBeUndefined()
       // status literal remains
       expect(responseIn?.status).toBe(201)
+    })
+  })
+
+  describe("inline value editing does not collapse ports (item 2/4 fix)", () => {
+    it("editing an input value keeps the port group visible (expandedInputs preserved)", async () => {
+      // Set up schemas so http-request has method + path inputs
+      const httpSchemas: Record<string, import("@/lib/api").NodeSchemas> = {
+        "@core/http-request": {
+          inputs: {
+            type: "object",
+            properties: {
+              method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+              path: { type: "string" },
+            },
+          },
+          outputs: { type: "object", properties: { body: { type: "object" } } },
+        },
+      }
+      vi.mocked(fetchWorkspaceSchemas).mockResolvedValue(httpSchemas)
+
+      const wf: WorkflowFile = {
+        lorien: 1,
+        nodes: {
+          req: {
+            uses: "@core/http-request",
+            in: {},
+          },
+        },
+      }
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(wf)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("1")
+      })
+
+      // The req node's method input root should be expanded (no fields bound yet).
+      await waitFor(() => {
+        const node = capturedNodes?.find((n) => n.id === "req")
+        const expanded = node?.data.expandedInputs as Set<string> | undefined
+        expect(expanded?.has("")).toBe(true)
+      })
+
+      // Simulate onInputValueChange for method="GET" (as if user picked from dropdown)
+      const nodeData = capturedNodes?.find((n) => n.id === "req")?.data
+      const onInputValueChange = nodeData?.onInputValueChange as
+        | ((portId: string, value: unknown) => void)
+        | undefined
+      expect(onInputValueChange).toBeDefined()
+
+      act(() => {
+        onInputValueChange!("method", "GET")
+      })
+
+      // After the value change the workflow updates, which re-runs the node-init
+      // effect. The expanded root should STILL be in expandedInputs (not reset to
+      // empty) because the fix reads from the expansion Map ref.
+      await waitFor(() => {
+        const updatedNode = capturedNodes?.find((n) => n.id === "req")
+        const expanded = updatedNode?.data.expandedInputs as Set<string> | undefined
+        expect(expanded?.has("")).toBe(true)
+      })
     })
   })
 })

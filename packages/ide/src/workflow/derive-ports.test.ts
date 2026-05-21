@@ -291,7 +291,7 @@ describe("derivePorts (with schemas)", () => {
     expect(ports.get("request")!.outputs).toEqual([leaf("body")])
   })
 
-  it("@core/http-request: body port present when method is POST", () => {
+  it("@core/http-request: body output present when method is POST", () => {
     const httpSchemas: Record<string, NodeSchemas> = {
       "@core/http-request": {
         inputs: {
@@ -299,22 +299,26 @@ describe("derivePorts (with schemas)", () => {
           properties: {
             method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
             path: { type: "string" },
-            body: { type: "object" },
           },
         },
-        outputs: { type: "object", properties: {} },
+        outputs: {
+          type: "object",
+          properties: {
+            body: { type: "object" },
+            headers: { type: "object" },
+          },
+        },
       },
     }
     const wf = baseWorkflow({
       req: { uses: "@core/http-request", in: { method: "POST", path: "/users" } },
     })
     const ports = derivePorts(wf, httpSchemas)
-    const inputs = ports.get("req")!.inputs
-    const ids = inputs.children.map((c) => c.id)
-    expect(ids).toContain("body")
+    const outputIds = ports.get("req")!.outputs.map((p) => p.id)
+    expect(outputIds).toContain("body")
   })
 
-  it("@core/http-request: body port hidden when method is GET (from in:)", () => {
+  it("@core/http-request: body output hidden when method is GET (from in:)", () => {
     const httpSchemas: Record<string, NodeSchemas> = {
       "@core/http-request": {
         inputs: {
@@ -322,24 +326,27 @@ describe("derivePorts (with schemas)", () => {
           properties: {
             method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
             path: { type: "string" },
-            body: { type: "object" },
           },
         },
-        outputs: { type: "object", properties: {} },
+        outputs: {
+          type: "object",
+          properties: {
+            body: { type: "object" },
+            headers: { type: "object" },
+          },
+        },
       },
     }
     const wf = baseWorkflow({
       req: { uses: "@core/http-request", in: { method: "GET", path: "/users" } },
     })
     const ports = derivePorts(wf, httpSchemas)
-    const inputs = ports.get("req")!.inputs
-    const ids = inputs.children.map((c) => c.id)
-    expect(ids).not.toContain("body")
-    expect(ids).toContain("method")
-    expect(ids).toContain("path")
+    const outputIds = ports.get("req")!.outputs.map((p) => p.id)
+    expect(outputIds).not.toContain("body")
+    expect(outputIds).toContain("headers")
   })
 
-  it("@core/http-request: body port hidden when method is DELETE (from in:)", () => {
+  it("@core/http-request: body output hidden when method is DELETE (from in:)", () => {
     const httpSchemas: Record<string, NodeSchemas> = {
       "@core/http-request": {
         inputs: {
@@ -347,22 +354,26 @@ describe("derivePorts (with schemas)", () => {
           properties: {
             method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
             path: { type: "string" },
-            body: { type: "object" },
           },
         },
-        outputs: { type: "object", properties: {} },
+        outputs: {
+          type: "object",
+          properties: {
+            body: { type: "object" },
+            headers: { type: "object" },
+          },
+        },
       },
     }
     const wf = baseWorkflow({
       req: { uses: "@core/http-request", in: { method: "DELETE", path: "/users/1" } },
     })
     const ports = derivePorts(wf, httpSchemas)
-    const inputs = ports.get("req")!.inputs
-    const ids = inputs.children.map((c) => c.id)
-    expect(ids).not.toContain("body")
+    const outputIds = ports.get("req")!.outputs.map((p) => p.id)
+    expect(outputIds).not.toContain("body")
   })
 
-  it("@core/http-request: body port hidden when method is GET (from config: back-compat)", () => {
+  it("@core/http-request: body output hidden when method is GET (from config: back-compat)", () => {
     const httpSchemas: Record<string, NodeSchemas> = {
       "@core/http-request": {
         inputs: {
@@ -370,19 +381,23 @@ describe("derivePorts (with schemas)", () => {
           properties: {
             method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
             path: { type: "string" },
-            body: { type: "object" },
           },
         },
-        outputs: { type: "object", properties: {} },
+        outputs: {
+          type: "object",
+          properties: {
+            body: { type: "object" },
+            headers: { type: "object" },
+          },
+        },
       },
     }
     const wf = baseWorkflow({
       req: { uses: "@core/http-request", config: { method: "GET", path: "/users" } },
     })
     const ports = derivePorts(wf, httpSchemas)
-    const inputs = ports.get("req")!.inputs
-    const ids = inputs.children.map((c) => c.id)
-    expect(ids).not.toContain("body")
+    const outputIds = ports.get("req")!.outputs.map((p) => p.id)
+    expect(outputIds).not.toContain("body")
   })
 
   it("nested object → branch with children at every level", () => {

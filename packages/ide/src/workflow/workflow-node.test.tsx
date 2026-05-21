@@ -595,5 +595,35 @@ describe("WorkflowNode", () => {
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual({ portId: "method", value: "POST" })
     })
+
+    it("renders the inline widget in a separate row BELOW the port label, not to the right", () => {
+      const schemaLeafFn = (name: string, schema: NonNullable<PortNode["schema"]>): PortNode => {
+        const port: PortNode = { id: name, label: name, children: [], isLeaf: true }
+        port.schema = schema
+        return port
+      }
+      const ports: NodePorts = {
+        inputs: inputRoot([schemaLeafFn("path", { type: "string" })]),
+        outputs: [],
+      }
+      const data: Record<string, unknown> = {
+        id: "req",
+        instance: { uses: "@core/http-request", in: {} },
+        ports,
+        expandedInputs: new Set([""]),
+        expandedOutputs: new Set<string>(),
+        onTogglePort: () => {},
+        onInputValueChange: () => {},
+      }
+      render(<WorkflowNode data={data} />)
+      fireEvent.click(screen.getByTestId("chevron-"))
+
+      const widget = screen.getByTestId("input-widget-path")
+      const label = screen.getByText("path")
+
+      // The widget and the label must NOT share the same immediate parent div —
+      // the widget is in its own sub-row below the label row.
+      expect(widget.parentElement).not.toBe(label.parentElement)
+    })
   })
 })

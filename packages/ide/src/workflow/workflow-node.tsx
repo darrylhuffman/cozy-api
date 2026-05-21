@@ -108,10 +108,10 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         ...(cardBg ? { background: cardBg } : {}),
       }}
     >
-      {/* Header */}
+      {/* Header — also the drag handle for React Flow's dragHandle prop */}
       <div
         data-testid="node-header"
-        className="border-b border-border bg-muted px-3 py-1.5 text-xs"
+        className="node-drag-handle border-b border-border bg-muted px-3 py-1.5 text-xs"
         style={headerBg ? { background: headerBg } : undefined}
       >
         <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -202,9 +202,9 @@ function PortTree({
  * and are harmless for v1.
  */
 function isReference(value: unknown): boolean {
-  if (typeof value !== "string") return false
+  if (typeof value !== "string") return false;
   // Must look like a dotted identifier chain: word.word (at least one dot)
-  return /^[a-zA-Z_$][\w$]*(\.[a-zA-Z_$][\w$]*)+$/.test(value)
+  return /^[a-zA-Z_$][\w$]*(\.[a-zA-Z_$][\w$]*)+$/.test(value);
 }
 
 function PortRow({
@@ -311,7 +311,11 @@ function PortRow({
       Array.isArray(portSchema.enum));
 
   const showInlineWidget =
-    !isOutput && port.isLeaf && isScalar && !portIsConnected && !!onInputValueChange;
+    !isOutput &&
+    port.isLeaf &&
+    isScalar &&
+    !portIsConnected &&
+    !!onInputValueChange;
 
   const inlineWidget = showInlineWidget ? (
     <InlineInputWidget
@@ -328,8 +332,8 @@ function PortRow({
         className="relative flex items-center gap-1"
         style={{
           height: ROW_HEIGHT,
-          paddingLeft: isOutput ? 8 : 8 + depth * INDENT_PX,
-          paddingRight: isOutput ? 8 + depth * INDENT_PX : 8,
+          paddingLeft: isOutput ? 8 + depth * INDENT_PX : 12,
+          paddingRight: isOutput ? 16 + depth * INDENT_PX : 8,
           justifyContent: isOutput ? "flex-end" : "flex-start",
         }}
       >
@@ -340,8 +344,8 @@ function PortRow({
           style={{
             top: "50%",
             transform: "translateY(-50%)",
-            width: 14,
-            height: 14,
+            width: 10,
+            height: 10,
             background: isBranch
               ? "var(--primary, oklch(0.6 0.2 270))"
               : "var(--muted-foreground)",
@@ -356,10 +360,21 @@ function PortRow({
           <>
             {chevron}
             {label}
-            {inlineWidget}
           </>
         )}
       </div>
+      {/* Inline widget sits in its own row BELOW the port label so it
+          doesn't compete for horizontal space with the label text. */}
+      {inlineWidget && !isOutput && (
+        <div
+          style={{
+            paddingLeft: 12 + depth * INDENT_PX + 16,
+            paddingBottom: 4,
+          }}
+        >
+          {inlineWidget}
+        </div>
+      )}
       {expanded && (
         <>
           {visibleChildren.map((child) => (
@@ -470,9 +485,10 @@ function InlineInputWidget({
         value={typeof currentValue === "number" ? currentValue : ""}
         onChange={(e) => {
           e.stopPropagation();
-          const n = schema.type === "integer"
-            ? parseInt(e.target.value, 10)
-            : parseFloat(e.target.value);
+          const n =
+            schema.type === "integer"
+              ? parseInt(e.target.value, 10)
+              : parseFloat(e.target.value);
           if (!isNaN(n)) onChange(portId, n);
           else if (e.target.value === "") onChange(portId, undefined);
         }}

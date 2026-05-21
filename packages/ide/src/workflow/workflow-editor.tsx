@@ -114,6 +114,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
   const workflowRef = useRef<WorkflowFile | null>(null);
   // Track dirty in a ref too so the Ctrl+S handler always sees fresh value
   const dirtyRef = useRef(false);
+  // Always-current ref for expansion so the node-init effect can read the
+  // latest expansion state without adding it as a dependency (which would
+  // cause a full node rebuild on every toggle).
+  const expansionRef = useRef<Map<string, NodeExpansion>>(new Map());
   // Ref for the ReactFlow container div (for flow-coord conversion)
   const reactFlowRef = useRef<HTMLDivElement | null>(null);
   // Context menu state: client coords for popover anchor, flow coords for node placement
@@ -157,11 +161,30 @@ export function WorkflowEditor({ path, tabId }: Props) {
     (uses: string, x: number, y: number) => {
       const wf = workflowRef.current;
       if (!wf) return;
-      const next = addNode(wf, uses, { x, y });
+      let next = addNode(wf, uses, { x, y });
+      // For http-request nodes, prefill sensible defaults so the user doesn't
+      // have to configure method/path from scratch every time.
+      if (uses === "@core/http-request") {
+        const newId = Object.keys(next.nodes).find(
+          (id) => !wf.nodes[id] && next.nodes[id]?.uses === "@core/http-request",
+        );
+        if (newId) {
+          next = {
+            ...next,
+            nodes: {
+              ...next.nodes,
+              [newId]: {
+                ...next.nodes[newId]!,
+                in: { method: "GET", path: defaultPathForWorkflow(path) },
+              },
+            },
+          };
+        }
+      }
       applyWorkflow(next);
       markDirty(true);
     },
-    [applyWorkflow, markDirty],
+    [applyWorkflow, markDirty, path],
   );
 
   const onNodesDelete = useCallback(
@@ -363,6 +386,9 @@ export function WorkflowEditor({ path, tabId }: Props) {
     [applyWorkflow, markDirty],
   );
 
+  // Keep expansionRef in sync so node-init effect always sees fresh data
+  expansionRef.current = expansion;
+
   // Toggle handler — flips the membership of `handleId` in the relevant set.
   // Uses the ref so the callback we hand down to each WorkflowNode stays
   // stable across renders (no useCallback churn from setExpansion identity).
@@ -420,19 +446,22 @@ export function WorkflowEditor({ path, tabId }: Props) {
           outputs: [],
         };
         const color = schemas[instance.uses]?.color ?? null;
+        // Read the current expansion state from the ref so re-runs caused by
+        // onInputValueChange (workflow changes) don't reset the user's
+        // expanded/collapsed state back to empty sets.
+        const existingExp = expansionRef.current.get(id);
         return {
           id,
           type: "workflow",
           position: view ?? autoPosition(i),
+          dragHandle: ".node-drag-handle",
           data: {
             id,
             instance,
             ports: np,
             color,
-            // Filled in below via the per-node data merger when expansion
-            // updates. Initial values here come from the *just-seeded* map.
-            expandedInputs: new Set<string>(),
-            expandedOutputs: new Set<string>(),
+            expandedInputs: existingExp?.inputs ?? new Set<string>(),
+            expandedOutputs: existingExp?.outputs ?? new Set<string>(),
             onTogglePort: (side: "input" | "output", handleId: string) =>
               onTogglePort(id, side, handleId),
             onInputValueChange: (portId: string, value: unknown) =>
@@ -803,4 +832,32 @@ export function WorkflowEditor({ path, tabId }: Props) {
 
 function autoPosition(i: number): { x: number; y: number } {
   return { x: (i % 4) * 220 + 40, y: Math.floor(i / 4) * 140 + 40 };
+}
+
+/**
+ * Derives a default HTTP path from the workflow file path.
+ *
+ * Rules:
+ *  - Strip the "workflows/" prefix and ".workflow" suffix.
+ *  - If the last segment is a common CRUD verb (create/update/delete/list/…)
+ *    AND there is at least one parent segment, drop it.
+ *  - Prepend "/" and join remaining segments.
+ *
+ * Examples:
+ *   "workflows/users/create.workflow"       → "/users"
+ *   "workflows/posts/list.workflow"         → "/posts"
+ *   "workflows/health.workflow"             → "/health"
+ *   "workflows/admin/users/delete.workflow" → "/admin/users"
+ */
+export function defaultPathForWorkflow(workflowPath: string): string {
+  const stripped = workflowPath
+    .replace(/^workflows\//, "")
+    .replace(/\.workflow$/, "");
+  const parts = stripped.split("/").filter(Boolean);
+  if (parts.length === 0) return "/";
+  const verbs = new Set(["create", "update", "delete", "list", "get", "show", "index"]);
+  if (parts.length > 1 && verbs.has(parts[parts.length - 1]!.toLowerCase())) {
+    parts.pop();
+  }
+  return "/" + parts.join("/");
 }

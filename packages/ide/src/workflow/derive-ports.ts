@@ -126,9 +126,12 @@ export function derivePorts(
 /**
  * Hard-coded conditional port filtering for @core/http-request.
  *
- * When method is GET or DELETE, the `body` input port is hidden — those HTTP
- * methods conventionally have no request body. The method is read from
- * instance.in (literal) first, then instance.config (back-compat).
+ * `body` is an OUTPUT port — it represents the request body that the trigger
+ * receives from the HTTP client. For GET and DELETE requests, there is no
+ * request body by convention, so we hide it from the outputs tree.
+ *
+ * The method is read from instance.in (literal) first, then instance.config
+ * (back-compat for older workflow files that stored config in a `config:` block).
  *
  * The general Zod-discriminated-union / JSON Schema `if/then/else` case is a
  * larger feature — deferred. This hard-codes only the http-request case.
@@ -140,14 +143,12 @@ function applyHttpRequestConditional(ports: NodePorts, instance: NodeInstance): 
   const method = ((inObj as Record<string, unknown>).method ?? config.method) as string | undefined
 
   if (method !== "GET" && method !== "DELETE") return ports
-  if (!ports.inputs.children || ports.inputs.children.length === 0) return ports
 
+  // Filter `body` from OUTPUTS — body is a property of the incoming request
+  // that the http-request trigger exposes. GET and DELETE have no request body.
   return {
     ...ports,
-    inputs: {
-      ...ports.inputs,
-      children: ports.inputs.children.filter((c) => c.id !== "body"),
-    },
+    outputs: ports.outputs.filter((p) => p.id !== "body"),
   }
 }
 
