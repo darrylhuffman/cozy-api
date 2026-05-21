@@ -13,12 +13,13 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
-// Mock createWorkspaceFile from @/lib/api
 vi.mock("@/lib/api", () => ({
   createWorkspaceFile: vi.fn(),
+  fetchWorkspaceTree: vi.fn(),
 }))
 
-import { createWorkspaceFile } from "@/lib/api"
+import { createWorkspaceFile, fetchWorkspaceTree } from "@/lib/api"
+import type { FileFolder } from "@/data/mock-files"
 import { NewNodeDialog } from "./new-node-dialog"
 
 const TEMPLATE = `import { defineNode } from "@darrylondil/lorien-runtime"
@@ -33,108 +34,184 @@ export default defineNode({
 })
 `
 
+const nodesTree: FileFolder = {
+  type: "folder",
+  id: "n-root",
+  name: "nodes",
+  children: [
+    {
+      type: "folder",
+      id: "n-shared",
+      name: "shared",
+      children: [],
+    },
+  ],
+}
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
 
 describe("NewNodeDialog", () => {
-  it("renders when open=true with placeholder path 'nodes/'", () => {
+  it("renders with the default folder shown and an empty name input", () => {
     render(
-      <NewNodeDialog open onOpenChange={vi.fn()} onCreated={vi.fn()} />,
+      <NewNodeDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={vi.fn()}
+        defaultFolder="nodes"
+        nodesTree={nodesTree}
+      />,
     )
     expect(screen.getByTestId("dialog")).toBeInTheDocument()
-    // Input should have default value "nodes/"
-    const input = screen.getByPlaceholderText("nodes/my-node.ts")
-    expect(input).toBeInTheDocument()
-    expect((input as HTMLInputElement).value).toBe("nodes/")
+    expect(screen.getByText("nodes")).toBeInTheDocument()
+    const nameInput = screen.getByPlaceholderText(/my-node/i) as HTMLInputElement
+    expect(nameInput.value).toBe("")
   })
 
-  it("does not render when open=false", () => {
+  it("uses defaultFolder when provided", () => {
     render(
-      <NewNodeDialog open={false} onOpenChange={vi.fn()} onCreated={vi.fn()} />,
+      <NewNodeDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={vi.fn()}
+        defaultFolder="nodes/shared"
+        nodesTree={nodesTree}
+      />,
     )
-    expect(screen.queryByTestId("dialog")).not.toBeInTheDocument()
+    expect(screen.getByText("nodes/shared")).toBeInTheDocument()
   })
 
-  it("calls createWorkspaceFile with the right path + template, then onCreated with the right uses", async () => {
+  it("toggles the folder picker when Change is clicked", () => {
+    render(
+      <NewNodeDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={vi.fn()}
+        defaultFolder="nodes"
+        nodesTree={nodesTree}
+      />,
+    )
+    expect(screen.queryByTestId("folder-picker")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText("Change"))
+    expect(screen.getByTestId("folder-picker")).toBeInTheDocument()
+  })
+
+  it("calls createWorkspaceFile with <folder>/<name>.ts and the template, then onCreated", async () => {
     vi.mocked(createWorkspaceFile).mockResolvedValue(undefined)
     const onCreated = vi.fn()
     const onOpenChange = vi.fn()
     render(
-      <NewNodeDialog open onOpenChange={onOpenChange} onCreated={onCreated} />,
+      <NewNodeDialog
+        open
+        onOpenChange={onOpenChange}
+        onCreated={onCreated}
+        defaultFolder="nodes/shared"
+        nodesTree={nodesTree}
+      />,
     )
-
-    // Type a path
-    const input = screen.getByPlaceholderText("nodes/my-node.ts")
-    fireEvent.change(input, { target: { value: "nodes/save-user" } })
-
-    // Click Create
+    fireEvent.change(screen.getByPlaceholderText(/my-node/i), {
+      target: { value: "save-user" },
+    })
     await act(async () => {
       fireEvent.click(screen.getByText("Create"))
     })
-
-    expect(createWorkspaceFile).toHaveBeenCalledWith("nodes/save-user.ts", TEMPLATE)
-    expect(onCreated).toHaveBeenCalledWith("./nodes/save-user")
+    expect(createWorkspaceFile).toHaveBeenCalledWith("nodes/shared/save-user.ts", TEMPLATE)
+    expect(onCreated).toHaveBeenCalledWith("./nodes/shared/save-user")
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  it("appends .ts extension automatically if not present", async () => {
+  it("strips a user-typed .ts extension before submitting", async () => {
     vi.mocked(createWorkspaceFile).mockResolvedValue(undefined)
     const onCreated = vi.fn()
     render(
-      <NewNodeDialog open onOpenChange={vi.fn()} onCreated={onCreated} />,
+      <NewNodeDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={onCreated}
+        defaultFolder="nodes"
+        nodesTree={nodesTree}
+      />,
     )
-
-    const input = screen.getByPlaceholderText("nodes/my-node.ts")
-    fireEvent.change(input, { target: { value: "nodes/my-node" } })
-
+    fireEvent.change(screen.getByPlaceholderText(/my-node/i), {
+      target: { value: "foo.ts" },
+    })
     await act(async () => {
       fireEvent.click(screen.getByText("Create"))
     })
-
-    expect(createWorkspaceFile).toHaveBeenCalledWith("nodes/my-node.ts", TEMPLATE)
-    expect(onCreated).toHaveBeenCalledWith("./nodes/my-node")
+    expect(createWorkspaceFile).toHaveBeenCalledWith("nodes/foo.ts", TEMPLATE)
   })
 
-  it("does not append .ts when already present", async () => {
-    vi.mocked(createWorkspaceFile).mockResolvedValue(undefined)
-    const onCreated = vi.fn()
+  it("disables Create when name is empty", () => {
     render(
-      <NewNodeDialog open onOpenChange={vi.fn()} onCreated={onCreated} />,
+      <NewNodeDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={vi.fn()}
+        defaultFolder="nodes"
+        nodesTree={nodesTree}
+      />,
     )
+    const createBtn = screen.getByText("Create") as HTMLButtonElement
+    expect(createBtn.disabled).toBe(true)
+  })
 
-    const input = screen.getByPlaceholderText("nodes/my-node.ts")
-    fireEvent.change(input, { target: { value: "nodes/already.ts" } })
-
+  it("shows an inline error if name contains a slash", async () => {
+    vi.mocked(createWorkspaceFile).mockResolvedValue(undefined)
+    render(
+      <NewNodeDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={vi.fn()}
+        defaultFolder="nodes"
+        nodesTree={nodesTree}
+      />,
+    )
+    fireEvent.change(screen.getByPlaceholderText(/my-node/i), {
+      target: { value: "foo/bar" },
+    })
     await act(async () => {
       fireEvent.click(screen.getByText("Create"))
     })
-
-    expect(createWorkspaceFile).toHaveBeenCalledWith("nodes/already.ts", TEMPLATE)
-    expect(onCreated).toHaveBeenCalledWith("./nodes/already")
+    expect(screen.getByText(/cannot contain slashes/i)).toBeInTheDocument()
+    expect(createWorkspaceFile).not.toHaveBeenCalled()
   })
 
-  it("shows error inline when createWorkspaceFile throws (409 file exists); onCreated NOT called", async () => {
+  it("surfaces backend errors inline (409 file exists) and does not call onCreated", async () => {
     vi.mocked(createWorkspaceFile).mockRejectedValue(new Error("File already exists"))
     const onCreated = vi.fn()
     const onOpenChange = vi.fn()
     render(
-      <NewNodeDialog open onOpenChange={onOpenChange} onCreated={onCreated} />,
+      <NewNodeDialog
+        open
+        onOpenChange={onOpenChange}
+        onCreated={onCreated}
+        defaultFolder="nodes"
+        nodesTree={nodesTree}
+      />,
     )
-
-    const input = screen.getByPlaceholderText("nodes/my-node.ts")
-    fireEvent.change(input, { target: { value: "nodes/existing" } })
-
+    fireEvent.change(screen.getByPlaceholderText(/my-node/i), {
+      target: { value: "existing" },
+    })
     await act(async () => {
       fireEvent.click(screen.getByText("Create"))
     })
-
     await waitFor(() => {
       expect(screen.getByText("File already exists")).toBeInTheDocument()
     })
     expect(onCreated).not.toHaveBeenCalled()
-    // Dialog stays open
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
+
+  it("fetches the nodes tree when nodesTree prop is not provided", async () => {
+    vi.mocked(fetchWorkspaceTree).mockResolvedValue({
+      workflows: { type: "folder", id: "wf", name: "workflows", children: [] },
+      nodes: nodesTree,
+    })
+    render(<NewNodeDialog open onOpenChange={vi.fn()} onCreated={vi.fn()} />)
+    await waitFor(() => {
+      expect(fetchWorkspaceTree).toHaveBeenCalled()
+    })
   })
 })
