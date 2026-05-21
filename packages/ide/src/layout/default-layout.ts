@@ -2,15 +2,16 @@ import type { AddPanelOptions, DockviewApi } from "dockview-react"
 
 const STORAGE_KEY = "lorien-ide-layout"
 
-export type PaneId = "files" | "workflow" | "code" | "inspector"
+export type PaneId = "files" | "workflow" | "code" | "inspector" | "agents"
 
-export const PANE_IDS = ["files", "workflow", "code", "inspector"] as const
+export const PANE_IDS = ["files", "workflow", "code", "inspector", "agents"] as const
 
 export const PANE_TITLES: Record<PaneId, string> = {
   files: "Files",
   workflow: "Workflow",
   code: "Code",
   inspector: "Inspector",
+  agents: "Agents",
 }
 
 export interface SavedLayout {
@@ -82,6 +83,15 @@ export function buildDefaultLayout(api: DockviewApi): void {
     position: { referencePanel: "code", direction: "right" },
     initialWidth: 400,
   })
+  api.addPanel({
+    id: "agents",
+    component: "agents",
+    title: "Agents",
+    position: { referencePanel: "inspector", direction: "within" },
+  })
+  // Inspector stays the default-visible tab in its group — dockview otherwise
+  // activates the most recently added panel.
+  api.getPanel("inspector")?.api.setActive()
 }
 
 export { STORAGE_KEY }
@@ -114,6 +124,16 @@ export function reopenPanel(api: DockviewApi, id: PaneId): void {
     const ref = api.getPanel("code") ?? api.getPanel("workflow") ?? api.getPanel("files")
     if (ref) options.position = { referencePanel: ref.id, direction: "right" }
     options.initialWidth = 400
+  } else if (id === "agents") {
+    // Prefer joining Inspector's group; fall back to a new pane on the right.
+    const inspector = api.getPanel("inspector")
+    if (inspector) {
+      options.position = { referencePanel: inspector.id, direction: "within" }
+    } else {
+      const ref = api.getPanel("code") ?? api.getPanel("workflow") ?? api.getPanel("files")
+      if (ref) options.position = { referencePanel: ref.id, direction: "right" }
+      options.initialWidth = 400
+    }
   } else {
     // workflow or code — prefer joining the sibling editor group
     const sibling: PaneId = id === "workflow" ? "code" : "workflow"

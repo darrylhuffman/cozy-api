@@ -1,6 +1,13 @@
 import "dockview-react/dist/styles/dockview.css"
-import { DockviewReact, type DockviewReadyEvent, type IDockviewPanelProps } from "dockview-react"
+import {
+  DockviewDefaultTab,
+  DockviewReact,
+  type DockviewReadyEvent,
+  type IDockviewPanelHeaderProps,
+  type IDockviewPanelProps,
+} from "dockview-react"
 import { useCallback } from "react"
+import { AgentsPanel } from "@/panels/agents/agents-panel"
 import { CodeEditorPanel } from "@/panels/code-editor-panel"
 import { FilesPanel } from "@/panels/files-panel"
 import { InspectorPanel } from "@/panels/inspector-panel"
@@ -14,6 +21,14 @@ const components = {
   workflow: (_props: IDockviewPanelProps) => <WorkflowEditorPanel />,
   code: (_props: IDockviewPanelProps) => <CodeEditorPanel />,
   inspector: (_props: IDockviewPanelProps) => <InspectorPanel />,
+  agents: (_props: IDockviewPanelProps) => <AgentsPanel />,
+}
+
+// Hide the per-tab X on the outer dockview group tabs — those panels
+// (Files / Workflow / Code / Inspector) are always-on and re-organizable,
+// not closeable. Sub-tabs inside Workflow/Code panels keep their own close UX.
+function NoCloseTab(props: IDockviewPanelHeaderProps) {
+  return <DockviewDefaultTab {...props} hideClose />
 }
 
 export function DockView() {
@@ -48,6 +63,7 @@ export function DockView() {
     <DockviewReact
       onReady={onReady}
       components={components}
+      defaultTabComponent={NoCloseTab}
       className={theme === "dark" ? "dockview-theme-dark" : "dockview-theme-light"}
     />
   )
