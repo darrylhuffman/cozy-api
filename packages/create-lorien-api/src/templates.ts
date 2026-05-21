@@ -110,10 +110,10 @@ Rules:
 
 ## Verification
 
-After edits, run:
+After edits, run (any package manager works — \`npm\`, \`pnpm\`, \`yarn\`, \`bun\`):
 
 \`\`\`
-pnpm typecheck && pnpm test
+npm run typecheck && npm run test
 \`\`\`
 
 Tests live next to nodes in \`*.test.ts\` files and use \`testWorkflow\` / \`traceWorkflow\` from \`@darrylondil/lorien-runtime/testing\`.
@@ -279,7 +279,7 @@ serve({ fetch: app.fetch, port }, ({ port }) => {
 `
 }
 
-export function renderAgentsMd(_ctx: TemplateContext): string {
+export function renderAgentsMd(): string {
   return SKILL_BODY
 }
 

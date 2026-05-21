@@ -69,7 +69,7 @@ describe("template renderers", () => {
   })
 
   it("AGENTS.md is the canonical SKILL_BODY with no frontmatter", () => {
-    const out = renderAgentsMd(ctx)
+    const out = renderAgentsMd()
     expect(out.startsWith("---")).toBe(false)
     expect(out).toMatch(/# lorien-api project guide/)
     expect(out).toMatch(/## The node contract/)

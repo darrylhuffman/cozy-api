@@ -34,7 +34,7 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
     ["workflows/hello.workflow", renderHelloWorkflow()],
     ["nodes/say-hello.ts", renderSayHelloNode()],
     ["src/server.ts", renderServerEntry()],
-    ["AGENTS.md", renderAgentsMd(ctx)],
+    ["AGENTS.md", renderAgentsMd()],
     [".claude/skills/lorien-api/SKILL.md", renderClaudeSkill()],
     ["README.md", renderReadme(ctx, pm)],
   ];
