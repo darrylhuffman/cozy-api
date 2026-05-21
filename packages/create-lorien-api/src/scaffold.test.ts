@@ -29,6 +29,7 @@ describe("scaffold", () => {
       "nodes/say-hello.ts",
       "src/server.ts",
       "AGENTS.md",
+      ".claude/skills/lorien-api/SKILL.md",
       "README.md",
     ];
     for (const f of expected) {
@@ -49,5 +50,26 @@ describe("scaffold", () => {
     await scaffold({ target, name: "yarn-app", pm: "yarn" });
     const readme = readFileSync(join(target, "README.md"), "utf-8");
     expect(readme).toMatch(/yarn dev/);
+  });
+
+  it("writes a Claude Code skill file with frontmatter under .claude/skills/lorien-api", async () => {
+    const target = join(dir, "skill-app");
+    await scaffold({ target, name: "skill-app", pm: "pnpm" });
+    const skill = readFileSync(
+      join(target, ".claude/skills/lorien-api/SKILL.md"),
+      "utf-8",
+    );
+    expect(skill.startsWith("---\nname: lorien-api\n")).toBe(true);
+    expect(skill).toMatch(/# lorien-api project guide/);
+    expect(skill).toMatch(/<!-- lorien-skill-version: 1 -->/);
+  });
+
+  it("writes AGENTS.md without frontmatter (just the canonical body)", async () => {
+    const target = join(dir, "agents-app");
+    await scaffold({ target, name: "agents-app", pm: "pnpm" });
+    const agents = readFileSync(join(target, "AGENTS.md"), "utf-8");
+    expect(agents.startsWith("---")).toBe(false);
+    expect(agents).toMatch(/# lorien-api project guide/);
+    expect(agents).toMatch(/<!-- lorien-skill-version: 1 -->/);
   });
 });

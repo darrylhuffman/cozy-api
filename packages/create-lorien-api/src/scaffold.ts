@@ -4,9 +4,10 @@ import type { PackageManager } from "./detect-package-manager.js";
 import {
   renderAgentsMd,
   renderBiomeJson,
-  renderLorienConfig,
+  renderClaudeSkill,
   renderGitignore,
   renderHelloWorkflow,
+  renderLorienConfig,
   renderPackageJson,
   renderReadme,
   renderSayHelloNode,
@@ -34,6 +35,7 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
     ["nodes/say-hello.ts", renderSayHelloNode()],
     ["src/server.ts", renderServerEntry()],
     ["AGENTS.md", renderAgentsMd(ctx)],
+    [".claude/skills/lorien-api/SKILL.md", renderClaudeSkill()],
     ["README.md", renderReadme(ctx, pm)],
   ];
 
