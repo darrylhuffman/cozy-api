@@ -826,4 +826,38 @@ describe("WorkflowEditor", () => {
       })
     })
   })
+
+  describe("drag-from-sidebar drop onto canvas", () => {
+    it("dropping a lorien-node payload adds a node at the drop coordinates", async () => {
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      const canvas = screen.getByTestId("react-flow").parentElement!
+
+      // Simulate a drag-drop with the lorien-node MIME type
+      const dataTransferMock = {
+        types: ["application/lorien-node"],
+        getData: vi.fn().mockReturnValue("./nodes/users/save-user"),
+        dropEffect: "",
+      }
+
+      act(() => {
+        fireEvent.dragOver(canvas, { dataTransfer: dataTransferMock, clientX: 250, clientY: 150 })
+      })
+
+      act(() => {
+        fireEvent.drop(canvas, { dataTransfer: dataTransferMock, clientX: 250, clientY: 150 })
+      })
+
+      // A new node should have been added (now 4 nodes)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("4")
+      })
+
+      // The tab should be dirty
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(true)
+    })
+  })
 })
