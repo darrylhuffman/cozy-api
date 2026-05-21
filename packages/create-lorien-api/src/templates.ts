@@ -279,56 +279,8 @@ serve({ fetch: app.fetch, port }, ({ port }) => {
 `
 }
 
-export function renderAgentsMd(ctx: TemplateContext): string {
-  return `# AI agent guide for ${ctx.name}
-
-This project uses **lorien-api**: a file-based API framework where \`.workflow\`
-files define HTTP endpoints as dependency graphs of typed nodes.
-
-## Layout
-
-- \`workflows/**/*.workflow\` — HTTP routes as JSON dependency graphs
-- \`nodes/**/*.ts\` — typed compute units (via \`defineNode\` from \`@darrylondil/lorien-runtime\`)
-- \`lorien.config.ts\` — service registry (db, logger, etc.)
-
-## Adding a new endpoint
-
-1. Create a node in \`nodes/\` (e.g., \`nodes/calculate.ts\`):
-
-   \`\`\`ts
-   import { defineNode } from "@darrylondil/lorien-runtime"
-   import { z } from "zod"
-
-   export default defineNode({
-     name: "Calculate",
-     inputs: z.object({ x: z.number() }),
-     outputs: z.object({ result: z.number() }),
-     async run({ x }) {
-       return { result: x * 2 }
-     },
-   })
-   \`\`\`
-
-2. Create a workflow in \`workflows/\` (e.g., \`workflows/calc.workflow\`):
-
-   \`\`\`json
-   {
-     "lorien": 1,
-     "nodes": {
-       "req": { "uses": "@core/http-request", "config": { "path": "/calc", "method": "POST" } },
-       "calc": { "uses": "./nodes/calculate", "in": { "x": "req.body.x" } },
-       "res": { "uses": "@core/response", "in": { "body": "calc.result" } }
-     }
-   }
-   \`\`\`
-
-3. Restart the dev server. \`POST /calc {"x": 5}\` returns \`10\`.
-
-## References
-
-- Documentation: https://lorien-api.dev (placeholder)
-- @darrylondil/lorien-runtime API: \`testWorkflow\`, \`traceWorkflow\`, \`defineNode\`, \`defineConfig\`
-`
+export function renderAgentsMd(_ctx: TemplateContext): string {
+  return SKILL_BODY
 }
 
 /** Returns the correct run prefix for the given package manager. */

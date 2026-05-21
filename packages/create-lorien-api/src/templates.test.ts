@@ -67,9 +67,16 @@ describe("template renderers", () => {
     expect(renderServerEntry()).toMatch(/@hono\/node-server/)
   })
 
-  it("AGENTS.md contains the project name", () => {
-    expect(renderAgentsMd(ctx)).toMatch(/my-app/)
-    expect(renderAgentsMd(ctx)).toMatch(/lorien-api/)
+  it("AGENTS.md is the canonical SKILL_BODY with no frontmatter", () => {
+    const out = renderAgentsMd(ctx)
+    expect(out.startsWith("---")).toBe(false)
+    expect(out).toMatch(/# lorien-api project guide/)
+    expect(out).toMatch(/## The node contract/)
+    expect(out).toMatch(/<!-- lorien-skill-version: 1 -->/)
+    // Project name is intentionally NOT interpolated — guide is generic.
+    expect(out).not.toMatch(/my-app/)
+    // Trailing newline preserved
+    expect(out.endsWith("\n")).toBe(true)
   })
 
   it("README has the project name and uses the chosen package manager (pnpm)", () => {
