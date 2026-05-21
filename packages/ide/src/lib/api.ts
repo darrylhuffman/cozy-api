@@ -179,6 +179,8 @@ export function restBase(): string {
 export function wsUrl(): string {
   const base = restBase()
   const wsScheme = base.startsWith("https://") ? "wss://" : "ws://"
-  const host = base.replace(/^https?:\/\//, "")
+  // Strip the scheme and any trailing slash so a base URL like
+  // `http://host:port/` doesn't produce `ws://host:port//__lorien/...`.
+  const host = base.replace(/^https?:\/\//, "").replace(/\/+$/, "")
   return `${wsScheme}${host}/__lorien/agents/ws`
 }

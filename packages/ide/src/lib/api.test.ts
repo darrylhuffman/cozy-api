@@ -28,4 +28,10 @@ describe("api URL helpers", () => {
     const { restBase } = await import("./api.js")
     expect(restBase()).toBe("http://10.0.0.5:8080")
   })
+
+  it("wsUrl() strips a trailing slash on the base so the path has no double-slash", async () => {
+    vi.stubEnv("VITE_LORIEN_API_URL", "http://10.0.0.5:8080/")
+    const { wsUrl } = await import("./api.js")
+    expect(wsUrl()).toBe("ws://10.0.0.5:8080/__lorien/agents/ws")
+  })
 })
