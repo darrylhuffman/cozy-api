@@ -35,10 +35,11 @@ export interface AgentAvailability {
   authed?: boolean
 }
 
-export interface AvailabilityResponse {
-  claude: AgentAvailability
-  codex: AgentAvailability
-}
+/**
+ * Mirrors the broker's `Record<AgentName, AgentAvailability>` shape so
+ * consumers can index by an `AgentName` variable without a cast.
+ */
+export type AvailabilityResponse = Record<AgentName, AgentAvailability>
 
 interface PickerTab {
   kind: "picker"
