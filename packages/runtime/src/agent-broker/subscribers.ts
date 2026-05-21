@@ -6,6 +6,14 @@ export interface SocketLike {
   isOpen(): boolean
 }
 
+/**
+ * Per-chat WebSocket subscriber registry.
+ *
+ * Note: closed sockets are skipped during broadcast but NOT pruned. Removal
+ * is the caller's responsibility via `unsubscribe` / `unsubscribeAll`,
+ * typically called from a WS `close` event handler. Omitting that cleanup
+ * causes per-chat sets to grow unboundedly.
+ */
 export class SubscriberRegistry {
   private readonly perChat = new Map<string, Set<SocketLike>>()
 
@@ -45,7 +53,14 @@ export class SubscriberRegistry {
     if (!set) return
     const payload = JSON.stringify(msg)
     for (const s of set) {
-      if (s.isOpen()) s.send(payload)
+      if (!s.isOpen()) continue
+      try {
+        s.send(payload)
+      } catch {
+        // Socket died mid-send (TOCTOU between isOpen() and send()).
+        // Lifecycle cleanup is owned by the WS handler — we just skip and
+        // continue so other subscribers still receive the broadcast.
+      }
     }
   }
 }

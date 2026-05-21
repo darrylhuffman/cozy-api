@@ -77,4 +77,21 @@ describe("SubscriberRegistry", () => {
     reg.broadcast("c1", { type: "chat_created", chatId: "c1" })
     expect(closed.messages).toHaveLength(0)
   })
+
+  it("broadcast continues to other subscribers if one send() throws", () => {
+    const reg = new SubscriberRegistry()
+    const bad: SocketLike = {
+      isOpen: () => true,
+      send: () => {
+        throw new Error("socket gone")
+      },
+    }
+    const good = makeSocket()
+    reg.subscribe("c1", bad)
+    reg.subscribe("c1", good)
+    expect(() =>
+      reg.broadcast("c1", { type: "chat_created", chatId: "c1" }),
+    ).not.toThrow()
+    expect(good.messages).toHaveLength(1)
+  })
 })
