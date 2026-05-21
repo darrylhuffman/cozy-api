@@ -104,6 +104,8 @@ export interface JsonSchema {
 }
 
 export interface NodeSchemas {
+  /** Human-readable display name from defineNode({ name }). Null when unset. */
+  name?: string | null
   inputs: JsonSchema
   outputs: JsonSchema
   /** Optional accent color string (e.g. "indigo", "#a78bfa"). */
@@ -147,4 +149,36 @@ export async function createWorkspaceFolder(path: string): Promise<void> {
     }
     throw new Error(err.error ?? `Create folder failed: ${res.status}`)
   }
+}
+
+// ── Agent broker base URLs ────────────────────────────────────────────────────
+
+/**
+ * Base URLs for the lorien dev-server agent broker.
+ *
+ * In development, the IDE runs on Vite's dev server (e.g. port 5173) while
+ * the lorien runtime / broker runs separately (default port 3000). Set
+ * `VITE_LORIEN_API_URL` to point at the runtime when they differ.
+ */
+
+const DEFAULT_BASE = "http://localhost:3000"
+
+export function restBase(): string {
+  const viteUrl =
+    (import.meta as ImportMeta & { env?: Record<string, string> }).env
+      ?.VITE_LORIEN_API_URL
+  // In test environments, vi.stubEnv sets process.env but not import.meta.env
+  // (Vite inlines VITE_* at transform time). Fall back to process.env for testability.
+  const procUrl =
+    typeof process !== "undefined"
+      ? (process.env as Record<string, string | undefined>).VITE_LORIEN_API_URL
+      : undefined
+  return viteUrl ?? procUrl ?? DEFAULT_BASE
+}
+
+export function wsUrl(): string {
+  const base = restBase()
+  const wsScheme = base.startsWith("https://") ? "wss://" : "ws://"
+  const host = base.replace(/^https?:\/\//, "")
+  return `${wsScheme}${host}/__lorien/agents/ws`
 }
