@@ -27,7 +27,7 @@ export function computeInitialExpansion(
   outputs: Set<string>
 } {
   return {
-    inputs: computeInitialInputExpansion(ports.inputs, instance.in),
+    inputs: computeInitialInputExpansion(ports.inputs, instance.in, instance.values),
     outputs: computeInitialOutputExpansion(ports.outputs),
   }
 }
@@ -37,7 +37,7 @@ export function computeInitialExpansion(
  *
  * - When `in:` is a string (whole-object form), the per-field tree is moot — keep
  *   the root collapsed.
- * - When every top-level child of the inputs root is bound in `in:`, the root
+ * - When every top-level child is bound in `in:` OR in `values:`, the root
  *   collapses (it's "satisfied").
  * - Otherwise the root expands so the user can see what's missing.
  *
@@ -47,6 +47,7 @@ export function computeInitialExpansion(
 export function computeInitialInputExpansion(
   inputRoot: PortNode,
   nodeIn: NodeInstance["in"],
+  nodeValues: NodeInstance["values"],
 ): Set<string> {
   // Empty leaf root (e.g. trigger nodes) — nothing to expand.
   if (inputRoot.children.length === 0) return new Set()
@@ -54,7 +55,13 @@ export function computeInitialInputExpansion(
   // Whole-object `in:` (string form) — no per-field bindings to inspect.
   if (typeof nodeIn === "string") return new Set()
 
-  const filled = new Set(Object.keys(nodeIn ?? {}))
+  const filled = new Set<string>()
+  if (nodeIn && typeof nodeIn !== "string") {
+    for (const k of Object.keys(nodeIn)) filled.add(k)
+  }
+  if (nodeValues) {
+    for (const k of Object.keys(nodeValues)) filled.add(k)
+  }
   const requiredFields = inputRoot.children.map((c) => c.label)
   const allSatisfied =
     requiredFields.length > 0 && requiredFields.every((r) => filled.has(r))

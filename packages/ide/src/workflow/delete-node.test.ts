@@ -12,7 +12,8 @@ const wf: WorkflowFile = {
     },
     response: {
       uses: "@core/response",
-      in: { body: "save.user", status: 201 },
+      in: { body: "save.user" },
+      values: { status: 201 },
     },
     log: { uses: "./nodes/log", in: "save.user" },
   },
@@ -33,7 +34,8 @@ describe("deleteNode", () => {
 
   it("strips per-field `in:` entries pointing at the deleted node", () => {
     const next = deleteNode(wf, "save")
-    expect(next.nodes.response?.in).toEqual({ status: 201 }) // body removed
+    // body referenced save.user — gone. The `in:` block becomes empty and is dropped.
+    expect(next.nodes.response?.in).toBeUndefined()
   })
 
   it("clears whole-object `in:` strings pointing at the deleted node", () => {
@@ -41,9 +43,9 @@ describe("deleteNode", () => {
     expect(next.nodes.log?.in).toBeUndefined() // string-form ref scrubbed
   })
 
-  it("does not strip references that are literal values", () => {
+  it("preserves `values:` literals on nodes when deleting (literals are independent of refs)", () => {
     const next = deleteNode(wf, "save")
-    expect(next.nodes.response?.in).toMatchObject({ status: 201 })
+    expect(next.nodes.response?.values).toEqual({ status: 201 })
   })
 
   it("returns wf unchanged when id doesn't exist", () => {

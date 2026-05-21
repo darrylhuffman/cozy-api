@@ -24,7 +24,7 @@ describe("loadWorkspace", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/users", method: "POST" },
+            values: { path: "/users", method: "POST" },
           },
           res: { uses: "@core/response", in: { body: "req.body" } },
         },

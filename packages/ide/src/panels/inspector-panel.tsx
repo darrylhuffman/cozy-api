@@ -3,10 +3,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   fetchWorkspaceSchemas,
   type JsonSchema,
+  type NodeInstance,
   type NodeSchemas,
 } from "@/lib/api"
 import { useSelectionStore } from "@/store/selection"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
+import { useTabsStore } from "@/store/tabs"
+import { expandTemplate } from "@/workflow/template"
 
 export function InspectorPanel() {
   return (
@@ -35,6 +38,9 @@ export function InspectorPanel() {
 function InspectContent() {
   const selectedId = useSelectionStore((s) => s.selectedNodeId)
   const workflow = useLiveWorkflowStore((s) => s.workflow)
+  const liveTabId = useLiveWorkflowStore((s) => s.tabId)
+  const tabs = useTabsStore((s) => s.tabs)
+  const workflowPath = tabs.find((t) => t.id === liveTabId)?.path ?? ""
   const [schemas, setSchemas] = useState<Record<string, NodeSchemas>>({})
 
   useEffect(() => {
@@ -94,13 +100,43 @@ function InspectContent() {
         </Section>
       )}
       <Section label="Inputs">
-        <SchemaTree {...(schema?.inputs ? { schema: schema.inputs } : {})} />
+        <SchemaTree
+          {...(schema?.inputs ? { schema: schema.inputs } : {})}
+          instance={instance}
+          workflowPath={workflowPath}
+        />
       </Section>
       <Section label="Outputs">
         <SchemaTree {...(schema?.outputs ? { schema: schema.outputs } : {})} />
       </Section>
     </div>
   )
+}
+
+/**
+ * Compute the effective value the runtime will pass to a top-level input port.
+ * Priority chain mirrors the inline widget:
+ *   1. instance.in[port]      — a reference (rendered as the ref string)
+ *   2. instance.values[port]  — a literal
+ *   3. schema.default         — declarative default (template-expanded)
+ *   4. undefined              — empty
+ */
+function effectiveInputValue(
+  portId: string,
+  schema: JsonSchema,
+  instance: NodeInstance,
+  workflowPath: string,
+): { kind: "reference"; value: string } | { kind: "literal"; value: unknown } | null {
+  if (typeof instance.in === "object" && instance.in !== null && portId in instance.in) {
+    return { kind: "reference", value: instance.in[portId] as string }
+  }
+  if (instance.values && portId in instance.values) {
+    return { kind: "literal", value: instance.values[portId] }
+  }
+  if (schema.default !== undefined) {
+    return { kind: "literal", value: expandTemplate(schema.default, { workflowPath }) }
+  }
+  return null
 }
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
@@ -123,20 +159,56 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   )
 }
 
-function SchemaTree({ schema, depth = 0 }: { schema?: JsonSchema; depth?: number }) {
+function SchemaTree({
+  schema,
+  depth = 0,
+  instance,
+  workflowPath,
+}: {
+  schema?: JsonSchema
+  depth?: number
+  /** When set, the top-level rows show the effective value alongside the type. */
+  instance?: NodeInstance
+  workflowPath?: string
+}) {
   if (!schema || schema.type !== "object" || !schema.properties) {
     return <div className="text-xs italic text-muted-foreground">(empty)</div>
   }
   return (
     <ul className="font-mono text-xs">
-      {Object.entries(schema.properties).map(([key, sub]) => (
-        <SchemaTreeRow key={key} name={key} schema={sub} depth={depth} />
-      ))}
+      {Object.entries(schema.properties).map(([key, sub]) => {
+        const value =
+          instance && depth === 0
+            ? effectiveInputValue(key, sub, instance, workflowPath ?? "")
+            : null
+        return (
+          <SchemaTreeRow
+            key={key}
+            name={key}
+            schema={sub}
+            depth={depth}
+            effectiveValue={value}
+          />
+        )
+      })}
     </ul>
   )
 }
 
-function SchemaTreeRow({ name, schema, depth }: { name: string; schema: JsonSchema; depth: number }) {
+function SchemaTreeRow({
+  name,
+  schema,
+  depth,
+  effectiveValue,
+}: {
+  name: string
+  schema: JsonSchema
+  depth: number
+  effectiveValue?:
+    | { kind: "reference"; value: string }
+    | { kind: "literal"; value: unknown }
+    | null
+}) {
   const isObject = schema.type === "object" && schema.properties
   const isArray = schema.type === "array" && schema.items
   const isExpandable = Boolean(isObject ?? isArray)
@@ -149,6 +221,17 @@ function SchemaTreeRow({ name, schema, depth }: { name: string; schema: JsonSche
       <li style={indent} className="py-0.5">
         <span>{name}</span>
         <span className="ml-2 text-muted-foreground">({describeType(schema)})</span>
+        {effectiveValue && (
+          <span
+            className={
+              effectiveValue.kind === "reference"
+                ? "ml-2 text-primary"
+                : "ml-2 text-muted-foreground"
+            }
+          >
+            = {formatEffectiveValue(effectiveValue)}
+          </span>
+        )}
       </li>
     )
   }
@@ -178,6 +261,17 @@ function SchemaTreeRow({ name, schema, depth }: { name: string; schema: JsonSche
       )}
     </li>
   )
+}
+
+function formatEffectiveValue(
+  v: { kind: "reference"; value: string } | { kind: "literal"; value: unknown },
+): string {
+  if (v.kind === "reference") return v.value
+  const lit = v.value
+  if (typeof lit === "string") return JSON.stringify(lit)
+  if (lit === null || lit === undefined) return String(lit)
+  if (typeof lit === "object") return JSON.stringify(lit)
+  return String(lit)
 }
 
 function describeType(s: JsonSchema): string {

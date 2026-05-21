@@ -161,30 +161,16 @@ export function WorkflowEditor({ path, tabId }: Props) {
     (uses: string, x: number, y: number) => {
       const wf = workflowRef.current;
       if (!wf) return;
-      let next = addNode(wf, uses, { x, y });
-      // For http-request nodes, prefill sensible defaults so the user doesn't
-      // have to configure method/path from scratch every time.
-      if (uses === "@core/http-request") {
-        const newId = Object.keys(next.nodes).find(
-          (id) => !wf.nodes[id] && next.nodes[id]?.uses === "@core/http-request",
-        );
-        if (newId) {
-          next = {
-            ...next,
-            nodes: {
-              ...next.nodes,
-              [newId]: {
-                ...next.nodes[newId]!,
-                in: { method: "GET", path: defaultPathForWorkflow(path) },
-              },
-            },
-          };
-        }
-      }
+      const next = addNode(wf, uses, { x, y });
+      // No node-type-specific prefilling here. Schema defaults (declared in
+      // CORE_SCHEMAS / the workspace introspector) flow through the widget
+      // value priority chain instead, so a freshly-added @core/http-request
+      // displays "GET" + "/users" without writing anything into the workflow
+      // file. The user can override by typing — that writes to `values:`.
       applyWorkflow(next);
       markDirty(true);
     },
-    [applyWorkflow, markDirty, path],
+    [applyWorkflow, markDirty],
   );
 
   const onNodesDelete = useCallback(
@@ -360,9 +346,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
 
   /**
    * Called when the user edits a literal value in an inline input widget on a
-   * workflow node. Writes the new value into the workflow's `in:` block for
-   * that port and marks the tab dirty. Connection references are never
-   * overwritten here — the widget is only shown when the port is unconnected.
+   * workflow node. Writes the new value into the workflow's `values:` block
+   * for that port and marks the tab dirty. Connection references in `in:` are
+   * never touched here — the widget is only shown when the port is
+   * unconnected.
    */
   const onInputValueChange = useCallback(
     (nodeId: string, portId: string, value: unknown) => {
@@ -370,14 +357,11 @@ export function WorkflowEditor({ path, tabId }: Props) {
       if (!wf) return;
       const node = wf.nodes[nodeId];
       if (!node) return;
-      const base =
-        typeof node.in === "object" && node.in !== null && !Array.isArray(node.in)
-          ? { ...(node.in as Record<string, unknown>) }
-          : {};
-      const nextIn: Record<string, unknown> = { ...base, [portId]: value };
+      const baseValues = node.values ? { ...node.values } : {};
+      const nextValues: Record<string, unknown> = { ...baseValues, [portId]: value };
       const next: WorkflowFile = {
         ...wf,
-        nodes: { ...wf.nodes, [nodeId]: { ...node, in: nextIn } },
+        nodes: { ...wf.nodes, [nodeId]: { ...node, values: nextValues } },
       };
       applyWorkflow(next);
       markDirty(true);
@@ -459,6 +443,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
             instance,
             ports: np,
             color,
+            workflowPath: path,
             expandedInputs: existingExp?.inputs ?? new Set<string>(),
             expandedOutputs: existingExp?.outputs ?? new Set<string>(),
             onTogglePort: (side: "input" | "output", handleId: string) =>
@@ -471,7 +456,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
     );
     setNodes(initial);
     nodesRef.current = initial;
-  }, [workflow, schemas, onTogglePort, onInputValueChange]);
+  }, [workflow, schemas, onTogglePort, onInputValueChange, path]);
 
   // Push the latest expansion state into each node's data so React Flow
   // re-renders the node when expansion changes.  Separated from initialise
@@ -684,7 +669,12 @@ export function WorkflowEditor({ path, tabId }: Props) {
       const targetNode = wf.nodes[target];
       if (!targetNode) return;
 
-      let nextIn: string | Record<string, unknown>;
+      let nextIn: string | Record<string, string>;
+      // Fields whose literal values must be cleared from `values:` because a
+      // reference is taking over. The connection wins over the literal.
+      const valuesToClear = new Set<string>();
+      // When set, drop `values:` entirely (whole-object form replaces it).
+      let dropAllValues = false;
 
       // targetHandle === ROOT_HANDLE_ID means the user dropped onto the root
       // input port (collapsed node). Auto-expand to per-field references when
@@ -712,9 +702,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
             );
             if (!ok) return;
           }
-          const expanded: Record<string, unknown> = {};
+          const expanded: Record<string, string> = {};
           for (const field of targetFields) {
             expanded[field] = `${refString}.${field}`;
+            valuesToClear.add(field);
           }
           nextIn = expanded;
         } else {
@@ -732,20 +723,50 @@ export function WorkflowEditor({ path, tabId }: Props) {
             if (!ok) return;
           }
           nextIn = refString;
+          // Whole-object form replaces all per-field state — including any
+          // literals the user had typed.
+          dropAllValues = true;
         }
       } else {
         // Per-field form. Convert string-form to object-form if needed.
-        const base: Record<string, unknown> =
+        const base: Record<string, string> =
           typeof targetNode.in === "string" || !targetNode.in
             ? {}
             : { ...targetNode.in };
         base[targetHandle] = refString;
         nextIn = base;
+        valuesToClear.add(targetHandle);
+      }
+
+      // Clear the corresponding literal values where references now take over.
+      let nextValues: Record<string, unknown> | undefined = targetNode.values;
+      if (dropAllValues) {
+        nextValues = undefined;
+      } else if (valuesToClear.size > 0 && targetNode.values) {
+        const filtered: Record<string, unknown> = {};
+        let removed = false;
+        for (const [k, v] of Object.entries(targetNode.values)) {
+          if (valuesToClear.has(k)) {
+            removed = true;
+            continue;
+          }
+          filtered[k] = v;
+        }
+        if (removed) {
+          nextValues = Object.keys(filtered).length > 0 ? filtered : undefined;
+        }
+      }
+
+      const nextNode: typeof targetNode = { ...targetNode, in: nextIn };
+      if (nextValues === undefined) {
+        delete (nextNode as { values?: unknown }).values;
+      } else {
+        nextNode.values = nextValues;
       }
 
       const next: WorkflowFile = {
         ...wf,
-        nodes: { ...wf.nodes, [target]: { ...targetNode, in: nextIn } },
+        nodes: { ...wf.nodes, [target]: nextNode },
       };
       applyWorkflow(next);
       markDirty(true);
@@ -872,29 +893,8 @@ function autoPosition(i: number): { x: number; y: number } {
 }
 
 /**
- * Derives a default HTTP path from the workflow file path.
- *
- * Rules:
- *  - Strip the "workflows/" prefix and ".workflow" suffix.
- *  - If the last segment is a common CRUD verb (create/update/delete/list/…)
- *    AND there is at least one parent segment, drop it.
- *  - Prepend "/" and join remaining segments.
- *
- * Examples:
- *   "workflows/users/create.workflow"       → "/users"
- *   "workflows/posts/list.workflow"         → "/posts"
- *   "workflows/health.workflow"             → "/health"
- *   "workflows/admin/users/delete.workflow" → "/admin/users"
+ * Back-compat alias — moved to `./template`. Re-exported here so existing
+ * importers keep working until they migrate to importing from "./template"
+ * directly.
  */
-export function defaultPathForWorkflow(workflowPath: string): string {
-  const stripped = workflowPath
-    .replace(/^workflows\//, "")
-    .replace(/\.workflow$/, "");
-  const parts = stripped.split("/").filter(Boolean);
-  if (parts.length === 0) return "/";
-  const verbs = new Set(["create", "update", "delete", "list", "get", "show", "index"]);
-  if (parts.length > 1 && verbs.has(parts[parts.length - 1]!.toLowerCase())) {
-    parts.pop();
-  }
-  return "/" + parts.join("/");
-}
+export { deriveWorkflowPath as defaultPathForWorkflow } from "./template";

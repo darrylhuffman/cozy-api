@@ -1,4 +1,4 @@
-import { resolveInputValue } from "./reference.js"
+import { parseReference } from "./reference.js"
 import type { WorkflowFile } from "./types.js"
 
 export interface ValidationError {
@@ -21,40 +21,56 @@ export function validateWorkflow(wf: WorkflowFile): ValidationResult {
     const deps = new Set<string>()
     depsByNode.set(nodeId, deps)
 
-    // Resolve references in `in` block
+    // `in:` is references-only. Each entry must parse as a node reference and
+    // point at a known node id.
     if (instance.in !== undefined) {
       if (typeof instance.in === "string") {
         // Whole-object form: the entire input is a single reference.
-        // Literals are not allowed at the top level — the value must be a reference.
-        const resolved = resolveInputValue(instance.in)
-        if (resolved.kind !== "reference") {
+        const ref = parseReference(instance.in)
+        if (!ref) {
           errors.push({
             nodeId,
             field: "in",
-            message: `whole-object \`in\` must be a node reference, got literal: ${JSON.stringify(instance.in)}`,
+            message: `whole-object \`in\` must be a node reference, got: ${JSON.stringify(instance.in)}`,
           })
-        } else if (!wf.nodes[resolved.ref.nodeId]) {
+        } else if (!wf.nodes[ref.nodeId]) {
           errors.push({
             nodeId,
             field: "in",
-            message: `references unknown node \`${resolved.ref.nodeId}\``,
+            message: `references unknown node \`${ref.nodeId}\``,
           })
         } else {
-          deps.add(resolved.ref.nodeId)
+          deps.add(ref.nodeId)
         }
       } else {
         for (const [field, raw] of Object.entries(instance.in)) {
-          const resolved = resolveInputValue(raw)
-          if (resolved.kind === "reference") {
-            if (!wf.nodes[resolved.ref.nodeId]) {
-              errors.push({
-                nodeId,
-                field,
-                message: `references unknown node \`${resolved.ref.nodeId}\``,
-              })
-            } else {
-              deps.add(resolved.ref.nodeId)
-            }
+          // The schema already constrains values to strings; defend against the
+          // pathological case where a non-conforming workflow slipped through.
+          if (typeof raw !== "string") {
+            errors.push({
+              nodeId,
+              field,
+              message: `per-field \`in\` value must be a reference string, got ${typeof raw}`,
+            })
+            continue
+          }
+          const ref = parseReference(raw)
+          if (!ref) {
+            errors.push({
+              nodeId,
+              field,
+              message: `not a valid node reference: ${JSON.stringify(raw)}`,
+            })
+            continue
+          }
+          if (!wf.nodes[ref.nodeId]) {
+            errors.push({
+              nodeId,
+              field,
+              message: `references unknown node \`${ref.nodeId}\``,
+            })
+          } else {
+            deps.add(ref.nodeId)
           }
         }
       }

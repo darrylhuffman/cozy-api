@@ -32,35 +32,53 @@ const emptyRoot: PortNode = { id: "", label: "input", children: [], isLeaf: true
 
 describe("computeInitialInputExpansion", () => {
   it("returns an empty set for trigger nodes (no input children)", () => {
-    expect(computeInitialInputExpansion(emptyRoot, undefined)).toEqual(new Set())
+    expect(computeInitialInputExpansion(emptyRoot, undefined, undefined)).toEqual(new Set())
   })
 
   it("returns an empty set when `in:` is the whole-object string form", () => {
     const root = rootBranch([leaf("email"), leaf("password")])
-    expect(computeInitialInputExpansion(root, "request.body")).toEqual(new Set())
+    expect(computeInitialInputExpansion(root, "request.body", undefined)).toEqual(new Set())
   })
 
   it("returns expanded root when no fields are bound", () => {
     const root = rootBranch([leaf("email"), leaf("password")])
-    expect(computeInitialInputExpansion(root, undefined)).toEqual(new Set([""]))
-    expect(computeInitialInputExpansion(root, {})).toEqual(new Set([""]))
+    expect(computeInitialInputExpansion(root, undefined, undefined)).toEqual(new Set([""]))
+    expect(computeInitialInputExpansion(root, {}, undefined)).toEqual(new Set([""]))
   })
 
   it("returns expanded root when only some fields are bound", () => {
     const root = rootBranch([leaf("email"), leaf("password")])
     expect(
-      computeInitialInputExpansion(root, { email: "request.body.email" }),
+      computeInitialInputExpansion(root, { email: "request.body.email" }, undefined),
     ).toEqual(new Set([""]))
   })
 
   it("returns collapsed root when all required fields are bound", () => {
     const root = rootBranch([leaf("email"), leaf("password")])
     expect(
-      computeInitialInputExpansion(root, {
-        email: "request.body.email",
-        password: "request.body.password",
-      }),
+      computeInitialInputExpansion(
+        root,
+        {
+          email: "request.body.email",
+          password: "request.body.password",
+        },
+        undefined,
+      ),
     ).toEqual(new Set())
+  })
+
+  it("treats values: as satisfying fields (collapsed when in: + values: cover all)", () => {
+    const root = rootBranch([leaf("method"), leaf("path")])
+    expect(
+      computeInitialInputExpansion(root, undefined, { method: "GET", path: "/users" }),
+    ).toEqual(new Set())
+  })
+
+  it("expands when neither in: nor values: covers all fields", () => {
+    const root = rootBranch([leaf("method"), leaf("path")])
+    expect(
+      computeInitialInputExpansion(root, undefined, { method: "GET" }),
+    ).toEqual(new Set([""]))
   })
 })
 

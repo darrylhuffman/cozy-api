@@ -18,7 +18,7 @@ export function scrubReferencesTo(node: NodeInstance, targetId: string): NodeIns
   }
 
   // per-field object form
-  const nextIn: Record<string, unknown> = {}
+  const nextIn: Record<string, string> = {}
   for (const [field, value] of Object.entries(node.in)) {
     if (
       typeof value === "string" &&

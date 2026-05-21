@@ -113,7 +113,7 @@ export function renderHelloWorkflow(): string {
     nodes: {
       request: {
         uses: "@core/http-request",
-        config: { path: "/hello", method: "GET" },
+        values: { path: "/hello", method: "GET" },
       },
       say: {
         uses: "./nodes/say-hello",

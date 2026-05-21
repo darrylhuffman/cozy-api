@@ -36,6 +36,7 @@ export type {
   ServiceContext,
   Services,
   ServiceValue,
+  TailwindColor,
   Trigger,
   WorkflowConfig,
   ZodObjectAny,
@@ -46,12 +47,11 @@ export {
   parseWorkflowFromString,
   WorkflowParseError,
 } from "./workflow/parse.js";
-export { parseReference, resolveInputValue } from "./workflow/reference.js";
+export { isReferenceString, parseReference } from "./workflow/reference.js";
 export type {
   NodeInstance,
   NodeView,
   ParsedReference,
-  ResolvedInputValue,
   WorkflowFile,
 } from "./workflow/types.js";
 export type { ValidationError, ValidationResult } from "./workflow/validate.js";

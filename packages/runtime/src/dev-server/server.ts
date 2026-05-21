@@ -25,9 +25,11 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
 
     for (const [nodeId, inst] of Object.entries(wf.file.nodes)) {
       if (inst.uses !== "@core/http-request") continue
-      const config = inst.config as { path?: string; method?: string }
-      const path = config?.path ?? "/"
-      const method = (config?.method ?? "GET").toUpperCase()
+      // method/path are user-typed literals — live under `values:`. References
+      // in `in:` are resolved per-request and don't apply at mount time.
+      const values = (inst.values ?? {}) as Record<string, unknown>
+      const path = (values.path as string | undefined) ?? "/"
+      const method = ((values.method as string | undefined) ?? "GET").toUpperCase()
 
       // Build a projected workflow containing only nodes relevant to this trigger.
       // This prevents orphan response nodes from one trigger's subgraph from

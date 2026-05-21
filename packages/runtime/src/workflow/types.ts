@@ -9,10 +9,3 @@ export interface ParsedReference {
   nodeId: string
   path: string[]
 }
-
-/**
- * A resolved input value: either a reference (to be looked up at run time) or a literal.
- */
-export type ResolvedInputValue =
-  | { kind: "reference"; ref: ParsedReference }
-  | { kind: "literal"; value: unknown }

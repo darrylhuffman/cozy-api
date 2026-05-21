@@ -42,8 +42,9 @@ export function derivePorts(
   }
 
   // Inputs: a single ROOT port whose children are derived from the schema.
-  // Fallback (no schema): derive children from the keys of an object-form `in:`,
-  // matching the legacy behaviour for older workflow files.
+  // Fallback (no schema): derive children from the keys of object-form `in:`
+  // AND `values:`. String-form `in:` has no per-field children to infer (the
+  // input IS the resolved value).
   for (const [nodeId, instance] of Object.entries(workflow.nodes)) {
     const np = result.get(nodeId)!
     const schemaInputs = schemas[instance.uses]?.inputs
@@ -57,16 +58,20 @@ export function derivePorts(
       }
       continue
     }
-    // Fall back to keys of object-form `in:` — string form has no per-field
-    // children to infer (the input IS the resolved value).
-    if (!instance.in || typeof instance.in === "string") continue
     const children: PortNode[] = []
     const seen = new Set<string>()
-    for (const fieldName of Object.keys(instance.in)) {
-      if (seen.has(fieldName)) continue
-      seen.add(fieldName)
-      children.push({ id: fieldName, label: fieldName, children: [], isLeaf: true })
+    const collectKeys = (obj: Record<string, unknown> | undefined): void => {
+      if (!obj) return
+      for (const fieldName of Object.keys(obj)) {
+        if (seen.has(fieldName)) continue
+        seen.add(fieldName)
+        children.push({ id: fieldName, label: fieldName, children: [], isLeaf: true })
+      }
     }
+    if (instance.in && typeof instance.in !== "string") {
+      collectKeys(instance.in as Record<string, unknown>)
+    }
+    collectKeys(instance.values)
     if (children.length > 0) {
       np.inputs = { id: "", label: "input", children, isLeaf: false }
     }
@@ -130,17 +135,16 @@ export function derivePorts(
  * receives from the HTTP client. For GET and DELETE requests, there is no
  * request body by convention, so we hide it from the outputs tree.
  *
- * The method is read from instance.in (literal) first, then instance.config
- * (back-compat for older workflow files that stored config in a `config:` block).
+ * The method is read from instance.values.method (the user-typed literal).
+ * References in `in.method` would resolve per-request and don't apply at
+ * design time, so we don't read them here.
  *
  * The general Zod-discriminated-union / JSON Schema `if/then/else` case is a
  * larger feature — deferred. This hard-codes only the http-request case.
  */
 function applyHttpRequestConditional(ports: NodePorts, instance: NodeInstance): NodePorts {
-  const inObj =
-    typeof instance.in === "object" && instance.in !== null ? instance.in : {}
-  const config = (instance.config ?? {}) as Record<string, unknown>
-  const method = ((inObj as Record<string, unknown>).method ?? config.method) as string | undefined
+  const values = (instance.values ?? {}) as Record<string, unknown>
+  const method = values.method as string | undefined
 
   if (method !== "GET" && method !== "DELETE") return ports
 

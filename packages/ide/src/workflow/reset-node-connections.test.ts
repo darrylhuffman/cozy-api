@@ -12,7 +12,8 @@ const wf: WorkflowFile = {
     },
     response: {
       uses: "@core/response",
-      in: { body: "save.user", status: 201 },
+      in: { body: "save.user" },
+      values: { status: 201 },
     },
     log: { uses: "./nodes/log", in: "save.user" },
   },
@@ -30,7 +31,7 @@ describe("resetNodeConnections", () => {
     expect(next.nodes.save?.in).toBeUndefined()
   })
 
-  it("leaves the node itself in place (uses, config, etc.)", () => {
+  it("leaves the node itself in place (uses, values, etc.)", () => {
     const next = resetNodeConnections(wf, "save")
     expect(next.nodes.save).toBeDefined()
     expect(next.nodes.save?.uses).toBe("./nodes/save")
@@ -43,10 +44,11 @@ describe("resetNodeConnections", () => {
 
   it("strips per-field `in:` entries in other nodes pointing at the reset node", () => {
     const next = resetNodeConnections(wf, "save")
-    // response.body referenced "save.user" — should be stripped
-    expect((next.nodes.response?.in as Record<string, unknown>)?.body).toBeUndefined()
-    // status: 201 literal is not a reference — should remain
-    expect((next.nodes.response?.in as Record<string, unknown>)?.status).toBe(201)
+    // response.body referenced "save.user" — should be stripped. The `in:`
+    // block becomes empty and is dropped entirely.
+    expect(next.nodes.response?.in).toBeUndefined()
+    // status: 201 literal lives in `values:` — should remain untouched
+    expect(next.nodes.response?.values).toEqual({ status: 201 })
   })
 
   it("strips whole-object string `in:` in other nodes pointing at the reset node", () => {
@@ -62,7 +64,8 @@ describe("resetNodeConnections", () => {
       email: "request.body.email",
       password: "request.body.password",
     })
-    expect(next.nodes.response?.in).toEqual({ body: "save.user", status: 201 })
+    expect(next.nodes.response?.in).toEqual({ body: "save.user" })
+    expect(next.nodes.response?.values).toEqual({ status: 201 })
   })
 
   it("is a no-op for a missing id", () => {

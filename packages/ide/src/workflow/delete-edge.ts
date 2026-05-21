@@ -34,7 +34,7 @@ function applyMappingRemovals(inst: NodeInstance, mappings: PathMapping[]): Node
     const { in: _drop, ...rest } = inst
     return rest
   }
-  const nextIn: Record<string, unknown> = { ...inst.in }
+  const nextIn: Record<string, string> = { ...inst.in }
   for (const m of mappings) {
     const [, ...rest] = m.target.split(".")
     const field = rest.join(".")

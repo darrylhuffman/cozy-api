@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useSelectionStore } from "@/store/selection";
 import type { NodePorts, PortNode } from "./derive-ports";
 import { resolveAccentColor } from "./tailwind-colors";
+import { expandTemplate } from "./template";
 
 export interface WorkflowNodeData {
   id: string;
@@ -24,10 +25,16 @@ export interface WorkflowNodeData {
   onTogglePort?: (side: "input" | "output", handleId: string) => void;
   /**
    * Called when the user edits a literal value in an inline input widget.
-   * The editor writes the new value into the workflow's `in:` block and marks
-   * the tab dirty.
+   * The editor writes the new value into the workflow's `values:` block and
+   * marks the tab dirty.
    */
   onInputValueChange?: (portId: string, value: unknown) => void;
+  /**
+   * The workflow file path (e.g. "workflows/users/create.workflow"). Used to
+   * expand template tokens like `{workflow_path}` in schema defaults so the
+   * widget shows a sensible "/users" instead of the raw template.
+   */
+  workflowPath?: string;
 }
 
 // Using the xyflow NodeProps generic requires the data type to extend Node which
@@ -67,6 +74,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     expandedOutputs,
     onTogglePort,
     onInputValueChange,
+    workflowPath,
   } = data as unknown as WorkflowNodeData;
 
   const isSelected = useSelectionStore((s) => s.selectedNodeId === id);
@@ -139,6 +147,8 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
               expandedSet={expandedInputs}
               onToggle={onTogglePort}
               instanceIn={instance.in}
+              instanceValues={instance.values}
+              workflowPath={workflowPath}
               onInputValueChange={onInputValueChange}
             />
           )}
@@ -191,30 +201,6 @@ function PortTree({
   );
 }
 
-/**
- * Determines whether an `in:` value for a port is a REFERENCE to another
- * node's output (vs. a literal value).
- *
- * Heuristic (v1): a string value is treated as a REFERENCE when it looks like
- * a dotted identifier chain with AT LEAST ONE DOT — e.g. "request.body.email"
- * or "upstream.value".
- *
- * Bare words (e.g. "GET", "hello") are treated as LITERALS — they are valid
- * enum values or short string literals and would never be a useful whole-node
- * reference (you can't pull the whole node via a bare word in the per-field
- * `in:` syntax).
- *
- * Everything else (primitives, strings with spaces, objects) is a LITERAL.
- * This is intentionally conservative — false negatives (showing a widget for
- * a dotless reference like "myNode") just let the user see the literal editor
- * and are harmless for v1.
- */
-function isReference(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  // Must look like a dotted identifier chain: word.word (at least one dot)
-  return /^[a-zA-Z_$][\w$]*(\.[a-zA-Z_$][\w$]*)+$/.test(value);
-}
-
 function PortRow({
   port,
   depth,
@@ -222,6 +208,8 @@ function PortRow({
   expandedSet,
   onToggle,
   instanceIn,
+  instanceValues,
+  workflowPath,
   onInputValueChange,
 }: {
   port: PortNode;
@@ -230,6 +218,8 @@ function PortRow({
   expandedSet: ReadonlySet<string> | undefined;
   onToggle: ((side: "input" | "output", handleId: string) => void) | undefined;
   instanceIn?: unknown;
+  instanceValues?: Record<string, unknown> | undefined;
+  workflowPath?: string | undefined;
   onInputValueChange?: ((portId: string, value: unknown) => void) | undefined;
 }) {
   // When the editor provides controlled state, defer to it. Otherwise fall
@@ -292,13 +282,12 @@ function PortRow({
     : port.children.slice(0, VISIBLE_COUNT);
   const hiddenCount = port.children.length - visibleChildren.length;
 
-  // Determine whether to show an inline value editor for this leaf input port.
-  // Only shown for:
-  //   1. Input side
-  //   2. Leaf port (no children)
-  //   3. Port has a scalar schema (string/number/integer/boolean or enum)
-  //   4. The port's current in: value is NOT a reference to another node
-  const inMap =
+  // Inline value editor priority chain (input-side leaf ports only):
+  //   1. instance.in[portId]      — reference; HIDE the widget (connection shown)
+  //   2. instance.values[portId]  — user-typed literal; show in widget
+  //   3. schema.default           — declarative default; show in widget (template-expanded)
+  //   4. otherwise                — empty
+  const inObj =
     !isOutput &&
     port.isLeaf &&
     typeof instanceIn === "object" &&
@@ -306,10 +295,17 @@ function PortRow({
     !Array.isArray(instanceIn)
       ? (instanceIn as Record<string, unknown>)
       : null;
-  const portCurrentValue = inMap ? inMap[port.id] : undefined;
-  const portIsConnected = isReference(portCurrentValue);
-
+  const portHasReference = inObj ? port.id in inObj : false;
+  const portLiteralValue = instanceValues ? instanceValues[port.id] : undefined;
   const portSchema: JsonSchema | undefined = port.schema;
+  const portSchemaDefault =
+    portSchema?.default !== undefined
+      ? expandTemplate(portSchema.default, { workflowPath: workflowPath ?? "" })
+      : undefined;
+  // What the widget should display: literal first, then expanded schema default.
+  const widgetCurrentValue =
+    portLiteralValue !== undefined ? portLiteralValue : portSchemaDefault;
+
   const isScalar =
     portSchema !== undefined &&
     (portSchema.type === "string" ||
@@ -322,14 +318,14 @@ function PortRow({
     !isOutput &&
     port.isLeaf &&
     isScalar &&
-    !portIsConnected &&
+    !portHasReference &&
     !!onInputValueChange;
 
   const inlineWidget = showInlineWidget ? (
     <InlineInputWidget
       portId={port.id}
       schema={portSchema!}
-      currentValue={portCurrentValue}
+      currentValue={widgetCurrentValue}
       onChange={onInputValueChange!}
     />
   ) : null;
@@ -378,7 +374,7 @@ function PortRow({
         <div
           className="w-full"
           style={{
-            paddingLeft: 12 + depth * INDENT_PX,
+            paddingLeft: 8,
             paddingRight: 8,
             paddingBottom: 4,
           }}
@@ -397,6 +393,8 @@ function PortRow({
               expandedSet={expandedSet}
               onToggle={onToggle}
               instanceIn={instanceIn}
+              instanceValues={instanceValues}
+              workflowPath={workflowPath}
               onInputValueChange={onInputValueChange}
             />
           ))}

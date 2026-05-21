@@ -92,15 +92,13 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
     expect(ids).toEqual(["body", "headers"])
   })
 
-  it("literal values in in: blocks do not create output ports", () => {
+  it("literal values in values: blocks do not create output ports", () => {
     const wf = baseWorkflow({
       request: { uses: "@core/http-request" },
       response: {
         uses: "@core/response",
-        in: {
-          body: "request.body",
-          status: 201,
-        },
+        in: { body: "request.body" },
+        values: { status: 201 },
       },
     })
     const ports = derivePorts(wf)
@@ -139,7 +137,7 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
     const wf = baseWorkflow({
       request: {
         uses: "@core/http-request",
-        config: { path: "/users", method: "POST" },
+        values: { path: "/users", method: "POST" },
       },
       save: {
         uses: "./nodes/users/save-user",
@@ -150,16 +148,18 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
       },
       response: {
         uses: "@core/response",
-        in: {
-          body: "save.user",
-          status: 201,
-        },
+        in: { body: "save.user" },
+        values: { status: 201 },
       },
     })
     const ports = derivePorts(wf)
 
     const requestPorts = ports.get("request")!
-    expect(requestPorts.inputs).toEqual(emptyRoot)
+    // Without schemas, the inputs root is inferred from `values:` keys (the
+    // legacy fallback path). The trigger semantically takes no inputs, but
+    // without schema information the fallback can only see what's there.
+    // In production, CORE_SCHEMAS dictates that http-request has no input root.
+    expect(requestPorts.inputs).toEqual(rootBranch([leaf("path"), leaf("method")]))
     expect(requestPorts.outputs).toEqual([leaf("body")])
 
     const savePorts = ports.get("save")!
@@ -234,7 +234,7 @@ describe("derivePorts (with schemas)", () => {
     const wf = baseWorkflow({
       request: {
         uses: "@core/http-request",
-        config: { path: "/users", method: "POST" },
+        values: { path: "/users", method: "POST" },
       },
       save: {
         uses: "./nodes/users/save-user",
@@ -311,14 +311,14 @@ describe("derivePorts (with schemas)", () => {
       },
     }
     const wf = baseWorkflow({
-      req: { uses: "@core/http-request", in: { method: "POST", path: "/users" } },
+      req: { uses: "@core/http-request", values: { method: "POST", path: "/users" } },
     })
     const ports = derivePorts(wf, httpSchemas)
     const outputIds = ports.get("req")!.outputs.map((p) => p.id)
     expect(outputIds).toContain("body")
   })
 
-  it("@core/http-request: body output hidden when method is GET (from in:)", () => {
+  it("@core/http-request: body output hidden when method is GET (from values:)", () => {
     const httpSchemas: Record<string, NodeSchemas> = {
       "@core/http-request": {
         inputs: {
@@ -338,7 +338,7 @@ describe("derivePorts (with schemas)", () => {
       },
     }
     const wf = baseWorkflow({
-      req: { uses: "@core/http-request", in: { method: "GET", path: "/users" } },
+      req: { uses: "@core/http-request", values: { method: "GET", path: "/users" } },
     })
     const ports = derivePorts(wf, httpSchemas)
     const outputIds = ports.get("req")!.outputs.map((p) => p.id)
@@ -346,7 +346,7 @@ describe("derivePorts (with schemas)", () => {
     expect(outputIds).toContain("headers")
   })
 
-  it("@core/http-request: body output hidden when method is DELETE (from in:)", () => {
+  it("@core/http-request: body output hidden when method is DELETE (from values:)", () => {
     const httpSchemas: Record<string, NodeSchemas> = {
       "@core/http-request": {
         inputs: {
@@ -366,34 +366,7 @@ describe("derivePorts (with schemas)", () => {
       },
     }
     const wf = baseWorkflow({
-      req: { uses: "@core/http-request", in: { method: "DELETE", path: "/users/1" } },
-    })
-    const ports = derivePorts(wf, httpSchemas)
-    const outputIds = ports.get("req")!.outputs.map((p) => p.id)
-    expect(outputIds).not.toContain("body")
-  })
-
-  it("@core/http-request: body output hidden when method is GET (from config: back-compat)", () => {
-    const httpSchemas: Record<string, NodeSchemas> = {
-      "@core/http-request": {
-        inputs: {
-          type: "object",
-          properties: {
-            method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
-            path: { type: "string" },
-          },
-        },
-        outputs: {
-          type: "object",
-          properties: {
-            body: { type: "object" },
-            headers: { type: "object" },
-          },
-        },
-      },
-    }
-    const wf = baseWorkflow({
-      req: { uses: "@core/http-request", config: { method: "GET", path: "/users" } },
+      req: { uses: "@core/http-request", values: { method: "DELETE", path: "/users/1" } },
     })
     const ports = derivePorts(wf, httpSchemas)
     const outputIds = ports.get("req")!.outputs.map((p) => p.id)

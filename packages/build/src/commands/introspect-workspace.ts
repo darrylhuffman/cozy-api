@@ -27,15 +27,19 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
   "@core/http-request": {
     color: null,
     description:
-      "HTTP request trigger. The `method` and `path` inputs define the route this workflow handles.",
+      "HTTP request trigger. The `method` and `path` inputs define the route this workflow handles. The path defaults to the workflow's folder location.",
     inputs: {
       type: "object",
       properties: {
         method: {
           type: "string",
           enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+          default: "GET",
         },
-        path: { type: "string" },
+        path: {
+          type: "string",
+          default: "{workflow_path}",
+        },
         body: { type: "object", description: "Request body (POST/PUT/PATCH only)" },
       },
       required: ["method", "path"],

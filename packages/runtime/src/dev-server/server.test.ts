@@ -22,9 +22,9 @@ describe("mountWorkflows", () => {
       file: parseWorkflow({
         lorien: 1,
         nodes: {
-          req: { uses: "@core/http-request", config: { path: "/add", method: "POST" } },
+          req: { uses: "@core/http-request", values: { path: "/add", method: "POST" } },
           add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
-          res: { uses: "@core/response", in: { body: "add.sum", status: 200 } },
+          res: { uses: "@core/response", in: { body: "add.sum" }, values: { status: 200 } },
         },
       }),
     }
@@ -52,9 +52,9 @@ describe("mountWorkflows", () => {
       file: parseWorkflow({
         lorien: 1,
         nodes: {
-          getReq: { uses: "@core/http-request", config: { path: "/users", method: "GET" } },
-          postReq: { uses: "@core/http-request", config: { path: "/users", method: "POST" } },
-          getRes: { uses: "@core/response", in: { body: { $literal: "list" } } },
+          getReq: { uses: "@core/http-request", values: { path: "/users", method: "GET" } },
+          postReq: { uses: "@core/http-request", values: { path: "/users", method: "POST" } },
+          getRes: { uses: "@core/response", values: { body: "list" } },
           postRes: { uses: "@core/response", in: { body: "postReq.body" } },
         },
       }),

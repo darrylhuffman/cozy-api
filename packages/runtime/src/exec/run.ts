@@ -1,5 +1,5 @@
 import type { AnyNodeOrTrigger, Node, Services } from "../types.js"
-import { resolveInputValue } from "../workflow/reference.js"
+import { parseReference } from "../workflow/reference.js"
 import type { WorkflowFile } from "../workflow/types.js"
 import { NodeRunError } from "./errors.js"
 import type { LifecycleEmitter } from "./lifecycle.js"
@@ -63,12 +63,13 @@ function computeExecutionSet(
     const deps = new Set<string>()
     if (inst.in !== undefined) {
       if (typeof inst.in === "string") {
-        const resolved = resolveInputValue(inst.in)
-        if (resolved.kind === "reference") deps.add(resolved.ref.nodeId)
+        const ref = parseReference(inst.in)
+        if (ref) deps.add(ref.nodeId)
       } else {
         for (const raw of Object.values(inst.in)) {
-          const resolved = resolveInputValue(raw)
-          if (resolved.kind === "reference") deps.add(resolved.ref.nodeId)
+          if (typeof raw !== "string") continue
+          const ref = parseReference(raw)
+          if (ref) deps.add(ref.nodeId)
         }
       }
     }
@@ -171,16 +172,19 @@ async function runOneNode(
     throw new NodeRunError(nodeId, new Error(`unresolved \`uses\`: ${instance.uses}`))
   }
 
-  // Resolve inputs from references and literals.
-  // Two shapes are supported:
-  //  - `in: "ref"`   → resolved value becomes the *whole* input (still an object;
-  //                    a downstream Zod schema enforces shape). Edge emits with
-  //                    target field "$" (sentinel for whole-object).
-  //  - `in: {...}`   → per-field references and literals.
+  // Resolve inputs. The shape is:
+  //  - `values:` provides the literal floor (per-field, JSON-serializable).
+  //  - `in: "ref"`    → resolved value REPLACES the whole input bag (whole-object form).
+  //  - `in: {...}`    → per-field reference strings; each overrides values[field].
+  //
+  // Precedence for a given field, in order from lowest to highest:
+  //   instance.values[field] < instance.in[field] (reference, resolved)
+  // The whole-object form replaces everything, so `values` is ignored when
+  // `in` is a string.
   let input: Record<string, unknown> = {}
   if (typeof instance.in === "string") {
-    const resolved = resolveInputValue(instance.in)
-    if (resolved.kind !== "reference") {
+    const ref = parseReference(instance.in)
+    if (!ref) {
       throw new NodeRunError(
         nodeId,
         new Error(
@@ -188,15 +192,15 @@ async function runOneNode(
         ),
       )
     }
-    const upstream = outputs.get(resolved.ref.nodeId)
+    const upstream = outputs.get(ref.nodeId)
     if (!upstream) {
       throw new NodeRunError(
         nodeId,
-        new Error(`upstream \`${resolved.ref.nodeId}\` produced no output`),
+        new Error(`upstream \`${ref.nodeId}\` produced no output`),
       )
     }
     let v: unknown = upstream
-    for (const seg of resolved.ref.path) {
+    for (const seg of ref.path) {
       v = (v as Record<string, unknown> | null | undefined)?.[seg]
     }
     // The resolved value IS the input bag. If it's not an object, Zod will fail
@@ -204,35 +208,44 @@ async function runOneNode(
     input = (v ?? {}) as Record<string, unknown>
     lifecycle?.emit({
       type: "edge-fired",
-      from: `${resolved.ref.nodeId}.${resolved.ref.path.join(".")}`,
+      from: `${ref.nodeId}.${ref.path.join(".")}`,
       to: `${nodeId}.$`,
       value: v,
     })
   } else {
-    for (const [field, raw] of Object.entries(instance.in ?? {})) {
-      const resolved = resolveInputValue(raw)
-      if (resolved.kind === "literal") {
-        input[field] = resolved.value
-      } else {
-        const upstream = outputs.get(resolved.ref.nodeId)
-        if (!upstream) {
-          throw new NodeRunError(
-            nodeId,
-            new Error(`upstream \`${resolved.ref.nodeId}\` produced no output`),
-          )
-        }
-        let v: unknown = upstream
-        for (const seg of resolved.ref.path) {
-          v = (v as Record<string, unknown> | null | undefined)?.[seg]
-        }
-        input[field] = v
-        lifecycle?.emit({
-          type: "edge-fired",
-          from: `${resolved.ref.nodeId}.${resolved.ref.path.join(".")}`,
-          to: `${nodeId}.${field}`,
-          value: v,
-        })
+    // 1) Start with literal values from `values:` (the floor).
+    if (instance.values && typeof instance.values === "object") {
+      for (const [k, v] of Object.entries(instance.values)) {
+        input[k] = v
       }
+    }
+    // 2) Overlay per-field references from `in:`.
+    for (const [field, raw] of Object.entries(instance.in ?? {})) {
+      const ref = parseReference(raw)
+      if (!ref) {
+        throw new NodeRunError(
+          nodeId,
+          new Error(`\`in.${field}\` must be a node reference, got: ${JSON.stringify(raw)}`),
+        )
+      }
+      const upstream = outputs.get(ref.nodeId)
+      if (!upstream) {
+        throw new NodeRunError(
+          nodeId,
+          new Error(`upstream \`${ref.nodeId}\` produced no output`),
+        )
+      }
+      let v: unknown = upstream
+      for (const seg of ref.path) {
+        v = (v as Record<string, unknown> | null | undefined)?.[seg]
+      }
+      input[field] = v
+      lifecycle?.emit({
+        type: "edge-fired",
+        from: `${ref.nodeId}.${ref.path.join(".")}`,
+        to: `${nodeId}.${field}`,
+        value: v,
+      })
     }
   }
 
@@ -281,7 +294,7 @@ async function runOneNode(
     output = (await (nodeDef as Node).run(
       validatedInput as never,
       opts.services,
-      (instance.config ?? undefined) as never,
+      undefined as never,
     )) as Record<string, unknown>
   } catch (err) {
     lifecycle?.emit({ type: "error", nodeId, error: err as Error })

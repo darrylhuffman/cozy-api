@@ -25,9 +25,9 @@ describe("runWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/add", method: "POST" } },
+        req: { uses: "@core/http-request", values: { path: "/add", method: "POST" } },
         add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
-        res: { uses: "@core/response", in: { body: "add.sum", status: 200 } },
+        res: { uses: "@core/response", in: { body: "add.sum" }, values: { status: 200 } },
       },
     })
     const { errors, depsByNode } = validateWorkflow(wf)
@@ -81,7 +81,7 @@ describe("runWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
+        req: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
         a: { uses: "./a", in: {} },
         b: { uses: "./b", in: {} },
         j: { uses: "./join", in: { a: "a.out", b: "b.out" }, after: ["req"] },
@@ -122,7 +122,7 @@ describe("runWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
+        req: { uses: "@core/http-request", values: { path: "/", method: "GET" } },
         res: { uses: "@core/response", in: { body: "req.body" } },
       },
     })
@@ -172,7 +172,7 @@ describe("runWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
+        req: { uses: "@core/http-request", values: { path: "/", method: "GET" } },
         slow: { uses: "./slow", in: {}, after: ["req"] },
         fail: { uses: "./fail", in: {}, after: ["req"] },
         r: { uses: "@core/response", in: { body: "slow" } },
@@ -223,8 +223,8 @@ describe("runWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        reqA: { uses: "@core/http-request", config: { path: "/a", method: "GET" } },
-        reqB: { uses: "@core/http-request", config: { path: "/b", method: "GET" } },
+        reqA: { uses: "@core/http-request", values: { path: "/a", method: "GET" } },
+        reqB: { uses: "@core/http-request", values: { path: "/b", method: "GET" } },
         a: { uses: "./a", in: {}, after: ["reqA"] },
         b: { uses: "./b", in: {}, after: ["reqB"] },
         resA: { uses: "@core/response", in: { body: "a.out" } },
@@ -267,7 +267,7 @@ describe("runWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+        req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
         n: { uses: "./strict", in: { email: "req.body.email" } },
         r: { uses: "@core/response", in: { body: "n.ok" } },
       },
@@ -307,7 +307,7 @@ describe("runWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+        req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
         n: { uses: "./coerced", in: { count: "req.body.n" } },
         r: { uses: "@core/response", in: { body: "n.ok" } },
       },
@@ -346,7 +346,7 @@ describe("runWorkflow", () => {
       const wf = parseWorkflow({
         lorien: 1,
         nodes: {
-          req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+          req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
           n: { uses: "./echo", in: "req.body" },
           r: { uses: "@core/response", in: { body: "n.ok" } },
         },
@@ -392,7 +392,7 @@ describe("runWorkflow", () => {
       const wf = parseWorkflow({
         lorien: 1,
         nodes: {
-          req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+          req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
           n: { uses: "./echo", in: "req.body" },
           r: { uses: "@core/response", in: { body: "n.ok" } },
         },
@@ -433,7 +433,7 @@ describe("runWorkflow", () => {
       const wf = parseWorkflow({
         lorien: 1,
         nodes: {
-          req: { uses: "@core/http-request", config: { path: "/", method: "POST" } },
+          req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
           n: { uses: "./strict", in: "req.body" },
           r: { uses: "@core/response", in: { body: "n.ok" } },
         },
@@ -462,6 +462,140 @@ describe("runWorkflow", () => {
     })
   })
 
+  describe("values: literal floor", () => {
+    it("passes values: as the input bag when no in: refs are set", async () => {
+      let received: unknown = null
+      const echo = defineNode({
+        inputs: z.object({ method: z.string(), path: z.string() }),
+        outputs: z.object({ ok: z.boolean() }),
+        async run(input) {
+          received = input
+          return { ok: true }
+        },
+      })
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/", method: "GET" } },
+          n: {
+            uses: "./echo",
+            values: { method: "POST", path: "/items" },
+          },
+          r: { uses: "@core/response", in: { body: "n.ok" } },
+        },
+      })
+      const { depsByNode } = validateWorkflow(wf)
+      const plan = computeExecutionPlan(wf, depsByNode)
+      await runWorkflow({
+        workflow: wf,
+        plan,
+        triggerNodeId: "req",
+        triggerOutputs: {
+          body: null,
+          params: {},
+          query: {},
+          headers: {},
+          context: { requestId: "", timestamp: 0 },
+        },
+        services: {},
+        resolveNode: (u) =>
+          resolveCoreNode(u) ??
+          ({ "./echo": echo } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+          null,
+      })
+      expect(received).toEqual({ method: "POST", path: "/items" })
+    })
+
+    it("in: references override values: for the same field", async () => {
+      let received: unknown = null
+      const echo = defineNode({
+        inputs: z.object({ x: z.string(), y: z.string() }),
+        outputs: z.object({ ok: z.boolean() }),
+        async run(input) {
+          received = input
+          return { ok: true }
+        },
+      })
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
+          n: {
+            uses: "./echo",
+            // x's literal "default" is overridden by the reference; y stays literal.
+            values: { x: "default", y: "kept" },
+            in: { x: "req.body" },
+          },
+          r: { uses: "@core/response", in: { body: "n.ok" } },
+        },
+      })
+      const { errors, depsByNode } = validateWorkflow(wf)
+      expect(errors).toEqual([])
+      const plan = computeExecutionPlan(wf, depsByNode)
+      await runWorkflow({
+        workflow: wf,
+        plan,
+        triggerNodeId: "req",
+        triggerOutputs: {
+          body: "from-request",
+          params: {},
+          query: {},
+          headers: {},
+          context: { requestId: "", timestamp: 0 },
+        },
+        services: {},
+        resolveNode: (u) =>
+          resolveCoreNode(u) ??
+          ({ "./echo": echo } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+          null,
+      })
+      expect(received).toEqual({ x: "from-request", y: "kept" })
+    })
+
+    it("rejects non-string per-field in: values at evaluation time", async () => {
+      // Per-field `in:` is references-only. A bare bareword like "GET" parses
+      // as a reference to a node named "GET" — validate will flag the missing
+      // node. Here we go straight to runWorkflow with such a workflow and
+      // expect it to throw.
+      const echo = defineNode({
+        inputs: z.object({}).passthrough(),
+        outputs: z.object({}),
+        async run() {
+          return {}
+        },
+      })
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
+          n: { uses: "./echo", in: { method: "GET" } },
+          r: { uses: "@core/response", in: { body: "n" } },
+        },
+      })
+      const { depsByNode } = validateWorkflow(wf)
+      const plan = computeExecutionPlan(wf, depsByNode)
+      await expect(
+        runWorkflow({
+          workflow: wf,
+          plan,
+          triggerNodeId: "req",
+          triggerOutputs: {
+            body: null,
+            params: {},
+            query: {},
+            headers: {},
+            context: { requestId: "", timestamp: 0 },
+          },
+          services: {},
+          resolveNode: (u) =>
+            resolveCoreNode(u) ??
+            ({ "./echo": echo } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+            null,
+        }),
+      ).rejects.toThrow()
+    })
+  })
+
   it("fail-fast: a node throw aborts the workflow with NodeRunError", async () => {
     const boom = defineNode({
       inputs: z.object({}),
@@ -473,7 +607,7 @@ describe("runWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
+        req: { uses: "@core/http-request", values: { path: "/", method: "GET" } },
         b: { uses: "./boom", in: {} },
         r: { uses: "@core/response", in: { body: "b" } },
       },

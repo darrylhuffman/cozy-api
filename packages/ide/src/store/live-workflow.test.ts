@@ -5,7 +5,7 @@ import { useLiveWorkflowStore } from "./live-workflow"
 const sampleWorkflow: WorkflowFile = {
   lorien: 1,
   nodes: {
-    save: { uses: "./nodes/save-user", config: { mode: "upsert" } },
+    save: { uses: "./nodes/save-user", values: { mode: "upsert" } },
   },
 }
 

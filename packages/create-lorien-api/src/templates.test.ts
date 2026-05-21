@@ -52,7 +52,7 @@ describe("template renderers", () => {
   it("hello.workflow parses as JSON and is a valid lorien v1 file", () => {
     const wf = JSON.parse(renderHelloWorkflow())
     expect(wf.lorien).toBe(1)
-    expect(wf.nodes.request.config.path).toBe("/hello")
+    expect(wf.nodes.request.values.path).toBe("/hello")
     expect(wf.nodes.say.uses).toBe("./nodes/say-hello")
   })
 

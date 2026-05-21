@@ -74,10 +74,12 @@ describe("extractReferences", () => {
       a: { uses: "@core/http-request" },
       b: {
         uses: "@core/transform",
+        // The schema disallows non-string `in:` values, but parse-references
+        // defends against malformed input by silently skipping them.
         in: {
-          count: 42,
-          flag: true,
-          obj: { nested: "a" },
+          count: 42 as unknown as string,
+          flag: true as unknown as string,
+          obj: { nested: "a" } as unknown as string,
         },
       },
     })
@@ -168,14 +170,12 @@ describe("extractReferences", () => {
       },
       response: {
         uses: "@core/response",
-        in: {
-          body: "save.user",
-          status: 201,
-        },
+        in: { body: "save.user" },
+        values: { status: 201 },
       },
     })
     const refs = extractReferences(wf)
-    // 3 string references (status: 201 is a literal, skipped)
+    // 3 string references (status lives under values:, not in:)
     expect(refs).toHaveLength(3)
 
     const emailRef = refs.find((r) => r.target.portId === "email")!

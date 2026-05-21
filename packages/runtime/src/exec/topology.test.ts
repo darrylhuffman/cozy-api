@@ -8,7 +8,7 @@ describe("computeExecutionPlan", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
+        req: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
         a: { uses: "./n", in: { v: "req.body" } },
         b: { uses: "./n", in: { v: "req.body" } },
         join: { uses: "./n", in: { x: "a.out", y: "b.out" } },
@@ -29,8 +29,8 @@ describe("computeExecutionPlan", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        getReq: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
-        postReq: { uses: "@core/http-request", config: { path: "/x", method: "POST" } },
+        getReq: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
+        postReq: { uses: "@core/http-request", values: { path: "/y", method: "POST" } },
       },
     })
     const { depsByNode } = validateWorkflow(wf)
@@ -42,8 +42,8 @@ describe("computeExecutionPlan", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        getReq: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
-        postReq: { uses: "@core/http-request", config: { path: "/x", method: "POST" } },
+        getReq: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
+        postReq: { uses: "@core/http-request", values: { path: "/y", method: "POST" } },
         getOnly: { uses: "./n", in: { v: "getReq.body" } },
         postOnly: { uses: "./n", in: { v: "postReq.body" } },
         getRes: { uses: "@core/response", in: { body: "getOnly.out" } },

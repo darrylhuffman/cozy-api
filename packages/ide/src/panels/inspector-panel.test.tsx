@@ -39,7 +39,6 @@ const sampleWorkflow: WorkflowFile = {
   nodes: {
     save: {
       uses: "./nodes/save-user",
-      config: { mode: "upsert" },
     },
     response: {
       uses: "@core/response",
@@ -184,7 +183,7 @@ describe("InspectorPanel — InspectContent", () => {
         ...sampleWorkflow.nodes,
         "http-request": {
           uses: "@core/http-request",
-          config: { path: "/api/data", method: "GET" },
+          values: { path: "/api/data", method: "GET" },
         },
       },
     }

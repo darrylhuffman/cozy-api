@@ -529,14 +529,14 @@ describe("WorkflowNode", () => {
       expect(screen.getByRole("option", { name: "DELETE" })).toBeInTheDocument()
     })
 
-    it("does NOT render an inline widget when the port is connected (reference value)", () => {
+    it("does NOT render an inline widget when the port has a reference in in:", () => {
       const ports: NodePorts = {
         inputs: inputRoot([schemaLeaf("method", { type: "string", enum: ["GET", "POST"] })]),
         outputs: [],
       }
       const data: Record<string, unknown> = {
         id: "req",
-        // method is set to a reference string — should hide the widget
+        // method is set in in: — should hide the widget (the connection wins)
         instance: { uses: "@core/http-request", in: { method: "upstream.value" } },
         ports,
         expandedInputs: new Set([""]),
@@ -547,6 +547,95 @@ describe("WorkflowNode", () => {
       render(<WorkflowNode data={data} />)
       fireEvent.click(screen.getByTestId("chevron-"))
       expect(screen.queryByTestId("input-widget-method")).not.toBeInTheDocument()
+    })
+
+    it("shows the value from values:[port] when in:[port] is not set", () => {
+      const ports: NodePorts = {
+        inputs: inputRoot([schemaLeaf("method", { type: "string", enum: ["GET", "POST"] })]),
+        outputs: [],
+      }
+      const data: Record<string, unknown> = {
+        id: "req",
+        instance: { uses: "@core/http-request", values: { method: "POST" } },
+        ports,
+        expandedInputs: new Set([""]),
+        expandedOutputs: new Set<string>(),
+        onTogglePort: () => {},
+        onInputValueChange: () => {},
+      }
+      render(<WorkflowNode data={data} />)
+      fireEvent.click(screen.getByTestId("chevron-"))
+      const widget = screen.getByTestId("input-widget-method") as HTMLSelectElement
+      expect(widget.value).toBe("POST")
+    })
+
+    it("falls back to schema.default (template-expanded) when neither in nor values is set", () => {
+      const ports: NodePorts = {
+        inputs: inputRoot([
+          schemaLeaf("method", {
+            type: "string",
+            enum: ["GET", "POST"],
+            default: "GET",
+          }),
+        ]),
+        outputs: [],
+      }
+      const data: Record<string, unknown> = {
+        id: "req",
+        instance: { uses: "@core/http-request" },
+        ports,
+        workflowPath: "workflows/health.workflow",
+        expandedInputs: new Set([""]),
+        expandedOutputs: new Set<string>(),
+        onTogglePort: () => {},
+        onInputValueChange: () => {},
+      }
+      render(<WorkflowNode data={data} />)
+      fireEvent.click(screen.getByTestId("chevron-"))
+      const widget = screen.getByTestId("input-widget-method") as HTMLSelectElement
+      expect(widget.value).toBe("GET")
+    })
+
+    it("template-expands {workflow_path} in schema defaults for text ports", () => {
+      const ports: NodePorts = {
+        inputs: inputRoot([schemaLeaf("path", { type: "string", default: "{workflow_path}" })]),
+        outputs: [],
+      }
+      const data: Record<string, unknown> = {
+        id: "req",
+        instance: { uses: "@core/http-request" },
+        ports,
+        workflowPath: "workflows/users/create.workflow",
+        expandedInputs: new Set([""]),
+        expandedOutputs: new Set<string>(),
+        onTogglePort: () => {},
+        onInputValueChange: () => {},
+      }
+      render(<WorkflowNode data={data} />)
+      fireEvent.click(screen.getByTestId("chevron-"))
+      const widget = screen.getByTestId("input-widget-path") as HTMLInputElement
+      expect(widget.value).toBe("/users")
+    })
+
+    it("values: takes precedence over schema.default", () => {
+      const ports: NodePorts = {
+        inputs: inputRoot([schemaLeaf("path", { type: "string", default: "{workflow_path}" })]),
+        outputs: [],
+      }
+      const data: Record<string, unknown> = {
+        id: "req",
+        instance: { uses: "@core/http-request", values: { path: "/custom" } },
+        ports,
+        workflowPath: "workflows/users/create.workflow",
+        expandedInputs: new Set([""]),
+        expandedOutputs: new Set<string>(),
+        onTogglePort: () => {},
+        onInputValueChange: () => {},
+      }
+      render(<WorkflowNode data={data} />)
+      fireEvent.click(screen.getByTestId("chevron-"))
+      const widget = screen.getByTestId("input-widget-path") as HTMLInputElement
+      expect(widget.value).toBe("/custom")
     })
 
     it("calls onInputValueChange with portId and new value when the widget changes", () => {
@@ -582,7 +671,7 @@ describe("WorkflowNode", () => {
       }
       const data: Record<string, unknown> = {
         id: "req",
-        instance: { uses: "@core/http-request", in: { method: "GET" } },
+        instance: { uses: "@core/http-request", values: { method: "GET" } },
         ports,
         expandedInputs: new Set([""]),
         expandedOutputs: new Set<string>(),

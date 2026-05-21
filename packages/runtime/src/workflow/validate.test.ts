@@ -7,7 +7,7 @@ describe("validateWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        request: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
+        request: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
         response: { uses: "@core/response", in: { body: "request.body" } },
       },
     })
@@ -67,7 +67,7 @@ describe("validateWorkflow", () => {
       const wf = parseWorkflow({
         lorien: 1,
         nodes: {
-          request: { uses: "@core/http-request", config: { path: "/x", method: "POST" } },
+          request: { uses: "@core/http-request", values: { path: "/x", method: "POST" } },
           save: { uses: "./nodes/save", in: "request.body" },
         },
       })
@@ -119,7 +119,7 @@ describe("validateWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
+        req: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
         a: { uses: "./n", in: { v: "req.body" } },
         b: { uses: "./n", in: { v: "req.body" } },
         join: { uses: "./n", in: { x: "a.out", y: "b.out" } },
@@ -127,5 +127,28 @@ describe("validateWorkflow", () => {
     })
     const result = validateWorkflow(wf)
     expect(result.errors).toEqual([])
+  })
+
+  it("rejects a per-field `in` value that isn't a parseable reference", () => {
+    // Literals belong under `values:`, not `in:`. Validator must catch this.
+    expect(() =>
+      parseWorkflow({
+        lorien: 1,
+        nodes: {
+          save: { uses: "./n", in: { method: "GET" } },
+        },
+      }),
+    ).not.toThrow() // schema accepts strings; parseable check is in validateWorkflow.
+
+    const wf = parseWorkflow({
+      lorien: 1,
+      nodes: {
+        save: { uses: "./n", in: { method: "GET" } },
+      },
+    })
+    const result = validateWorkflow(wf)
+    // "GET" parses as a bare nodeId reference, but there's no node called "GET".
+    expect(result.errors.length).toBeGreaterThan(0)
+    expect(result.errors[0]?.message).toMatch(/unknown node|not a valid/)
   })
 })

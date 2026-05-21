@@ -44,13 +44,18 @@ export interface WorkflowFile {
 export interface NodeInstance {
   uses: string
   /**
-   * Two shapes:
-   *  - per-field object:   { fieldName: "ref-or-literal", ... }
-   *  - single reference:   "ref"  (whole-object form — the resolved value
-   *                                  is passed as the node's input)
+   * References ONLY. Two shapes:
+   *  - per-field object:   { fieldName: "nodeId.path", ... } — strings only
+   *  - single reference:   "nodeId.path" (whole-object form — the resolved
+   *                          value is passed as the node's input)
    */
-  in?: string | Record<string, unknown>
-  config?: Record<string, unknown>
+  in?: string | Record<string, string>
+  /**
+   * Per-field literal values typed by the user. Any JSON-serializable value;
+   * strings are NEVER interpreted as references. `in:` overrides `values:`
+   * for the same field at evaluation time.
+   */
+  values?: Record<string, unknown>
   after?: string[]
   label?: string
 }
@@ -93,6 +98,8 @@ export interface JsonSchema {
   additionalProperties?: boolean | JsonSchema
   enum?: unknown[]
   format?: string
+  /** Optional declarative default. May be a template string (e.g. "{workflow_path}"). */
+  default?: unknown
   [key: string]: unknown
 }
 
