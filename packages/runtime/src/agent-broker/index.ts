@@ -18,6 +18,7 @@ export {
   loadChat,
   TranscriptStore,
 } from "./transcript.js"
+export type { CreateChatInput } from "./transcript.js"
 export { attachAgentBroker, mountAgentBroker } from "./server.js"
 export type {
   AttachAgentBrokerOptions,
