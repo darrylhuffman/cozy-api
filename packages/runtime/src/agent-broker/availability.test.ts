@@ -69,4 +69,17 @@ describe("AvailabilityProbe", () => {
     const av = await probe.probe()
     expect(av.claude.installed).toBe(false)
   })
+
+  it("coalesces concurrent probe() calls so subprocesses don't duplicate", async () => {
+    let calls = 0
+    const exec: ProbeExec = vi.fn(async () => {
+      calls++
+      // Resolve on a microtask boundary so both .probe() calls have a chance to subscribe
+      return { exitCode: 0, stdout: "claude 1.0.0", stderr: "" }
+    })
+    const probe = new AvailabilityProbe({ exec, now: () => 0 })
+    const [a, b] = await Promise.all([probe.probe(), probe.probe()])
+    expect(calls).toBe(2) // two binaries, called once each — not 4
+    expect(a).toBe(b) // identical reference returned to both callers
+  })
 })

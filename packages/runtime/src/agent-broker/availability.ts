@@ -32,7 +32,13 @@ const defaultExec: ProbeExec = (command, args) =>
   new Promise<ProbeExecResult>((resolve, reject) => {
     let stdout = ""
     let stderr = ""
-    const proc = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] })
+    const proc = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      // `shell: true` on Windows is required to resolve `.cmd`/`.bat`/`.ps1` shims
+      // used by npm-installed global CLIs. Args contain only the literal "--version"
+      // string, so there is no shell-injection surface.
+      shell: process.platform === "win32",
+    })
     const timer = setTimeout(() => {
       proc.kill("SIGKILL")
     }, 3000)
@@ -73,6 +79,7 @@ export class AvailabilityProbe {
   private readonly exec: ProbeExec
   private readonly now: () => number
   private cache: CacheEntry | null = null
+  private inflight: Promise<AvailabilityResponse> | null = null
 
   constructor(opts: AvailabilityProbeOptions = {}) {
     this.exec = opts.exec ?? defaultExec
@@ -84,6 +91,14 @@ export class AvailabilityProbe {
     if (this.cache && this.cache.expiresAt > t) {
       return this.cache.result
     }
+    if (this.inflight) return this.inflight
+    this.inflight = this.runProbe(t).finally(() => {
+      this.inflight = null
+    })
+    return this.inflight
+  }
+
+  private async runProbe(t: number): Promise<AvailabilityResponse> {
     const [claude, codex] = await Promise.all([
       this.probeOne(BINARIES.claude),
       this.probeOne(BINARIES.codex),
