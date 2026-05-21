@@ -61,60 +61,66 @@ export function NewFolderDialog({
         <DialogHeader>
           <DialogTitle>New folder</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Inside</span>
-              <button
-                type="button"
-                onClick={() => setPickerOpen((p) => !p)}
-                className="rounded px-2 py-0.5 hover:bg-accent"
-              >
-                Change
-              </button>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            void handleCreate()
+          }}
+        >
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Inside</span>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen((p) => !p)}
+                  className="rounded px-2 py-0.5 hover:bg-accent"
+                >
+                  Change
+                </button>
+              </div>
+              <div className="rounded border border-border bg-muted/30 px-2 py-1 text-sm">
+                {parent}
+              </div>
+              {pickerOpen && (
+                <FolderPicker
+                  root={root}
+                  value={parent}
+                  onChange={(p) => {
+                    setParent(p)
+                    setPickerOpen(false)
+                  }}
+                />
+              )}
             </div>
-            <div className="rounded border border-border bg-muted/30 px-2 py-1 text-sm">
-              {parent}
-            </div>
-            {pickerOpen && (
-              <FolderPicker
-                root={root}
-                value={parent}
-                onChange={(p) => {
-                  setParent(p)
-                  setPickerOpen(false)
-                }}
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground">Name</div>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="admin"
+                autoFocus
               />
-            )}
+            </div>
+            {error && <div className="text-sm text-destructive">{error}</div>}
           </div>
-          <div className="space-y-1">
-            <div className="text-xs text-muted-foreground">Name</div>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="admin"
-              autoFocus
-            />
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="rounded px-3 py-1.5 text-sm hover:bg-accent"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={name.trim().length === 0}
+              className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+            >
+              Create
+            </button>
           </div>
-          {error && <div className="text-sm text-destructive">{error}</div>}
-        </div>
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="rounded px-3 py-1.5 text-sm hover:bg-accent"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleCreate()}
-            disabled={name.trim().length === 0}
-            className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
-          >
-            Create
-          </button>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   )

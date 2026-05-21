@@ -130,4 +130,42 @@ describe("NewWorkflowDialog", () => {
     })
     expect(onCreated).not.toHaveBeenCalled()
   })
+
+  it("submits the form when Enter is pressed in the name input", async () => {
+    vi.mocked(createWorkspaceFile).mockResolvedValue(undefined)
+    const onCreated = vi.fn()
+    render(
+      <NewWorkflowDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={onCreated}
+        defaultFolder="workflows"
+        workflowsTree={workflowsTree}
+      />,
+    )
+    const input = screen.getByPlaceholderText(/create/i) as HTMLInputElement
+    fireEvent.change(input, { target: { value: "submitted-by-enter" } })
+    await act(async () => {
+      fireEvent.submit(input.closest("form")!)
+    })
+    expect(createWorkspaceFile).toHaveBeenCalledWith(
+      "workflows/submitted-by-enter.workflow",
+      expect.any(String),
+    )
+    expect(onCreated).toHaveBeenCalledWith("workflows/submitted-by-enter.workflow")
+  })
+
+  it("shows .workflow as an inline suffix next to the name input", () => {
+    render(
+      <NewWorkflowDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={vi.fn()}
+        defaultFolder="workflows"
+        workflowsTree={workflowsTree}
+      />,
+    )
+    expect(screen.getByText(".workflow")).toBeInTheDocument()
+    expect(screen.queryByText(/will be appended/i)).not.toBeInTheDocument()
+  })
 })

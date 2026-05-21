@@ -119,4 +119,25 @@ describe("NewFolderDialog", () => {
     })
     expect(onCreated).not.toHaveBeenCalled()
   })
+
+  it("submits the form when Enter is pressed in the name input", async () => {
+    vi.mocked(createWorkspaceFolder).mockResolvedValue(undefined)
+    const onCreated = vi.fn()
+    render(
+      <NewFolderDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={onCreated}
+        defaultFolder="workflows"
+        root={tree}
+      />,
+    )
+    const input = screen.getByPlaceholderText(/admin/i) as HTMLInputElement
+    fireEvent.change(input, { target: { value: "submitted-by-enter" } })
+    await act(async () => {
+      fireEvent.submit(input.closest("form")!)
+    })
+    expect(createWorkspaceFolder).toHaveBeenCalledWith("workflows/submitted-by-enter")
+    expect(onCreated).toHaveBeenCalledWith("workflows/submitted-by-enter")
+  })
 })

@@ -214,4 +214,39 @@ describe("NewNodeDialog", () => {
       expect(fetchWorkspaceTree).toHaveBeenCalled()
     })
   })
+
+  it("submits the form when Enter is pressed in the name input", async () => {
+    vi.mocked(createWorkspaceFile).mockResolvedValue(undefined)
+    const onCreated = vi.fn()
+    render(
+      <NewNodeDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={onCreated}
+        defaultFolder="nodes"
+        nodesTree={nodesTree}
+      />,
+    )
+    const input = screen.getByPlaceholderText(/my-node/i) as HTMLInputElement
+    fireEvent.change(input, { target: { value: "submitted-by-enter" } })
+    await act(async () => {
+      fireEvent.submit(input.closest("form")!)
+    })
+    expect(createWorkspaceFile).toHaveBeenCalledWith("nodes/submitted-by-enter.ts", expect.any(String))
+    expect(onCreated).toHaveBeenCalledWith("./nodes/submitted-by-enter")
+  })
+
+  it("shows .ts as an inline suffix next to the name input", () => {
+    render(
+      <NewNodeDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={vi.fn()}
+        defaultFolder="nodes"
+        nodesTree={nodesTree}
+      />,
+    )
+    expect(screen.getByText(".ts")).toBeInTheDocument()
+    expect(screen.queryByText(/will be appended/i)).not.toBeInTheDocument()
+  })
 })
