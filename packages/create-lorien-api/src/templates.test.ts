@@ -124,7 +124,13 @@ describe("template renderers", () => {
     const descMatch = out.match(/^description: (.+)$/m)
     expect(descMatch).not.toBeNull()
     expect(descMatch![1].length).toBeGreaterThan(40)
-    expect(descMatch![1]).not.toContain("\n")
+    // Multi-line descriptions break Claude Code's YAML frontmatter parser.
+    // Guard by asserting the frontmatter block contains exactly the three
+    // expected lines between the --- fences.
+    const fmMatch = out.match(/^---\n([\s\S]*?)\n---\n/)
+    expect(fmMatch).not.toBeNull()
+    const fmLines = fmMatch![1].split("\n")
+    expect(fmLines).toHaveLength(2) // name + description, no continuation lines
     // Body follows the frontmatter
     expect(out).toMatch(/# lorien-api project guide/)
     expect(out).toMatch(/<!-- lorien-skill-version: 1 -->/)
