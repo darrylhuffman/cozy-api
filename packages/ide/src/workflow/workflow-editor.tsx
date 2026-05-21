@@ -22,6 +22,8 @@ import {
 import { subscribeToFileEvents } from "@/lib/events";
 import { useTabsStore } from "@/store/tabs";
 import { useThemeStore } from "@/store/theme";
+import { addNode } from "./add-node";
+import { CommandPalette } from "./command-palette";
 import { derivePorts } from "./derive-ports";
 import { effectiveHandle } from "./effective-handle";
 import { computeInitialExpansion } from "./initial-expansion";
@@ -88,6 +90,18 @@ export function WorkflowEditor({ path, tabId }: Props) {
       setDirty(tabId, value);
     },
     [tabId, setDirty],
+  );
+
+  const addNodeAt = useCallback(
+    (uses: string, x: number, y: number) => {
+      const wf = workflowRef.current;
+      if (!wf) return;
+      const next = addNode(wf, uses, { x, y });
+      workflowRef.current = next;
+      setWorkflow(next);
+      markDirty(true);
+    },
+    [markDirty],
   );
 
   const doFetch = useCallback(() => {
@@ -517,6 +531,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
           Unsaved changes — Ctrl+S to save
         </div>
       )}
+      <CommandPalette
+        schemas={schemas}
+        onPick={(uses) => addNodeAt(uses, 100, 100)}
+      />
     </div>
   );
 }
