@@ -11,7 +11,10 @@ export function SubTabStrip(): React.ReactElement {
   const newChat = useAgentChats((s) => s.newChat)
 
   return (
-    <div className="flex h-8 shrink-0 items-center gap-px overflow-x-auto border-b bg-muted/30 px-1">
+    <div
+      role="tablist"
+      className="flex h-8 shrink-0 items-center gap-px overflow-x-auto border-b bg-muted/30 px-1"
+    >
       {order.map((id) => {
         const tab = chats[id]
         const label = tab?.kind === "chat" ? tab.title : "New chat"
@@ -27,7 +30,11 @@ export function SubTabStrip(): React.ReactElement {
             )}
             onClick={() => setActive(id)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") setActive(id)
+              // WAI-ARIA tab pattern activates on both Enter and Space.
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                setActive(id)
+              }
             }}
             role="tab"
             tabIndex={0}
