@@ -75,7 +75,7 @@ describe("InspectorPanel — InspectContent", () => {
     })
   })
 
-  it("renders node id, uses, inputs, outputs, and config when a node is selected", async () => {
+  it("renders node id, uses, inputs, and outputs when a node is selected", async () => {
     vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
       "./nodes/save-user": {
         inputs: {
@@ -111,9 +111,8 @@ describe("InspectorPanel — InspectContent", () => {
     // Outputs section — schema fields
     expect(screen.getByText("user")).toBeInTheDocument()
 
-    // Config section — JSON config
-    expect(screen.getByText(/"mode"/)).toBeInTheDocument()
-    expect(screen.getByText(/"upsert"/)).toBeInTheDocument()
+    // Config section must NOT be shown (config is no longer a separate panel)
+    expect(screen.queryByText(/^config$/i)).not.toBeInTheDocument()
   })
 
   it("renders a color swatch when schemas[uses].color is set", async () => {
@@ -147,7 +146,7 @@ describe("InspectorPanel — InspectContent", () => {
     })
   })
 
-  it("shows (none) for config when node.config is absent", async () => {
+  it("does not show a Config section (config is no longer surfaced in the inspector)", async () => {
     vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
       "@core/response": {
         inputs: { type: "object", properties: {} },
@@ -157,8 +156,10 @@ describe("InspectorPanel — InspectContent", () => {
     useSelectionStore.setState({ selectedNodeId: "response" })
     render(<InspectorPanel />)
     await waitFor(() => {
-      expect(screen.getByText("(none)")).toBeInTheDocument()
+      expect(screen.getByText("response")).toBeInTheDocument()
     })
+    // Config section should not appear at all
+    expect(screen.queryByText(/^config$/i)).not.toBeInTheDocument()
   })
 
   it("shows empty state when no workflow tab is active (live store is null)", async () => {
@@ -209,8 +210,6 @@ describe("InspectorPanel — InspectContent", () => {
       expect(screen.getByText("http-request")).toBeInTheDocument()
     })
     expect(screen.getByText("@core/http-request")).toBeInTheDocument()
-    // The config block should be rendered
-    expect(screen.getByText(/\/api\/data/)).toBeInTheDocument()
     // "not found" error must NOT appear
     expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
   })

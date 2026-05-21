@@ -330,6 +330,58 @@ describe("emitWorkflow — response", () => {
   });
 });
 
+describe("emitWorkflow — http-request in: form (B2)", () => {
+  it("reads method and path from in: block when present", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: {
+            uses: "@core/http-request",
+            in: { method: "POST", path: "/items" },
+          },
+        },
+      }),
+      relativePath: "items",
+    });
+    expect(source).toMatch(/app\.on\("POST", "\/items",/);
+  });
+
+  it("prefers in.method/in.path over config.method/config.path when both present", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: {
+            uses: "@core/http-request",
+            in: { method: "PUT", path: "/new" },
+            config: { method: "GET", path: "/old" },
+          },
+        },
+      }),
+      relativePath: "x",
+    });
+    expect(source).toMatch(/app\.on\("PUT", "\/new",/);
+    expect(source).not.toMatch(/\/old/);
+  });
+
+  it("falls back to config.method/config.path for legacy workflows (back-compat)", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: {
+            uses: "@core/http-request",
+            config: { method: "PATCH", path: "/legacy" },
+          },
+        },
+      }),
+      relativePath: "x",
+    });
+    expect(source).toMatch(/app\.on\("PATCH", "\/legacy",/);
+  });
+});
+
 describe("emitWorkflow — multiple triggers", () => {
   it("registers one route per @core/http-request trigger", () => {
     const { source } = emitWorkflow({

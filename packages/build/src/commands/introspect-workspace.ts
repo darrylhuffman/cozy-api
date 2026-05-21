@@ -26,7 +26,19 @@ export interface NodeSchemas {
 export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
   "@core/http-request": {
     color: "#3b82f6", // blue-500 — sensible default for the trigger
-    inputs: { type: "object", properties: {} },
+    description:
+      "HTTP request trigger. The `method` and `path` inputs define the route this workflow handles.",
+    inputs: {
+      type: "object",
+      properties: {
+        method: {
+          type: "string",
+          enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+        },
+        path: { type: "string" },
+      },
+      required: ["method", "path"],
+    },
     outputs: {
       type: "object",
       properties: {

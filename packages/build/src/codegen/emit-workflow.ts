@@ -54,12 +54,7 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   const triggers: TriggerInfo[] = []
   for (const [nodeId, inst] of Object.entries(workflow.nodes)) {
     if (inst.uses !== "@core/http-request") continue
-    const config = (inst.config ?? {}) as { path?: string; method?: string }
-    triggers.push({
-      nodeId,
-      path: config.path ?? "/",
-      method: (config.method ?? "GET").toUpperCase(),
-    })
+    triggers.push(getHttpRequestMeta(nodeId, inst))
   }
 
   // Build a stable map from `uses` to local identifier.
@@ -113,6 +108,35 @@ interface TriggerInfo {
   nodeId: string
   path: string
   method: string
+}
+
+/**
+ * Extracts method + path for an @core/http-request node instance.
+ *
+ * Preference order (new → legacy back-compat):
+ *   1. `in.method` / `in.path` — the preferred "inputs" form
+ *   2. `config.method` / `config.path` — the legacy form, kept for back-compat
+ *
+ * Mixing both fields is fine: each field is resolved independently so a
+ * workflow can migrate one field at a time.
+ */
+function getHttpRequestMeta(nodeId: string, inst: { in?: unknown; config?: unknown }): TriggerInfo {
+  const inObj =
+    typeof inst.in === "object" && inst.in !== null && !Array.isArray(inst.in)
+      ? (inst.in as Record<string, unknown>)
+      : {}
+  const config = (inst.config ?? {}) as Record<string, unknown>
+
+  const method = ((inObj.method ?? config.method) as string | undefined) ?? "GET"
+  const path = ((inObj.path ?? config.path) as string | undefined) ?? "/"
+
+  if (!method || !path) {
+    throw new Error(
+      `@core/http-request "${nodeId}" needs method and path — set them as inputs (in.method / in.path) or legacy config (config.method / config.path)`,
+    )
+  }
+
+  return { nodeId, path, method: method.toUpperCase() }
 }
 
 function renderResolveServicesHelper(): string {

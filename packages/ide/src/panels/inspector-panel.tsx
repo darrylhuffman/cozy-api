@@ -99,15 +99,6 @@ function InspectContent() {
       <Section label="Outputs">
         <SchemaTree {...(schema?.outputs ? { schema: schema.outputs } : {})} />
       </Section>
-      <Section label="Config">
-        {instance.config ? (
-          <pre className="rounded bg-muted p-2 text-xs overflow-auto">
-            {JSON.stringify(instance.config, null, 2)}
-          </pre>
-        ) : (
-          <div className="text-xs italic text-muted-foreground">(none)</div>
-        )}
-      </Section>
     </div>
   )
 }
