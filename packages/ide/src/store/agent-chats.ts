@@ -73,6 +73,8 @@ interface AgentChatsState {
   setError(chatId: string, error: string | null): void
   setTurnInFlight(chatId: string, inFlight: boolean): void
   startClaudeChat(pickerId: string): void
+  sendMessage(chatId: string, text: string): void
+  cancelTurn(chatId: string): void
   hydrate(): Promise<void>
 }
 
@@ -174,6 +176,14 @@ export const useAgentChats = create<AgentChatsState>((set, get) => ({
   startClaudeChat(_pickerId: string) {
     // Real implementation lands in Task 9 — sends `new_chat` over the WS.
     // For now, this is a no-op stub overridden by tests.
+  },
+
+  sendMessage(_chatId: string, _text: string) {
+    // Real WS-based implementation lands in Task 9.
+  },
+
+  cancelTurn(_chatId: string) {
+    // Real WS-based implementation lands in Task 9.
   },
 
   async hydrate() {
