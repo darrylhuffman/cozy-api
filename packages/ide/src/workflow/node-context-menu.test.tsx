@@ -90,4 +90,52 @@ describe("NodeContextMenu", () => {
     expect(onDelete).toHaveBeenCalledOnce()
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
+
+  it("does not show 'View source' when onViewSource is not provided", () => {
+    render(
+      <NodeContextMenu
+        open
+        onOpenChange={vi.fn()}
+        x={0}
+        y={0}
+        onDelete={vi.fn()}
+        onReset={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText("View source")).not.toBeInTheDocument()
+  })
+
+  it("shows 'View source' when onViewSource is provided", () => {
+    render(
+      <NodeContextMenu
+        open
+        onOpenChange={vi.fn()}
+        x={0}
+        y={0}
+        onDelete={vi.fn()}
+        onReset={vi.fn()}
+        onViewSource={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("View source")).toBeInTheDocument()
+  })
+
+  it("clicking 'View source' calls onViewSource and closes the popover", () => {
+    const onViewSource = vi.fn()
+    const onOpenChange = vi.fn()
+    render(
+      <NodeContextMenu
+        open
+        onOpenChange={onOpenChange}
+        x={0}
+        y={0}
+        onDelete={vi.fn()}
+        onReset={vi.fn()}
+        onViewSource={onViewSource}
+      />,
+    )
+    fireEvent.click(screen.getByText("View source"))
+    expect(onViewSource).toHaveBeenCalledOnce()
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
 })

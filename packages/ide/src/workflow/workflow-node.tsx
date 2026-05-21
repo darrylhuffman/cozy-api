@@ -340,6 +340,8 @@ function PortRow({
           style={{
             top: "50%",
             transform: "translateY(-50%)",
+            width: 14,
+            height: 14,
             background: isBranch
               ? "var(--primary, oklch(0.6 0.2 270))"
               : "var(--muted-foreground)",

@@ -1,4 +1,4 @@
-import type { NodeSchemas, WorkflowFile } from "@/lib/api"
+import type { NodeInstance, NodeSchemas, WorkflowFile } from "@/lib/api"
 import { type PortNode, schemaToRootedTree, schemaToTree } from "./schema-to-tree"
 
 export type { PortNode } from "./schema-to-tree"
@@ -111,7 +111,44 @@ export function derivePorts(
     }
   }
 
+  // Apply hard-coded per-node conditional port filtering.
+  // Currently only @core/http-request has conditional ports (body hidden for GET/DELETE).
+  for (const [nodeId, instance] of Object.entries(workflow.nodes)) {
+    if (instance.uses !== "@core/http-request") continue
+    const np = result.get(nodeId)
+    if (!np) continue
+    result.set(nodeId, applyHttpRequestConditional(np, instance))
+  }
+
   return result
+}
+
+/**
+ * Hard-coded conditional port filtering for @core/http-request.
+ *
+ * When method is GET or DELETE, the `body` input port is hidden — those HTTP
+ * methods conventionally have no request body. The method is read from
+ * instance.in (literal) first, then instance.config (back-compat).
+ *
+ * The general Zod-discriminated-union / JSON Schema `if/then/else` case is a
+ * larger feature — deferred. This hard-codes only the http-request case.
+ */
+function applyHttpRequestConditional(ports: NodePorts, instance: NodeInstance): NodePorts {
+  const inObj =
+    typeof instance.in === "object" && instance.in !== null ? instance.in : {}
+  const config = (instance.config ?? {}) as Record<string, unknown>
+  const method = ((inObj as Record<string, unknown>).method ?? config.method) as string | undefined
+
+  if (method !== "GET" && method !== "DELETE") return ports
+  if (!ports.inputs.children || ports.inputs.children.length === 0) return ports
+
+  return {
+    ...ports,
+    inputs: {
+      ...ports.inputs,
+      children: ports.inputs.children.filter((c) => c.id !== "body"),
+    },
+  }
 }
 
 /**

@@ -25,7 +25,7 @@ export interface NodeSchemas {
 /** Built-in @core/* node schemas, hardcoded — they don't ship as user files. */
 export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
   "@core/http-request": {
-    color: "#3b82f6", // blue-500 — sensible default for the trigger
+    color: null,
     description:
       "HTTP request trigger. The `method` and `path` inputs define the route this workflow handles.",
     inputs: {
@@ -36,6 +36,7 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
           enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
         },
         path: { type: "string" },
+        body: { type: "object", description: "Request body (POST/PUT/PATCH only)" },
       },
       required: ["method", "path"],
     },
@@ -57,7 +58,7 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
     },
   },
   "@core/response": {
-    color: "#10b981", // emerald-500 — green-ish for the terminal response
+    color: null,
     inputs: {
       type: "object",
       properties: {

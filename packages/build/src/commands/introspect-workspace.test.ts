@@ -2,18 +2,21 @@ import { describe, expect, it } from "vitest"
 import { CORE_SCHEMAS } from "./introspect-workspace.js"
 
 describe("CORE_SCHEMAS", () => {
-  it("@core/http-request carries a blue-ish color", () => {
+  it("@core/http-request has no accent color (color is null)", () => {
     const entry = CORE_SCHEMAS["@core/http-request"]
     expect(entry).toBeDefined()
-    expect(entry?.color).toBeDefined()
-    expect(typeof entry?.color).toBe("string")
+    expect(entry?.color).toBeNull()
   })
 
-  it("@core/response carries a green-ish color", () => {
+  it("@core/response has no accent color (color is null)", () => {
     const entry = CORE_SCHEMAS["@core/response"]
     expect(entry).toBeDefined()
-    expect(entry?.color).toBeDefined()
-    expect(typeof entry?.color).toBe("string")
+    expect(entry?.color).toBeNull()
+  })
+
+  it("@core/http-request schema includes a body input", () => {
+    const entry = CORE_SCHEMAS["@core/http-request"]
+    expect(entry?.inputs.properties?.["body"]).toBeDefined()
   })
 
   it("every core schema exposes inputs + outputs JSON Schemas", () => {

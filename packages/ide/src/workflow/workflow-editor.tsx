@@ -23,6 +23,7 @@ import {
   type WorkflowFile,
 } from "@/lib/api";
 import { subscribeToFileEvents } from "@/lib/events";
+import { useDockviewApi } from "@/store/dockview-api";
 import { useTabsStore } from "@/store/tabs";
 import { useThemeStore } from "@/store/theme";
 import { addNode } from "./add-node";
@@ -261,6 +262,19 @@ export function WorkflowEditor({ path, tabId }: Props) {
     if (!id) return;
     onNodesDelete([{ id } as RFNode]);
   }, [nodeMenu.nodeId, onNodesDelete]);
+
+  const handleViewSource = useCallback(() => {
+    const id = nodeMenu.nodeId;
+    if (!id) return;
+    const wf = workflowRef.current;
+    const instance = wf?.nodes[id];
+    if (!instance || !instance.uses.startsWith(".")) return;
+    // Strip leading "./" and add ".ts" extension
+    const filePath = `${instance.uses.replace(/^\.\//, "")}.ts`;
+    const title = filePath.split("/").pop() ?? filePath;
+    useTabsStore.getState().openTab({ id: filePath, title, kind: "node", path: filePath });
+    useDockviewApi.getState().api?.getPanel("code")?.api.setActive();
+  }, [nodeMenu.nodeId]);
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     if (e.dataTransfer.types.includes("application/lorien-node")) {
@@ -718,6 +732,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
           onPaneClick={onPaneClick}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
+          reconnectRadius={25}
           fitView
           colorMode={theme}
           nodesConnectable={true}
@@ -777,6 +792,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
         y={nodeMenu.y}
         onDelete={handleDeleteFromMenu}
         onReset={handleResetConnections}
+        {...(nodeMenu.nodeId &&
+          workflow?.nodes[nodeMenu.nodeId]?.uses.startsWith(".")
+          ? { onViewSource: handleViewSource }
+          : {})}
       />
     </div>
   );
