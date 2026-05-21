@@ -235,3 +235,77 @@ describe("GET /api/events", () => {
     expect(true).toBe(true)
   })
 })
+
+describe("POST /api/workspace/folder", () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "lorien-ide-folder-"))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  async function makeApp() {
+    const { createIdeApp } = await import("./ide.js")
+    return createIdeApp(dir)
+  }
+
+  it("creates a folder and returns its relative path", async () => {
+    const app = await makeApp()
+    const res = await app.request("/api/workspace/folder", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "workflows/admin" }),
+    })
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as { path: string }
+    expect(json.path).toBe("workflows/admin")
+    const { statSync } = await import("node:fs")
+    expect(statSync(join(dir, "workflows", "admin")).isDirectory()).toBe(true)
+  })
+
+  it("creates nested folders (mkdir -p semantics)", async () => {
+    const app = await makeApp()
+    const res = await app.request("/api/workspace/folder", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "nodes/a/b/c" }),
+    })
+    expect(res.status).toBe(200)
+    const { statSync } = await import("node:fs")
+    expect(statSync(join(dir, "nodes", "a", "b", "c")).isDirectory()).toBe(true)
+  })
+
+  it("is idempotent — creating an existing folder returns 200", async () => {
+    const app = await makeApp()
+    mkdirSync(join(dir, "workflows", "users"), { recursive: true })
+    const res = await app.request("/api/workspace/folder", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "workflows/users" }),
+    })
+    expect(res.status).toBe(200)
+  })
+
+  it("rejects path traversal with 403", async () => {
+    const app = await makeApp()
+    const res = await app.request("/api/workspace/folder", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "../escape" }),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it("returns 400 when path is missing", async () => {
+    const app = await makeApp()
+    const res = await app.request("/api/workspace/folder", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(400)
+  })
+})

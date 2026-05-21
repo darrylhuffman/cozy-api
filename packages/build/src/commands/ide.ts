@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import { access, readdir, readFile, stat, writeFile } from "node:fs/promises"
+import { access, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { serve } from "@hono/node-server"
@@ -179,6 +179,26 @@ export function createIdeApp(workspaceRoot: string): Hono {
     try {
       await writeFile(abs, body.content, "utf-8")
       return c.json({ path: rawPath, bytes: body.content.length })
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 500)
+    }
+  })
+
+  app.post("/api/workspace/folder", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as {
+      path?: string
+    } | null
+    if (!body || typeof body.path !== "string" || body.path.length === 0) {
+      return c.json({ error: "Body must be { path: string }" }, 400)
+    }
+    const rawPath = body.path
+    const abs = resolve(workspaceRoot, rawPath)
+    if (!abs.startsWith(workspaceRoot + sep) && abs !== workspaceRoot) {
+      return c.json({ error: "Path traversal denied" }, 403)
+    }
+    try {
+      await mkdir(abs, { recursive: true })
+      return c.json({ path: rawPath })
     } catch (e) {
       return c.json({ error: (e as Error).message }, 500)
     }
