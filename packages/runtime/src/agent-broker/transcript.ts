@@ -157,18 +157,20 @@ export async function loadChat(
   id: string,
 ): Promise<ChatTranscript | null> {
   const l = layout(projectRoot)
-  const path = l.chatPath(id)
-  if (!(await exists(path))) return null
-  const text = await readFile(path, "utf-8").catch(() => null)
-  if (text === null) return null
-  try {
-    return JSON.parse(text) as ChatTranscript
-  } catch {
-    await mkdir(l.brokenDir, { recursive: true })
-    const stamp = Date.now()
-    await rename(path, join(l.brokenDir, `${id}.${stamp}.json`))
-    return null
-  }
+  return withChatLock(`${projectRoot}::${id}`, async () => {
+    const path = l.chatPath(id)
+    if (!(await exists(path))) return null
+    const text = await readFile(path, "utf-8").catch(() => null)
+    if (text === null) return null
+    try {
+      return JSON.parse(text) as ChatTranscript
+    } catch {
+      await mkdir(l.brokenDir, { recursive: true })
+      const stamp = Date.now()
+      await rename(path, join(l.brokenDir, `${id}.${stamp}.json`))
+      return null
+    }
+  })
 }
 
 export async function listChats(projectRoot: string): Promise<ChatIndex> {
