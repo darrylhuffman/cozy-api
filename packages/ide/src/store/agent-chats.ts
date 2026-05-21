@@ -72,6 +72,7 @@ interface AgentChatsState {
   appendEvent(chatId: string, event: AgentEvent): void
   setError(chatId: string, error: string | null): void
   setTurnInFlight(chatId: string, inFlight: boolean): void
+  startClaudeChat(pickerId: string): void
   hydrate(): Promise<void>
 }
 
@@ -168,6 +169,11 @@ export const useAgentChats = create<AgentChatsState>((set, get) => ({
       if (!tab || tab.kind !== "chat") return s
       return { chats: { ...s.chats, [chatId]: { ...tab, turnInFlight: inFlight } } }
     })
+  },
+
+  startClaudeChat(_pickerId: string) {
+    // Real implementation lands in Task 9 — sends `new_chat` over the WS.
+    // For now, this is a no-op stub overridden by tests.
   },
 
   async hydrate() {

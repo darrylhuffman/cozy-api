@@ -1,5 +1,6 @@
 import { useEffect } from "react"
 import { useAgentChats } from "@/store/agent-chats"
+import { AgentPicker } from "./agent-picker"
 import { EmptyState } from "./empty-state"
 import { SubTabStrip } from "./sub-tab-strip"
 
@@ -24,11 +25,7 @@ export function AgentsPanel(): React.ReactElement {
     <div className="flex h-full flex-col">
       <SubTabStrip />
       <div className="flex-1 overflow-hidden">
-        {active?.kind === "picker" && (
-          <div className="p-4 text-sm text-muted-foreground">
-            Agent picker — Task 6 will replace this.
-          </div>
-        )}
+        {active?.kind === "picker" && <AgentPicker pickerId={active.id} />}
         {active?.kind === "chat" && (
           <div className="p-4 text-sm text-muted-foreground">
             Chat view — Task 7 will replace this. Chat id: {active.id}
