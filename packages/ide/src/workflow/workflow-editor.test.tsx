@@ -9,6 +9,10 @@ let capturedOnConnect:
   | ((conn: { source: string; sourceHandle: string; target: string; targetHandle: string }) => void)
   | null = null
 // Capture what edges/edgeTypes the editor passed to React Flow
+interface CapturedMapping {
+  source: string
+  target: string
+}
 interface CapturedEdge {
   id: string
   type?: string
@@ -16,7 +20,7 @@ interface CapturedEdge {
   sourceHandle?: string | null
   target?: string
   targetHandle?: string | null
-  data?: { pathLabel?: string }
+  data?: { mappings?: CapturedMapping[] }
 }
 let capturedEdges: CapturedEdge[] | null = null
 let capturedEdgeTypes: Record<string, unknown> | null = null
@@ -37,15 +41,7 @@ vi.mock("@xyflow/react", () => ({
     onConnect,
   }: {
     nodes: { id: string; type?: string; data: Record<string, unknown> }[]
-    edges?: {
-      id: string
-      type?: string
-      source?: string
-      sourceHandle?: string | null
-      target?: string
-      targetHandle?: string | null
-      data?: { pathLabel?: string }
-    }[]
+    edges?: CapturedEdge[]
     edgeTypes?: Record<string, unknown>
     nodeTypes?: Record<string, (props: { data: Record<string, unknown> }) => React.ReactNode>
     onNodesChange?: (changes: unknown[]) => void
@@ -422,23 +418,27 @@ describe("WorkflowEditor", () => {
       // After schemas resolve, edges should be re-routed. The reference
       // request.body.email → save.email has its target collapsed (because
       // save's inputs are fully satisfied → root not expanded) so the edge
-      // terminates at the root ("") instead of "email".
+      // terminates at the root ("") instead of "email". Both email AND
+      // password collapse to the same (request.body, save.input) edge — and
+      // since both source-side handles also collapse onto the same point
+      // (sourceHandle "body"), the editor MERGES them into one visual edge.
       await waitFor(() => {
-        const edge = capturedEdges?.find(
+        const edges = capturedEdges?.filter(
           (e) => e.source === "request" && e.target === "save",
         )
-        expect(edge?.targetHandle).toBe("")
+        expect(edges?.length).toBe(1)
+        expect(edges?.[0]?.targetHandle).toBe("")
       })
 
-      // The tooltip pathLabel still surfaces the deeper path so the user can
-      // tell what was bound.
-      const savedEmailEdge = capturedEdges?.find(
-        (e) =>
-          e.source === "request" &&
-          e.target === "save" &&
-          e.data?.pathLabel === "email",
+      // The merged edge carries BOTH underlying mappings so the hover card
+      // can render one table row per binding.
+      const merged = capturedEdges?.find(
+        (e) => e.source === "request" && e.target === "save",
       )
-      expect(savedEmailEdge).toBeDefined()
+      expect(merged?.data?.mappings).toEqual([
+        { source: "request.body.email", target: "save.email" },
+        { source: "request.body.password", target: "save.password" },
+      ])
     })
 
     it("routes through to the leaf when the input is expanded", async () => {
@@ -474,12 +474,16 @@ describe("WorkflowEditor", () => {
       })
 
       // With root expanded, the edge terminates at "email" (the actual leaf
-      // handle that's rendered in the DOM).
+      // handle that's rendered in the DOM).  Only one binding exists in this
+      // partial workflow, so there's a single edge with one mapping.
       await waitFor(() => {
         const edge = capturedEdges?.find(
           (e) => e.source === "request" && e.target === "save",
         )
         expect(edge?.targetHandle).toBe("email")
+        expect(edge?.data?.mappings).toEqual([
+          { source: "request.body.email", target: "save.email" },
+        ])
       })
     })
 
@@ -531,22 +535,50 @@ describe("WorkflowEditor", () => {
       }
     })
 
-    it("attaches pathLabel data only when the source has a remaining path", async () => {
+    it("emits a single mapping with no target suffix for whole-object `in: \"...\"` form", async () => {
+      const wholeObject: WorkflowFile = {
+        ...createWorkflow,
+        nodes: {
+          ...createWorkflow.nodes,
+          save: { uses: "./nodes/users/save-user", in: "request.body" },
+        },
+      }
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(wholeObject)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      await waitFor(() => {
+        const edges = capturedEdges?.filter(
+          (e) => e.source === "request" && e.target === "save",
+        )
+        expect(edges?.length).toBe(1)
+        expect(edges?.[0]?.data?.mappings).toEqual([
+          { source: "request.body", target: "save" },
+        ])
+      })
+    })
+
+    it("attaches mappings carrying the full source and target paths", async () => {
       vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
       render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
       await waitFor(() => {
         expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
       })
 
-      // request.body.email → save.email — remaining path ["email"]
-      const emailEdge = capturedEdges!.find((e) => e.data?.pathLabel === "email")
+      // request.body.email → save.email — full path is "request.body.email"
+      const emailEdge = capturedEdges!.find((e) =>
+        e.data?.mappings?.some(
+          (m) => m.source === "request.body.email" && m.target === "save.email",
+        ),
+      )
       expect(emailEdge).toBeDefined()
-      // save.user → response.body — no remaining path; pathLabel undefined
-      const userEdge = capturedEdges!.find(
-        (e) =>
-          !e.data?.pathLabel &&
-          // disambiguate via source/target — see edge construction
-          true,
+      // save.user → response.body — full path is "save.user"
+      const userEdge = capturedEdges!.find((e) =>
+        e.data?.mappings?.some(
+          (m) => m.source === "save.user" && m.target === "response.body",
+        ),
       )
       expect(userEdge).toBeDefined()
     })

@@ -26,7 +26,7 @@ import { derivePorts } from "./derive-ports";
 import { effectiveHandle } from "./effective-handle";
 import { computeInitialExpansion } from "./initial-expansion";
 import { extractReferences } from "./parse-references";
-import { PathEdge } from "./path-edge";
+import { PathEdge, type PathMapping } from "./path-edge";
 import { WorkflowNode } from "./workflow-node";
 
 interface Props {
@@ -242,54 +242,92 @@ export function WorkflowEditor({ path, tabId }: Props) {
   const edges = useMemo<Edge[]>(() => {
     if (!workflow) return [];
     const refs = extractReferences(workflow);
-    return refs.map((r, i) => {
-      // The reference's *logical* full path on the source (e.g. "body.email")
-      // — used as the tooltip label even when the rendered edge terminates at
-      // a collapsed parent.
+
+    // For each underlying reference, compute the rendered (post-collapse)
+    // endpoints AND the canonical source/target paths for the hover table.
+    // Then group by the effective (source, sourceHandle, target, targetHandle)
+    // tuple so N per-field refs that collapse onto the same visual edge become
+    // ONE merged edge carrying every underlying mapping.
+    interface Routed {
+      ref: (typeof refs)[number];
+      renderedSource: string;
+      renderedTarget: string;
+      sourceFull: string;
+      targetFull: string;
+    }
+
+    const routed: Routed[] = refs.map((r) => {
       const logicalSourcePath = [r.source.portId, ...r.source.remainingPath]
         .filter((s) => s.length > 0)
         .join(".");
 
-      // Route the source side: walk up from the leaf to the deepest currently-
-      // visible handle.  When no expansion state is tracked yet (first render
-      // before the effect seeds it), fall back to the logical path.
       const srcExp = expansion.get(r.source.nodeId)?.outputs;
       const renderedSource = srcExp
         ? effectiveHandle(logicalSourcePath, srcExp)
         : logicalSourcePath;
 
-      // Target side: the logical target path is just `r.target.portId` (which
-      // can be "" for the root in whole-object form, a top-level field name
-      // for per-field bindings, or a dotted path for deeper bindings).
       const tgtExp = expansion.get(r.target.nodeId)?.inputs;
       const renderedTarget = tgtExp
         ? effectiveHandle(r.target.portId, tgtExp)
         : r.target.portId;
 
-      // Tooltip label rules:
-      //   - per-field edge with deeper source path: just the deeper segments
-      //     (e.g. "email" when source is body.email and target is "email")
-      //   - whole-object edge (`in: "request.body"`, target.portId == ""):
-      //     the full reference string ("request.body", "request.body.user", ...)
-      //   - otherwise (single-segment direct ref): no label
-      let pathLabel: string | undefined;
-      if (r.source.remainingPath.length > 0) {
-        pathLabel = r.source.remainingPath.join(".");
-      } else if (r.target.portId === "" && logicalSourcePath.length > 0) {
-        pathLabel = `${r.source.nodeId}.${logicalSourcePath}`;
-      }
+      // Full, human-readable source path: "request.body.email", "request.body",
+      // or just "request" for a bare node reference.
+      const sourceFull = logicalSourcePath.length > 0
+        ? `${r.source.nodeId}.${logicalSourcePath}`
+        : r.source.nodeId;
+      // Full target descriptor. For per-field bindings: "save.email". For the
+      // whole-object form (target.portId === ""), just the node id: "save".
+      const targetFull = r.target.portId === ""
+        ? r.target.nodeId
+        : `${r.target.nodeId}.${r.target.portId}`;
 
-      return {
-        id: `e-${i}`,
-        source: r.source.nodeId,
-        sourceHandle: renderedSource,
-        target: r.target.nodeId,
-        targetHandle: renderedTarget,
-        type: "path",
-        animated: false,
-        data: { pathLabel },
-      };
+      return { ref: r, renderedSource, renderedTarget, sourceFull, targetFull };
     });
+
+    // Group by effective endpoints — anything that resolves to the same
+    // (source, sourceHandle, target, targetHandle) tuple becomes one edge.
+    interface Group {
+      sourceNodeId: string;
+      sourceHandle: string;
+      targetNodeId: string;
+      targetHandle: string;
+      mappings: PathMapping[];
+    }
+    const groups = new Map<string, Group>();
+    for (const entry of routed) {
+      const key = [
+        entry.ref.source.nodeId,
+        entry.renderedSource,
+        entry.ref.target.nodeId,
+        entry.renderedTarget,
+      ].join("||");
+      const mapping: PathMapping = { source: entry.sourceFull, target: entry.targetFull };
+      const existing = groups.get(key);
+      if (existing) {
+        existing.mappings.push(mapping);
+      } else {
+        groups.set(key, {
+          sourceNodeId: entry.ref.source.nodeId,
+          sourceHandle: entry.renderedSource,
+          targetNodeId: entry.ref.target.nodeId,
+          targetHandle: entry.renderedTarget,
+          mappings: [mapping],
+        });
+      }
+    }
+
+    let edgeIdx = 0;
+    return Array.from(groups.values()).map((group) => ({
+      id: `e-${edgeIdx++}`,
+      source: group.sourceNodeId,
+      sourceHandle: group.sourceHandle,
+      target: group.targetNodeId,
+      targetHandle: group.targetHandle,
+      type: "path",
+      animated: false,
+      data: { mappings: group.mappings },
+    }));
   }, [workflow, expansion]);
 
   const save = useCallback(async () => {
