@@ -55,6 +55,10 @@ export function spawnClaude(opts: SpawnClaudeOptions): ClaudeProcess {
     cwd: opts.projectRoot,
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, ...opts.env },
+    // `shell: true` on Windows resolves `.cmd`/`.bat` shims used by npm-installed
+    // global CLIs (claude.cmd, codex.cmd). All args are framework-controlled
+    // literals, so no shell-injection surface.
+    shell: process.platform === "win32",
   })
 
   // Async iterable over normalized events. We push values into a queue; the

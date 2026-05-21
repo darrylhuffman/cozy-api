@@ -29,19 +29,21 @@ describe("spawnClaude (via mock CLI)", () => {
     const proc = spawnClaude({
       chatId: "c1",
       projectRoot: process.cwd(),
-      command: process.execPath, // node
-      // We override the args to point at the mock-cli .ts via tsx loader.
+      command: process.execPath,
       argsOverride: ["--import", "tsx", MOCK_CLI],
     })
-    proc.send("hello")
-    const events = await collect(proc.events, 4)
-    expect(events.map((e) => e.kind)).toEqual([
-      "assistant_text",
-      "tool_use",
-      "tool_result",
-      "turn_done",
-    ])
-    proc.kill()
+    try {
+      proc.send("hello")
+      const events = await collect(proc.events, 4)
+      expect(events.map((e) => e.kind)).toEqual([
+        "assistant_text",
+        "tool_use",
+        "tool_result",
+        "turn_done",
+      ])
+    } finally {
+      proc.kill()
+    }
   })
 
   it("captures the session id from the init event", async () => {
@@ -51,10 +53,14 @@ describe("spawnClaude (via mock CLI)", () => {
       command: process.execPath,
       argsOverride: ["--import", "tsx", MOCK_CLI],
     })
-    // Give the mock a beat to emit the init event before we ask.
-    await new Promise((r) => setTimeout(r, 100))
-    expect(proc.sessionId()).toBe("sess_mock_001")
-    proc.kill()
+    try {
+      // Give the mock a beat to emit the init event before we ask.
+      // Windows tsx startup can take >100 ms, so we wait up to 2 s.
+      await new Promise((r) => setTimeout(r, 2000))
+      expect(proc.sessionId()).toBe("sess_mock_001")
+    } finally {
+      proc.kill()
+    }
   })
 
   it("kill() exits cleanly", async () => {
