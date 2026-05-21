@@ -11,6 +11,7 @@ import {
   type Node as RFNode,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import "@xyflow/react/dist/style.css";
 import {
   fetchWorkflowFile,
@@ -23,6 +24,7 @@ import { subscribeToFileEvents } from "@/lib/events";
 import { useTabsStore } from "@/store/tabs";
 import { useThemeStore } from "@/store/theme";
 import { addNode } from "./add-node";
+import { CanvasContextMenu } from "./canvas-context-menu";
 import { CommandPalette } from "./command-palette";
 import { derivePorts } from "./derive-ports";
 import { effectiveHandle } from "./effective-handle";
@@ -82,6 +84,16 @@ export function WorkflowEditor({ path, tabId }: Props) {
   const workflowRef = useRef<WorkflowFile | null>(null);
   // Track dirty in a ref too so the Ctrl+S handler always sees fresh value
   const dirtyRef = useRef(false);
+  // Ref for the ReactFlow container div (for flow-coord conversion)
+  const reactFlowRef = useRef<HTMLDivElement | null>(null);
+  // Context menu state: client coords for popover anchor, flow coords for node placement
+  const [menu, setMenu] = useState<{
+    open: boolean;
+    x: number;
+    y: number;
+    flowX: number;
+    flowY: number;
+  }>({ open: false, x: 0, y: 0, flowX: 0, flowY: 0 });
 
   const markDirty = useCallback(
     (value: boolean) => {
@@ -102,6 +114,17 @@ export function WorkflowEditor({ path, tabId }: Props) {
       markDirty(true);
     },
     [markDirty],
+  );
+
+  const onPaneContextMenu = useCallback(
+    (event: ReactMouseEvent | MouseEvent) => {
+      event.preventDefault();
+      const bounds = reactFlowRef.current?.getBoundingClientRect();
+      const flowX = bounds ? event.clientX - bounds.left : event.clientX;
+      const flowY = bounds ? event.clientY - bounds.top : event.clientY;
+      setMenu({ open: true, x: event.clientX, y: event.clientY, flowX, flowY });
+    },
+    [],
   );
 
   const doFetch = useCallback(() => {
@@ -496,21 +519,24 @@ export function WorkflowEditor({ path, tabId }: Props) {
 
   return (
     <div className="relative h-full w-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        onNodesChange={onNodesChange}
-        onConnect={onConnect}
-        fitView
-        colorMode={theme}
-        nodesConnectable={true}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background gap={20} size={1} />
-        <Controls />
-      </ReactFlow>
+      <div ref={reactFlowRef} className="h-full w-full">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodesChange={onNodesChange}
+          onConnect={onConnect}
+          onPaneContextMenu={onPaneContextMenu}
+          fitView
+          colorMode={theme}
+          nodesConnectable={true}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background gap={20} size={1} />
+          <Controls />
+        </ReactFlow>
+      </div>
       {saveState !== "idle" && (
         <div
           className={
@@ -534,6 +560,18 @@ export function WorkflowEditor({ path, tabId }: Props) {
       <CommandPalette
         schemas={schemas}
         onPick={(uses) => addNodeAt(uses, 100, 100)}
+      />
+      <CanvasContextMenu
+        open={menu.open}
+        onOpenChange={(o) => setMenu((m) => ({ ...m, open: o }))}
+        x={menu.x}
+        y={menu.y}
+        schemas={schemas}
+        onPick={(uses) => addNodeAt(uses, menu.flowX, menu.flowY)}
+        onNewCustomNode={() => {
+          // Stub for Group C — wiring deferred
+          console.log("New custom node — wiring deferred to Group C")
+        }}
       />
     </div>
   );
