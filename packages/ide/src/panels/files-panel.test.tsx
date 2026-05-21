@@ -35,8 +35,9 @@ describe("FilesPanel", () => {
     const link = screen.getByText("parseBody.ts")
     fireEvent.click(link)
     expect(useTabsStore.getState().tabs).toHaveLength(1)
-    expect(useTabsStore.getState().tabs[0]?.id).toBe("n-shared-parseBody")
-    expect(useTabsStore.getState().activeCodeId).toBe("n-shared-parseBody")
+    // Node tabs now use the file path as their id (matches openCodeFile convention).
+    expect(useTabsStore.getState().tabs[0]?.id).toBe("nodes/shared/parseBody.ts")
+    expect(useTabsStore.getState().activeCodeId).toBe("nodes/shared/parseBody.ts")
   })
 
   it("dragging a .ts node leaf sets the correct dataTransfer payload", async () => {

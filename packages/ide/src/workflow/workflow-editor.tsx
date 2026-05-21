@@ -23,7 +23,6 @@ import {
   type WorkflowFile,
 } from "@/lib/api";
 import { subscribeToFileEvents } from "@/lib/events";
-import { useDockviewApi } from "@/store/dockview-api";
 import { useTabsStore } from "@/store/tabs";
 import { useThemeStore } from "@/store/theme";
 import { addNode } from "./add-node";
@@ -39,9 +38,10 @@ import { effectiveHandle } from "./effective-handle";
 import { computeInitialExpansion } from "./initial-expansion";
 import { extractReferences } from "./parse-references";
 import { PathEdge, type PathMapping } from "./path-edge";
-import { WorkflowNode } from "./workflow-node";
+import { WorkflowNode, ROOT_HANDLE_ID } from "./workflow-node";
 import { useSelectionStore } from "@/store/selection";
 import { useLiveWorkflowStore } from "@/store/live-workflow";
+import { openCodeFile } from "@/lib/open-code-file";
 
 interface Props {
   /** API path like "workflows/users/create.workflow" */
@@ -292,11 +292,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
     const wf = workflowRef.current;
     const instance = wf?.nodes[id];
     if (!instance || !instance.uses.startsWith(".")) return;
-    // Strip leading "./" and add ".ts" extension
+    // Strip leading "./" and add ".ts" extension, then open via the shared
+    // helper so the tab id (= file path) deduplicates with the files panel.
     const filePath = `${instance.uses.replace(/^\.\//, "")}.ts`;
-    const title = filePath.split("/").pop() ?? filePath;
-    useTabsStore.getState().openTab({ id: filePath, title, kind: "node", path: filePath });
-    useDockviewApi.getState().api?.getPanel("code")?.api.setActive();
+    openCodeFile(filePath);
   }, [nodeMenu.nodeId]);
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -530,9 +529,12 @@ export function WorkflowEditor({ path, tabId }: Props) {
         : logicalSourcePath;
 
       const tgtExp = expansion.get(r.target.nodeId)?.inputs;
-      const renderedTarget = tgtExp
+      const rawRenderedTarget = tgtExp
         ? effectiveHandle(r.target.portId, tgtExp)
         : r.target.portId;
+      // Translate the root sentinel "" to ROOT_HANDLE_ID so the edge
+      // targetHandle matches the actual rendered handle id in the DOM.
+      const renderedTarget = rawRenderedTarget === "" ? ROOT_HANDLE_ID : rawRenderedTarget;
 
       // Full, human-readable source path: "request.body.email", "request.body",
       // or just "request" for a bare node reference.
@@ -663,8 +665,9 @@ export function WorkflowEditor({ path, tabId }: Props) {
   const onConnect = useCallback(
     (conn: Connection) => {
       const { source, sourceHandle, target, targetHandle } = conn;
-      // sourceHandle is required (sentinel "" not allowed as a source — source
-      // ports always carry a real port id). targetHandle may be "" for root.
+      // sourceHandle is required (ROOT_HANDLE_ID not allowed as a source — source
+      // ports always carry a real port id). targetHandle may be ROOT_HANDLE_ID
+      // for the root input handle (whole-object connection).
       if (!source || !target || sourceHandle == null || targetHandle == null)
         return;
       if (!sourceHandle) return;
@@ -681,7 +684,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
 
       let nextIn: string | Record<string, unknown>;
 
-      if (targetHandle === "") {
+      // targetHandle === ROOT_HANDLE_ID means the user dropped onto the root
+      // input port (collapsed node) — this produces the whole-object form.
+      const isRootTarget = targetHandle === ROOT_HANDLE_ID;
+      if (isRootTarget) {
         // Whole-object form. If existing `in:` is a non-empty object,
         // confirm before discarding per-field entries.
         const existing = targetNode.in;

@@ -12,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { type FileFolder, type FileNode, mockNodes, mockWorkflows } from "@/data/mock-files"
 import { fetchWorkspaceTree } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
+import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
 import { useDockviewApi } from "@/store/dockview-api"
 import { useTabsStore } from "@/store/tabs"
@@ -157,8 +158,10 @@ function Leaf({ node, depth }: { node: Extract<FileNode, { type: "file" }>; dept
   const openTab = useTabsStore((s) => s.openTab)
   const activeWorkflowId = useTabsStore((s) => s.activeWorkflowId)
   const activeCodeId = useTabsStore((s) => s.activeCodeId)
+  // Node tabs use the file path as their id (matches openCodeFile convention).
+  const nodeTabId = node.kind === "node" ? (node.path ?? node.id) : node.id
   const isActive =
-    node.kind === "workflow" ? activeWorkflowId === node.id : activeCodeId === node.id
+    node.kind === "workflow" ? activeWorkflowId === node.id : activeCodeId === nodeTabId
 
   const Icon = node.kind === "workflow" ? FileText : FileCode
 
@@ -174,6 +177,12 @@ function Leaf({ node, depth }: { node: Extract<FileNode, { type: "file" }>; dept
         }
       }}
       onClick={() => {
+        if (node.kind === "node" && node.path) {
+          // Use openCodeFile so the tab id is always the file path — this
+          // deduplicates with View-source in the node context menu.
+          openCodeFile(node.path)
+          return
+        }
         const tab: Parameters<typeof openTab>[0] = {
           id: node.id,
           title: node.name,

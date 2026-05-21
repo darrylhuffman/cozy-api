@@ -101,8 +101,9 @@ describe("WorkflowNode", () => {
     render(<WorkflowNode data={data} />)
     // Root branch labeled "input" is visible
     expect(screen.getByText("input")).toBeInTheDocument()
-    // The synthetic root has an empty-string handle id
-    expect(screen.getByTestId("handle-target-")).toBeInTheDocument()
+    // The synthetic root handle is rendered as "$root" (ROOT_HANDLE_ID) so
+    // React Flow can form connections to it (empty-string ids are rejected).
+    expect(screen.getByTestId("handle-target-$root")).toBeInTheDocument()
     // Fields hidden until the root chevron is expanded
     expect(screen.queryByText("email")).not.toBeInTheDocument()
 
@@ -206,10 +207,10 @@ describe("WorkflowNode", () => {
       }
       const data = makeData("save", { uses: "./nodes/save" }, ports)
       render(<WorkflowNode data={data} />)
-      // Root branch is "input" with a chevron; the synthetic root handle id is ""
+      // Root branch is "input" with a chevron; the root handle is "$root" (ROOT_HANDLE_ID)
       expect(screen.getByText("input")).toBeInTheDocument()
       expect(screen.getByTestId("chevron-")).toBeInTheDocument()
-      expect(screen.getByTestId("handle-target-")).toBeInTheDocument()
+      expect(screen.getByTestId("handle-target-$root")).toBeInTheDocument()
 
       // Expand root → reveals the "payload" branch
       fireEvent.click(screen.getByTestId("chevron-"))

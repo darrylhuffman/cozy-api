@@ -42,6 +42,14 @@ const INDENT_PX = 12;
 /** When a branch has more than this many children, show a "+N more" button. */
 const VISIBLE_COUNT = 6;
 
+/**
+ * React Flow requires non-empty handle ids for connections to work reliably.
+ * The root input port (port.id === "") is rendered with this sentinel id so
+ * that drag-to-connect on a collapsed node produces a valid connection event.
+ * All edge/onConnect logic translates "$root" ↔ "" at the boundary.
+ */
+export const ROOT_HANDLE_ID = "$root";
+
 const EMPTY_ROOT_INPUT: PortNode = {
   id: "",
   label: "input",
@@ -340,7 +348,7 @@ function PortRow({
         <Handle
           type={handleType}
           position={handlePosition}
-          id={port.id}
+          id={port.id === "" ? ROOT_HANDLE_ID : port.id}
           style={{
             top: "50%",
             transform: "translateY(-50%)",
@@ -364,11 +372,14 @@ function PortRow({
         )}
       </div>
       {/* Inline widget sits in its own row BELOW the port label so it
-          doesn't compete for horizontal space with the label text. */}
+          doesn't compete for horizontal space with the label text.
+          Aligned flush under the port label — no extra left indent. */}
       {inlineWidget && !isOutput && (
         <div
+          className="w-full"
           style={{
-            paddingLeft: 12 + depth * INDENT_PX + 16,
+            paddingLeft: 12 + depth * INDENT_PX,
+            paddingRight: 8,
             paddingBottom: 4,
           }}
         >
@@ -431,14 +442,14 @@ function InlineInputWidget({
   onChange: (portId: string, value: unknown) => void;
 }) {
   const baseClass =
-    "ml-1 h-4 rounded border border-border bg-background px-1 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
+    "h-4 w-full rounded border border-border bg-background px-1 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
 
   // Enum → select
   if (Array.isArray(schema.enum)) {
     return (
       <select
         data-testid={`input-widget-${portId}`}
-        className={`${baseClass} max-w-[80px]`}
+        className={`${baseClass}`}
         value={typeof currentValue === "string" ? currentValue : ""}
         onChange={(e) => {
           e.stopPropagation();
@@ -458,13 +469,13 @@ function InlineInputWidget({
     );
   }
 
-  // Boolean → checkbox
+  // Boolean → checkbox (doesn't expand full-width — checkboxes are fixed size)
   if (schema.type === "boolean") {
     return (
       <input
         type="checkbox"
         data-testid={`input-widget-${portId}`}
-        className="ml-1 h-3 w-3 cursor-pointer"
+        className="h-3 w-3 cursor-pointer"
         checked={typeof currentValue === "boolean" ? currentValue : false}
         onChange={(e) => {
           e.stopPropagation();
@@ -481,7 +492,7 @@ function InlineInputWidget({
       <input
         type="number"
         data-testid={`input-widget-${portId}`}
-        className={`${baseClass} w-[60px]`}
+        className={`${baseClass}`}
         value={typeof currentValue === "number" ? currentValue : ""}
         onChange={(e) => {
           e.stopPropagation();
@@ -502,7 +513,7 @@ function InlineInputWidget({
     <input
       type="text"
       data-testid={`input-widget-${portId}`}
-      className={`${baseClass} max-w-[80px]`}
+      className={`${baseClass}`}
       value={typeof currentValue === "string" ? currentValue : ""}
       placeholder="value…"
       onChange={(e) => {

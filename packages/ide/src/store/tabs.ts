@@ -92,7 +92,7 @@ export const useTabsStore = create<TabsState>()(
     }),
     {
       name: "lorien-ide-tabs",
-      version: 3,
+      version: 4,
       migrate(persistedState, fromVersion) {
         const state = persistedState as {
           tabs?: unknown
@@ -105,6 +105,17 @@ export const useTabsStore = create<TabsState>()(
           return { tabs: [], activeWorkflowId: null, activeCodeId: null }
         }
         // v2 → v3: dirty field added (optional, defaults to undefined = clean). No migration needed.
+        // v3 → v4: node tab ids now use the file path instead of the tree node id.
+        //   Drop persisted node tabs whose id doesn't look like a file path (i.e.
+        //   ids that start with "n-" are legacy tree node ids). Workflow tabs are
+        //   unaffected.
+        if (fromVersion < 4) {
+          const tabs = Array.isArray(state.tabs) ? state.tabs : []
+          const cleaned = (tabs as Array<{ kind?: unknown; id?: unknown }>).filter(
+            (t) => t.kind !== "node" || (typeof t.id === "string" && !t.id.startsWith("n-")),
+          )
+          return { ...state, tabs: cleaned }
+        }
         return state as never
       },
     },

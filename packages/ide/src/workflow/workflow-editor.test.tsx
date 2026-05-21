@@ -517,7 +517,8 @@ describe("WorkflowEditor", () => {
           (e) => e.source === "request" && e.target === "save",
         )
         expect(edges?.length).toBe(1)
-        expect(edges?.[0]?.targetHandle).toBe("")
+        // Root input handle is rendered as "$root" so React Flow can form the connection.
+        expect(edges?.[0]?.targetHandle).toBe("$root")
       })
 
       // The merged edge carries BOTH underlying mappings so the hover card
@@ -750,8 +751,10 @@ describe("WorkflowEditor", () => {
       expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
     })
 
-    it("connecting to root targetHandle '' sets `in:` to a string reference (whole-object form)", async () => {
+    it("connecting to root (targetHandle '$root') sets `in:` to a string reference (whole-object form)", async () => {
       // Start with a node that has no `in:` set, so no confirm() prompt.
+      // The root input handle is rendered with id="$root" (ROOT_HANDLE_ID) so
+      // React Flow can form the connection — previously "" caused dropped connections.
       const blankSave: WorkflowFile = {
         ...createWorkflow,
         nodes: {
@@ -770,7 +773,7 @@ describe("WorkflowEditor", () => {
           source: "request",
           sourceHandle: "body",
           target: "save",
-          targetHandle: "",
+          targetHandle: "$root",
         })
       })
 
@@ -798,7 +801,7 @@ describe("WorkflowEditor", () => {
           source: "request",
           sourceHandle: "body",
           target: "save",
-          targetHandle: "",
+          targetHandle: "$root",
         })
       })
 
@@ -827,7 +830,7 @@ describe("WorkflowEditor", () => {
           source: "request",
           sourceHandle: "body",
           target: "save",
-          targetHandle: "",
+          targetHandle: "$root",
         })
       })
 
@@ -835,6 +838,46 @@ describe("WorkflowEditor", () => {
       // No dirty mark, no save needed.
       expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
       confirmSpy.mockRestore()
+    })
+
+    it("BUG REGRESSION: dropping a source onto the collapsed root input creates a whole-object connection", async () => {
+      // Reproduces the bug where dragging request.body onto save's collapsed root
+      // input produced no connection. Root cause: the Handle was rendered with
+      // id="" (empty string), which React Flow rejects for connection events —
+      // the fix renders it as id="$root" (ROOT_HANDLE_ID) and onConnect maps
+      // "$root" → whole-object form internally.
+      const blankSave: WorkflowFile = {
+        ...createWorkflow,
+        nodes: {
+          ...createWorkflow.nodes,
+          save: { uses: "./nodes/users/save-user" },
+        },
+      }
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(blankSave)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // React Flow now fires onConnect with targetHandle: "$root" (not "")
+      act(() => {
+        capturedOnConnect?.({
+          source: "request",
+          sourceHandle: "body",
+          target: "save",
+          targetHandle: "$root",
+        })
+      })
+
+      // Ctrl+S to persist
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => expect(vi.mocked(saveFile)).toHaveBeenCalledOnce())
+      const [, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+      const parsed = JSON.parse(savedContent) as WorkflowFile
+      // The whole-object form: `in: "request.body"`
+      expect(parsed.nodes.save!.in).toBe("request.body")
     })
 
     it("per-field connect on a string-form `in:` switches to object form", async () => {
