@@ -283,6 +283,23 @@ export function renderAgentsMd(_ctx: TemplateContext): string {
   return SKILL_BODY
 }
 
+/**
+ * Renders the Claude Code skill file (.claude/skills/lorien-api/SKILL.md).
+ * Wraps SKILL_BODY in YAML frontmatter so Claude auto-loads it when working
+ * in the project. The `description` is what Claude reads to decide whether
+ * the skill applies to the current task.
+ */
+export function renderClaudeSkill(): string {
+  const frontmatter = [
+    "---",
+    "name: lorien-api",
+    "description: Use when authoring or editing files in a lorien-api project — workflows (.workflow JSON dependency graphs), nodes (typed defineNode modules), or lorien.config.ts (service registry). Triggers on edits in workflows/, nodes/, or any file ending in .workflow.",
+    "---",
+    "",
+  ].join("\n")
+  return `${frontmatter}\n${SKILL_BODY}`
+}
+
 /** Returns the correct run prefix for the given package manager. */
 function runCmd(pm: string, script: string): string {
   if (pm === "npm") return `npm run ${script}`

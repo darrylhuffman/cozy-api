@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   renderAgentsMd,
   renderBiomeJson,
+  renderClaudeSkill,
   renderGitignore,
   renderHelloWorkflow,
   renderLorienConfig,
@@ -112,5 +113,22 @@ describe("template renderers", () => {
     expect(SKILL_BODY).toMatch(/async run/)
     // no YAML frontmatter — that's the SKILL.md renderer's job
     expect(SKILL_BODY.startsWith("---")).toBe(false)
+  })
+
+  it("renderClaudeSkill wraps SKILL_BODY with valid Claude Code frontmatter", () => {
+    const out = renderClaudeSkill()
+    // YAML frontmatter present and well-formed
+    expect(out.startsWith("---\n")).toBe(true)
+    expect(out).toMatch(/^---\nname: lorien-api\ndescription: .+\n---\n\n/)
+    // description is a single line (skill loader requires this), non-empty
+    const descMatch = out.match(/^description: (.+)$/m)
+    expect(descMatch).not.toBeNull()
+    expect(descMatch![1].length).toBeGreaterThan(40)
+    expect(descMatch![1]).not.toContain("\n")
+    // Body follows the frontmatter
+    expect(out).toMatch(/# lorien-api project guide/)
+    expect(out).toMatch(/<!-- lorien-skill-version: 1 -->/)
+    // Trailing newline preserved
+    expect(out.endsWith("\n")).toBe(true)
   })
 })
