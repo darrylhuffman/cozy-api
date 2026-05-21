@@ -63,9 +63,12 @@ describe("template renderers", () => {
     expect(renderSayHelloNode()).toMatch(/Hello from lorien-api/)
   })
 
-  it("server.ts uses startLorienServer + serve", () => {
-    expect(renderServerEntry()).toMatch(/startLorienServer/)
-    expect(renderServerEntry()).toMatch(/@hono\/node-server/)
+  it("server.ts uses startLorienServer + serve + agent broker", () => {
+    const out = renderServerEntry()
+    expect(out).toMatch(/startLorienServer/)
+    expect(out).toMatch(/@hono\/node-server/)
+    expect(out).toMatch(/mountAgentBroker/)
+    expect(out).toMatch(/attachAgentBroker/)
   })
 
   it("AGENTS.md is the canonical SKILL_BODY with no frontmatter", () => {

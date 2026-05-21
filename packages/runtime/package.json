@@ -24,6 +24,10 @@
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "default": "./dist/testing/index.js"
+    },
+    "./agent-broker": {
+      "types": "./dist/agent-broker/index.d.ts",
+      "default": "./dist/agent-broker/index.js"
     }
   },
   "files": [

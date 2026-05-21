@@ -270,12 +270,16 @@ export default defineNode({
 export function renderServerEntry(): string {
   return `import { serve } from "@hono/node-server"
 import { startLorienServer } from "@darrylondil/lorien-runtime"
+import { attachAgentBroker, mountAgentBroker } from "@darrylondil/lorien-runtime/agent-broker"
 
 const app = await startLorienServer()
+mountAgentBroker(app, { projectRoot: process.cwd() })
+
 const port = Number(process.env.PORT) || 3000
-serve({ fetch: app.fetch, port }, ({ port }) => {
+const server = serve({ fetch: app.fetch, port }, ({ port }) => {
   console.log(\`lorien-api listening on http://localhost:\${port}\`)
 })
+attachAgentBroker({ app, server, projectRoot: process.cwd() })
 `
 }
 
