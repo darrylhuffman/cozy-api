@@ -8,6 +8,11 @@ let capturedOnNodesChange: ((changes: unknown[]) => void) | null = null
 let capturedOnConnect:
   | ((conn: { source: string; sourceHandle: string; target: string; targetHandle: string }) => void)
   | null = null
+let capturedOnNodesDelete: ((deleted: { id: string }[]) => void) | null = null
+let capturedOnEdgesDelete: ((deleted: CapturedEdge[]) => void) | null = null
+let capturedOnReconnectEnd:
+  | ((event: unknown, edge: CapturedEdge, handleType: unknown, connectionState: unknown) => void)
+  | null = null
 // Capture what edges/edgeTypes the editor passed to React Flow
 interface CapturedMapping {
   source: string
@@ -39,6 +44,9 @@ vi.mock("@xyflow/react", () => ({
     nodeTypes,
     onNodesChange,
     onConnect,
+    onNodesDelete,
+    onEdgesDelete,
+    onReconnectEnd,
   }: {
     nodes: { id: string; type?: string; data: Record<string, unknown> }[]
     edges?: CapturedEdge[]
@@ -51,9 +59,15 @@ vi.mock("@xyflow/react", () => ({
       target: string
       targetHandle: string
     }) => void
+    onNodesDelete?: (deleted: { id: string }[]) => void
+    onEdgesDelete?: (deleted: CapturedEdge[]) => void
+    onReconnectEnd?: (event: unknown, edge: CapturedEdge, handleType: unknown, connectionState: unknown) => void
   }) => {
     capturedOnNodesChange = onNodesChange ?? null
     capturedOnConnect = onConnect ?? null
+    capturedOnNodesDelete = onNodesDelete ?? null
+    capturedOnEdgesDelete = onEdgesDelete ?? null
+    capturedOnReconnectEnd = onReconnectEnd ?? null
     capturedEdges = edges ?? null
     capturedEdgeTypes = edgeTypes ?? null
     capturedNodes = nodes ?? null
@@ -111,6 +125,7 @@ vi.mock("@/lib/events", () => ({
 }))
 
 import { fetchWorkflowFile, fetchWorkspaceSchemas, saveFile } from "@/lib/api"
+import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
 import { WorkflowEditor } from "./workflow-editor.js"
@@ -161,6 +176,9 @@ function resetStore() {
 beforeEach(() => {
   capturedOnNodesChange = null
   capturedOnConnect = null
+  capturedOnNodesDelete = null
+  capturedOnEdgesDelete = null
+  capturedOnReconnectEnd = null
   capturedEdges = null
   capturedEdgeTypes = null
   capturedNodes = null
@@ -181,6 +199,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   resetStore()
+  useSelectionStore.setState({ selectedNodeId: null })
 })
 
 describe("WorkflowEditor", () => {
@@ -858,6 +877,150 @@ describe("WorkflowEditor", () => {
 
       // The tab should be dirty
       expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(true)
+    })
+  })
+
+  describe("delete nodes and edges", () => {
+    it("onNodesDelete removes the node from the workflow and cleans up downstream refs", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Delete the "save" node
+      act(() => {
+        capturedOnNodesDelete?.([{ id: "save" }])
+      })
+
+      // Ctrl+S to persist
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => {
+        expect(vi.mocked(saveFile)).toHaveBeenCalledOnce()
+      })
+
+      const [, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+      const parsed = JSON.parse(savedContent) as WorkflowFile
+
+      // "save" node is gone
+      expect(parsed.nodes.save).toBeUndefined()
+      // response.in.body referenced "save.user" — that ref should be stripped
+      const responseIn = parsed.nodes.response?.in as Record<string, unknown>
+      expect(responseIn?.body).toBeUndefined()
+      // status: 201 literal should remain untouched
+      expect(responseIn?.status).toBe(201)
+    })
+
+    it("onEdgesDelete removes the edge's mappings from the workflow", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Find an edge with a mapping from request.body.email → save.email
+      await waitFor(() => {
+        expect(capturedEdges).not.toBeNull()
+        const edge = capturedEdges?.find((e) =>
+          e.data?.mappings?.some(
+            (m) => m.source === "request.body.email" && m.target === "save.email",
+          ),
+        )
+        expect(edge).toBeDefined()
+      })
+
+      const edge = capturedEdges!.find((e) =>
+        e.data?.mappings?.some(
+          (m) => m.source === "request.body.email" && m.target === "save.email",
+        ),
+      )!
+
+      act(() => {
+        capturedOnEdgesDelete?.([edge])
+      })
+
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => {
+        expect(vi.mocked(saveFile)).toHaveBeenCalledOnce()
+      })
+
+      const [, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+      const parsed = JSON.parse(savedContent) as WorkflowFile
+      const saveIn = parsed.nodes.save?.in as Record<string, unknown>
+      // The email mapping was on the same edge as password (merged edge) — both removed
+      expect(saveIn?.email).toBeUndefined()
+    })
+
+    it("onReconnectEnd with no successful reconnect deletes the edge's mappings", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Find the save→response edge carrying save.user → response.body
+      await waitFor(() => {
+        expect(capturedEdges).not.toBeNull()
+        const edge = capturedEdges?.find((e) =>
+          e.data?.mappings?.some(
+            (m) => m.source === "save.user" && m.target === "response.body",
+          ),
+        )
+        expect(edge).toBeDefined()
+      })
+
+      const edge = capturedEdges!.find((e) =>
+        e.data?.mappings?.some(
+          (m) => m.source === "save.user" && m.target === "response.body",
+        ),
+      )!
+
+      // Trigger onReconnectEnd without a prior successful reconnect (reconnectSuccess stays false)
+      act(() => {
+        capturedOnReconnectEnd?.(
+          new MouseEvent("mouseup"),
+          edge,
+          "target",
+          { isValid: null, from: null, fromHandle: null, fromPosition: null, fromNode: null, to: null, toHandle: null, toPosition: null, toNode: null, pointer: null },
+        )
+      })
+
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => {
+        expect(vi.mocked(saveFile)).toHaveBeenCalledOnce()
+      })
+
+      const [, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+      const parsed = JSON.parse(savedContent) as WorkflowFile
+      const responseIn = parsed.nodes.response?.in as Record<string, unknown>
+      // response.body was referencing save.user — now it should be gone
+      expect(responseIn?.body).toBeUndefined()
+    })
+
+    it("onNodesDelete clears selection when the deleted node was selected", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Pre-select "save"
+      useSelectionStore.setState({ selectedNodeId: "save" })
+      expect(useSelectionStore.getState().selectedNodeId).toBe("save")
+
+      // Delete the selected node
+      act(() => {
+        capturedOnNodesDelete?.([{ id: "save" }])
+      })
+
+      // Selection should be cleared
+      expect(useSelectionStore.getState().selectedNodeId).toBeNull()
     })
   })
 })

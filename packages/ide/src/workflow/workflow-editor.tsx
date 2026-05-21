@@ -5,6 +5,8 @@ import {
   Controls,
   type Edge,
   type EdgeTypes,
+  type FinalConnectionState,
+  type HandleType,
   type NodeChange,
   type NodeTypes,
   ReactFlow,
@@ -24,6 +26,8 @@ import { subscribeToFileEvents } from "@/lib/events";
 import { useTabsStore } from "@/store/tabs";
 import { useThemeStore } from "@/store/theme";
 import { addNode } from "./add-node";
+import { deleteNode } from "./delete-node";
+import { removeMappings } from "./delete-edge";
 import { CanvasContextMenu } from "./canvas-context-menu";
 import { CommandPalette } from "./command-palette";
 import { NewNodeDialog } from "./new-node-dialog";
@@ -33,6 +37,7 @@ import { computeInitialExpansion } from "./initial-expansion";
 import { extractReferences } from "./parse-references";
 import { PathEdge, type PathMapping } from "./path-edge";
 import { WorkflowNode } from "./workflow-node";
+import { useSelectionStore } from "@/store/selection";
 
 interface Props {
   /** API path like "workflows/users/create.workflow" */
@@ -117,6 +122,73 @@ export function WorkflowEditor({ path, tabId }: Props) {
       markDirty(true);
     },
     [markDirty],
+  );
+
+  const onNodesDelete = useCallback(
+    (deleted: RFNode[]) => {
+      const wf = workflowRef.current;
+      if (!wf) return;
+      let next = wf;
+      for (const n of deleted) {
+        next = deleteNode(next, n.id);
+      }
+      workflowRef.current = next;
+      setWorkflow(next);
+      markDirty(true);
+      // Clear selection if the deleted node was selected
+      const selected = useSelectionStore.getState().selectedNodeId;
+      if (selected && deleted.some((n) => n.id === selected)) {
+        useSelectionStore.getState().setSelected(null);
+      }
+    },
+    [markDirty],
+  );
+
+  const onEdgesDelete = useCallback(
+    (deleted: Edge[]) => {
+      const wf = workflowRef.current;
+      if (!wf) return;
+      const allMappings: PathMapping[] = [];
+      for (const e of deleted) {
+        const m = (e.data as { mappings?: PathMapping[] } | undefined)?.mappings;
+        if (m) allMappings.push(...m);
+      }
+      if (allMappings.length === 0) return;
+      const next = removeMappings(wf, allMappings);
+      workflowRef.current = next;
+      setWorkflow(next);
+      markDirty(true);
+    },
+    [markDirty],
+  );
+
+  // Track whether a reconnect completed successfully to distinguish "drop on
+  // empty canvas" (delete) from "re-targeted to a new handle" (keep).
+  const reconnectSuccessRef = useRef(false);
+
+  const onReconnectStart = useCallback(() => {
+    reconnectSuccessRef.current = false;
+  }, []);
+
+  const onReconnect = useCallback(
+    (_oldEdge: Edge, _newConnection: Connection) => {
+      reconnectSuccessRef.current = true;
+    },
+    [],
+  );
+
+  const onReconnectEnd = useCallback(
+    (
+      _event: MouseEvent | TouchEvent,
+      edge: Edge,
+      _handleType: HandleType,
+      _connectionState: FinalConnectionState,
+    ) => {
+      if (!reconnectSuccessRef.current) {
+        onEdgesDelete([edge]);
+      }
+    },
+    [onEdgesDelete],
   );
 
   const onPaneContextMenu = useCallback(
@@ -550,6 +622,11 @@ export function WorkflowEditor({ path, tabId }: Props) {
           edgeTypes={edgeTypes}
           onNodesChange={onNodesChange}
           onConnect={onConnect}
+          onNodesDelete={onNodesDelete}
+          onEdgesDelete={onEdgesDelete}
+          onReconnectStart={onReconnectStart}
+          onReconnect={onReconnect}
+          onReconnectEnd={onReconnectEnd}
           onPaneContextMenu={onPaneContextMenu}
           fitView
           colorMode={theme}
