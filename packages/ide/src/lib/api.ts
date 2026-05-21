@@ -131,3 +131,20 @@ export async function createWorkspaceFile(path: string, content: string): Promis
   if (res.status === 409) throw new Error("File already exists")
   if (!res.ok) throw new Error(`PUT failed: ${res.status}`)
 }
+
+/**
+ * Creates an empty folder at `path` (mkdir -p semantics). Idempotent.
+ */
+export async function createWorkspaceFolder(path: string): Promise<void> {
+  const res = await fetch("/api/workspace/folder", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path }),
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as {
+      error?: string
+    }
+    throw new Error(err.error ?? `Create folder failed: ${res.status}`)
+  }
+}
