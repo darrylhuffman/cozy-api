@@ -11,10 +11,16 @@ export function AgentsPanel(): React.ReactElement {
   const chats = useAgentChats((s) => s.chats)
   const newChat = useAgentChats((s) => s.newChat)
   const hydrate = useAgentChats((s) => s.hydrate)
+  const connect = useAgentChats((s) => s.connect)
+  const disconnect = useAgentChats((s) => s.disconnect)
 
   useEffect(() => {
     void hydrate()
-  }, [hydrate])
+    connect()
+    return () => {
+      disconnect()
+    }
+  }, [hydrate, connect, disconnect])
 
   if (order.length === 0) {
     return <EmptyState onStart={() => newChat()} />

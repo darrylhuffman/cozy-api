@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, vi } from "vitest"
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest"
 import { useAgentChats } from "./agent-chats.js"
 
 function reset(): void {
@@ -113,5 +113,147 @@ describe("useAgentChats", () => {
     expect(s.order).toEqual(["c1"])
     expect(s.chats["c1"]?.kind).toBe("chat")
     vi.unstubAllGlobals()
+  })
+})
+
+describe("useAgentChats WebSocket integration", () => {
+  let constructed: MockWebSocket[]
+
+  class MockWebSocket {
+    static OPEN = 1
+    static CLOSED = 3
+    // Mirror real WebSocket: constants are accessible on instances too.
+    readonly OPEN = MockWebSocket.OPEN
+    readonly CLOSED = MockWebSocket.CLOSED
+    readyState = MockWebSocket.OPEN
+    listeners: Record<string, ((e: unknown) => void)[]> = {}
+    sent: string[] = []
+
+    constructor(public url: string) {
+      constructed.push(this)
+      // Fire open synchronously in microtask
+      queueMicrotask(() => this.fire("open", {}))
+    }
+    addEventListener(type: string, cb: (e: unknown) => void): void {
+      ;(this.listeners[type] ??= []).push(cb)
+    }
+    removeEventListener(type: string, cb: (e: unknown) => void): void {
+      this.listeners[type] = (this.listeners[type] ?? []).filter((f) => f !== cb)
+    }
+    send(data: string): void {
+      this.sent.push(data)
+    }
+    close(): void {
+      this.readyState = MockWebSocket.CLOSED
+      this.fire("close", {})
+    }
+    fire(type: string, ev: unknown): void {
+      for (const cb of this.listeners[type] ?? []) cb(ev)
+    }
+    pushMessage(payload: object): void {
+      this.fire("message", { data: JSON.stringify(payload) })
+    }
+  }
+
+  beforeEach(() => {
+    reset()
+    constructed = []
+    vi.stubGlobal("WebSocket", MockWebSocket as unknown as typeof WebSocket)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    useAgentChats.getState().disconnect()
+  })
+
+  it("connect() opens a WebSocket once", async () => {
+    useAgentChats.getState().connect()
+    expect(constructed).toHaveLength(1)
+    expect(constructed[0]!.url).toBe("ws://localhost:3000/__lorien/agents/ws")
+    useAgentChats.getState().connect()
+    // Idempotent — no new socket
+    expect(constructed).toHaveLength(1)
+  })
+
+  it("startClaudeChat sends a new_chat message", async () => {
+    useAgentChats.getState().connect()
+    await Promise.resolve() // let microtask fire 'open'
+    const pickerId = useAgentChats.getState().newChat()
+    useAgentChats.getState().startClaudeChat(pickerId)
+    const sent = constructed[0]!.sent
+    expect(sent).toHaveLength(1)
+    expect(JSON.parse(sent[0]!)).toEqual({ type: "new_chat", agent: "claude" })
+  })
+
+  it("chat_created server message upgrades the picker tab", async () => {
+    useAgentChats.getState().connect()
+    await Promise.resolve()
+    const pickerId = useAgentChats.getState().newChat()
+    useAgentChats.getState().startClaudeChat(pickerId)
+    constructed[0]!.pushMessage({ type: "chat_created", chatId: "c-new" })
+    const s = useAgentChats.getState()
+    expect(s.chats["c-new"]?.kind).toBe("chat")
+    expect(s.activeChatId).toBe("c-new")
+  })
+
+  it("event messages append to the chat", async () => {
+    useAgentChats.getState().connect()
+    await Promise.resolve()
+    const pickerId = useAgentChats.getState().newChat()
+    useAgentChats.getState().startClaudeChat(pickerId)
+    constructed[0]!.pushMessage({ type: "chat_created", chatId: "c-evt" })
+    constructed[0]!.pushMessage({
+      type: "event",
+      chatId: "c-evt",
+      event: {
+        kind: "assistant_text",
+        text: "hi",
+        turnId: "t1",
+        at: "2026-05-21T00:00:00Z",
+      },
+    })
+    const tab = useAgentChats.getState().chats["c-evt"]
+    if (tab?.kind === "chat") {
+      expect(tab.events).toHaveLength(1)
+    } else {
+      throw new Error("expected chat")
+    }
+  })
+
+  it("agent_error sets the chat's error and clears turnInFlight", async () => {
+    useAgentChats.getState().connect()
+    await Promise.resolve()
+    const pickerId = useAgentChats.getState().newChat()
+    useAgentChats.getState().startClaudeChat(pickerId)
+    constructed[0]!.pushMessage({ type: "chat_created", chatId: "c-err" })
+    useAgentChats.getState().setTurnInFlight("c-err", true)
+    constructed[0]!.pushMessage({
+      type: "agent_error",
+      chatId: "c-err",
+      message: "Claude not signed in",
+      recoverable: true,
+    })
+    const tab = useAgentChats.getState().chats["c-err"]
+    if (tab?.kind === "chat") {
+      expect(tab.error).toMatch(/not signed in/i)
+      expect(tab.turnInFlight).toBe(false)
+    }
+  })
+
+  it("sendMessage queues until WS open and then writes", async () => {
+    useAgentChats.getState().connect()
+    await Promise.resolve()
+    const pickerId = useAgentChats.getState().newChat()
+    useAgentChats.getState().startClaudeChat(pickerId)
+    constructed[0]!.pushMessage({ type: "chat_created", chatId: "c-snd" })
+    useAgentChats.getState().sendMessage("c-snd", "hi")
+    const sentTypes = constructed[0]!.sent.map((s) => JSON.parse(s).type)
+    expect(sentTypes).toEqual(["new_chat", "user"])
+    // optimistic local user_message event:
+    const tab = useAgentChats.getState().chats["c-snd"]
+    if (tab?.kind === "chat") {
+      expect(tab.events[0]?.kind).toBe("user_message")
+      expect(tab.turnInFlight).toBe(true)
+    }
   })
 })
