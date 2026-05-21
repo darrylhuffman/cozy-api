@@ -69,11 +69,14 @@ export type ServerMsg =
       reason: "subprocess_exit" | "user_cancel"
     }
 
-/** REST GET /__lorien/agents/availability response. */
-export interface AvailabilityResponse {
-  claude: AgentAvailability
-  codex: AgentAvailability
-}
+/**
+ * REST GET /__lorien/agents/availability response.
+ *
+ * `Record<AgentName, AgentAvailability>` instead of a flat interface so
+ * consumers can index by `agentName: AgentName` without a cast — useful
+ * when rendering an availability table that iterates over agents.
+ */
+export type AvailabilityResponse = Record<AgentName, AgentAvailability>
 
 export interface AgentAvailability {
   installed: boolean
