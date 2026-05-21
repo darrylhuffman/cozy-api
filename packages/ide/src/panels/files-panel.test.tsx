@@ -38,4 +38,23 @@ describe("FilesPanel", () => {
     expect(useTabsStore.getState().tabs[0]?.id).toBe("n-shared-parseBody")
     expect(useTabsStore.getState().activeCodeId).toBe("n-shared-parseBody")
   })
+
+  it("dragging a .ts node leaf sets the correct dataTransfer payload", async () => {
+    render(<FilesPanel />)
+    await waitFor(() => expect(screen.getByText("NODES")).toBeInTheDocument())
+
+    // Expand the "shared" subfolder so a .ts leaf is visible (shared is under NODES,
+    // whereas "users" is ambiguous — it exists in both WORKFLOWS and NODES sections)
+    fireEvent.click(screen.getByText("shared"))
+    const leaf = screen.getByText("parseBody.ts").closest("button")!
+    expect(leaf).toBeInTheDocument()
+
+    const dataTransferMock = { setData: vi.fn(), effectAllowed: "" as string }
+    fireEvent.dragStart(leaf, { dataTransfer: dataTransferMock })
+
+    expect(dataTransferMock.setData).toHaveBeenCalledWith(
+      "application/lorien-node",
+      "./nodes/shared/parseBody",
+    )
+  })
 })

@@ -165,6 +165,14 @@ function Leaf({ node, depth }: { node: Extract<FileNode, { type: "file" }>; dept
   return (
     <button
       type="button"
+      draggable={node.kind === "node" && node.path?.endsWith(".ts")}
+      onDragStart={(e) => {
+        if (node.path && node.path.endsWith(".ts")) {
+          const uses = `./${node.path.replace(/\.ts$/, "")}`
+          e.dataTransfer.setData("application/lorien-node", uses)
+          e.dataTransfer.effectAllowed = "copy"
+        }
+      }}
       onClick={() => {
         const tab: Parameters<typeof openTab>[0] = {
           id: node.id,
