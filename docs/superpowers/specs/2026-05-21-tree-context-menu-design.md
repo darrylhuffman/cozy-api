@@ -99,8 +99,8 @@ Same folder-picker, same validation rule (no `/`, no extension needed).
 
 | File | Action | Purpose |
 |---|---|---|
-| `packages/ide/src/components/ui/context-menu.tsx` | **new** | shadcn primitive wrapper over `radix-ui` ContextMenu (Root/Trigger/Content/Item/Separator). Style parity with existing `menubar.tsx`. |
-| `packages/ide/src/panels/files-panel.tsx` | **modify** | Wrap each `Folder_`/`Leaf` in a `<ContextMenu>` (or attach `onContextMenu`). Owns the "selected target folder" state and the open/close state for the three dialogs. |
+| `packages/ide/src/panels/tree-context-menu.tsx` | **new** | Right-click menu for the files panel. Reuses the codebase's existing **Popover + fixed-cursor-trigger** pattern (see `workflow/canvas-context-menu.tsx`, `workflow/node-context-menu.tsx`) — NOT the radix `ContextMenu` primitive. Renders `New folder…` and `New workflow…`/`New node…` items based on which tree it was opened from. |
+| `packages/ide/src/panels/files-panel.tsx` | **modify** | Attach `onContextMenu={(e) => { e.preventDefault(); setMenu({ open: true, x: e.clientX, y: e.clientY, tree, folder }) }}` to folder rows, file rows, and the section-wrapper divs. Owns the "selected target folder" state and the open/close state for the three dialogs. |
 | `packages/ide/src/workflow/folder-picker.tsx` | **new** | Reusable inline collapsible folder tree. Props: `{ root: FileFolder; value: string; onChange: (folder: string) => void }`. Shows only folder rows from the given root. |
 | `packages/ide/src/workflow/new-node-dialog.tsx` | **refactor** | Replace single text input with `FolderPicker` + name input. Props gain `defaultFolder?: string` (defaults to `nodes/`). Existing call sites (workflow editor) updated to pass no folder. |
 | `packages/ide/src/workflow/new-workflow-dialog.tsx` | **new** | Mirror of `NewNodeDialog`, creates `.workflow` files with the existing workflow template (empty `{ "lorien": 1, "nodes": {} }`). |
@@ -111,8 +111,10 @@ Same folder-picker, same validation rule (no `/`, no extension needed).
 
 ### Component contracts
 
-**`ContextMenu` primitives** — match existing shadcn convention:
-- Re-export `ContextMenu`, `ContextMenuTrigger`, `ContextMenuContent`, `ContextMenuItem`, `ContextMenuSeparator` from `radix-ui`'s `ContextMenu` namespace with project styling.
+**`TreeContextMenu`** — mirrors `node-context-menu.tsx`/`canvas-context-menu.tsx`:
+- Props: `{ open, onOpenChange, x, y, tree: "workflows" | "nodes", onNewFolder, onNewItem }`.
+- Renders a `<Popover>` with a `position: fixed; width:1px; height:1px; pointer-events:none` invisible trigger anchored at `(x, y)`, matching the existing pattern exactly.
+- Content: two `MenuItem` buttons — `New folder…` and `New workflow…`/`New node…` (label depends on `tree`).
 
 **`FolderPicker`**:
 - `root: FileFolder` — the tree to display.
@@ -212,7 +214,7 @@ None. The two design questions (folder-picker UX, folder backend) were answered:
 
 ## Implementation Notes
 
-- Use the existing `radix-ui` namespaced import pattern (`import { ContextMenu as ContextMenuPrimitive } from "radix-ui"`).
+- **Right-click pattern reused, not invented.** The codebase already uses Popover + a fixed-position 1×1 invisible trigger to anchor menus at cursor coordinates (see `workflow/canvas-context-menu.tsx` and `workflow/node-context-menu.tsx`). `TreeContextMenu` follows the same shape verbatim so the IDE has one mental model for right-click menus.
 - `FolderPicker` shares the visual style of the existing tree but is **never editable** (no files, no draggable, no openTab).
 - Tree state for the picker can be local (each picker instance manages its own expanded set) — folder paths are short enough that re-expanding on each open is fine.
 - `files-panel.tsx` mounts all three dialogs; they're conditionally rendered based on `menuState.action`.
