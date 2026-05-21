@@ -88,11 +88,18 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
 
   const wss = new WebSocketServer({ noServer: true })
 
-  function asSocketLike(ws: WebSocket): SocketLike {
-    return {
-      send: (data) => ws.send(data),
-      isOpen: () => ws.readyState === ws.OPEN,
+  const sockets = new WeakMap<WebSocket, SocketLike>()
+
+  function getSocket(ws: WebSocket): SocketLike {
+    let s = sockets.get(ws)
+    if (!s) {
+      s = {
+        send: (data) => ws.send(data),
+        isOpen: () => ws.readyState === ws.OPEN,
+      }
+      sockets.set(ws, s)
     }
+    return s
   }
 
   function emit(chatId: string, msg: ServerMsg): void {
@@ -138,11 +145,14 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
       /* iteration ended; close handled below */
     })
     proc.exit.then((code) => {
-      // If we still have subscribers, tell them.
-      const reason =
-        chats.get(chatId)?.proc === proc ? "subprocess_exit" : "user_cancel"
-      emit(chatId, { type: "chat_closed", chatId, reason })
-      if (lifecycle.proc === proc) lifecycle.proc = null
+      // Distinguish "we're still the active process" (subprocess exited on its own)
+      // from "we've been cancelled and lifecycle.proc was already cleared" (the
+      // cancel handler already emitted chat_closed).
+      const ownedByUs = chats.get(chatId)?.proc === proc
+      if (ownedByUs) {
+        emit(chatId, { type: "chat_closed", chatId, reason: "subprocess_exit" })
+        lifecycle.proc = null
+      }
       // Capture session id from the process for future resume.
       const sid = proc.sessionId()
       if (sid) lifecycle.sessionId = sid
@@ -180,7 +190,7 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
           agent: msg.agent as AgentName,
           title: "untitled",
         })
-        subs.subscribe(id, asSocketLike(ws))
+        subs.subscribe(id, getSocket(ws))
         ws.send(
           JSON.stringify({
             type: "chat_created",
@@ -190,7 +200,7 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
         return
       }
       case "open_chat": {
-        subs.subscribe(msg.chatId, asSocketLike(ws))
+        subs.subscribe(msg.chatId, getSocket(ws))
         return
       }
       case "user": {
@@ -229,7 +239,7 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
   }
 
   wss.on("connection", (ws) => {
-    const socket = asSocketLike(ws)
+    const socket = getSocket(ws)
     ws.on("message", (data) => {
       void handleMessage(ws, String(data))
     })
