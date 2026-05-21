@@ -46,7 +46,9 @@ export function NewWorkflowDialog({
     fetchedRef.current = true
     fetchWorkspaceTree()
       .then((t) => setTree(t.workflows))
-      .catch(() => {})
+      .catch(() => {
+        // leave tree=null; picker won't open, but user can still type a name
+      })
   }, [open, workflowsTree])
 
   async function handleCreate() {

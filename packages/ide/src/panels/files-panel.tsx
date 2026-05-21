@@ -7,7 +7,7 @@ import {
   FolderOpen,
   WifiOff,
 } from "lucide-react"
-import { type MouseEvent as ReactMouseEvent, useEffect, useState } from "react"
+import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { type FileFolder, type FileNode, mockNodes, mockWorkflows } from "@/data/mock-files"
 import { fetchWorkspaceTree } from "@/lib/api"
@@ -46,35 +46,32 @@ export function FilesPanel() {
     folder: "workflows",
   })
   const [dialog, setDialog] = useState<DialogKind>("none")
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const refreshTree = () => {
     fetchWorkspaceTree()
       .then((tree) => {
+        if (!mountedRef.current) return
         setWorkflows(tree.workflows)
         setNodes(tree.nodes)
         setLoadState("ready")
       })
       .catch(() => {
+        if (!mountedRef.current) return
         setLoadState("fallback")
       })
   }
 
   useEffect(() => {
-    let cancelled = false
-    fetchWorkspaceTree()
-      .then((tree) => {
-        if (cancelled) return
-        setWorkflows(tree.workflows)
-        setNodes(tree.nodes)
-        setLoadState("ready")
-      })
-      .catch(() => {
-        if (cancelled) return
-        setLoadState("fallback")
-      })
-    return () => {
-      cancelled = true
-    }
+    refreshTree()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -221,7 +218,6 @@ function TreeNode({
   path,
   treeKind,
   onContextMenu,
-  forceOpen = false,
   autoExpand = false,
 }: {
   node: FileNode
@@ -229,7 +225,6 @@ function TreeNode({
   path: string
   treeKind: TreeKind
   onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
-  forceOpen?: boolean
   autoExpand?: boolean
 }) {
   if (node.type === "folder") {
@@ -240,7 +235,6 @@ function TreeNode({
         path={path}
         treeKind={treeKind}
         onContextMenu={onContextMenu}
-        forceOpen={forceOpen}
         autoExpand={autoExpand}
       />
     )
@@ -262,7 +256,6 @@ function Folder_({
   path,
   treeKind,
   onContextMenu,
-  forceOpen,
   autoExpand,
 }: {
   node: Extract<FileNode, { type: "folder" }>
@@ -270,12 +263,10 @@ function Folder_({
   path: string
   treeKind: TreeKind
   onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
-  forceOpen?: boolean
   autoExpand?: boolean
 }) {
-  // When autoExpand is on, depth-0 folders (direct children of the section root)
-  // start open. Deeper levels start closed.
-  const [open, setOpen] = useState((forceOpen ?? false) || ((autoExpand ?? false) && depth === 0))
+  // depth-0 folders (direct children of the section root) start open when autoExpand is on.
+  const [open, setOpen] = useState((autoExpand ?? false) && depth === 0)
   return (
     <div>
       <button
