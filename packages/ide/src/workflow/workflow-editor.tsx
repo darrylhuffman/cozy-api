@@ -1,14 +1,16 @@
 import {
+  applyNodeChanges,
   Background,
   Controls,
   type Edge,
+  type NodeChange,
   type NodeTypes,
   ReactFlow,
   type Node as RFNode,
 } from "@xyflow/react"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "@xyflow/react/dist/style.css"
-import { fetchWorkflowFile, type WorkflowFile } from "@/lib/api"
+import { fetchWorkflowFile, saveFile, type WorkflowFile } from "@/lib/api"
 import { useThemeStore } from "@/store/theme"
 import { extractReferences } from "./parse-references"
 import { WorkflowNode } from "./workflow-node"
@@ -24,31 +26,49 @@ interface Props {
 // can't verify that without the full Node extension. The cast is safe.
 const nodeTypes: NodeTypes = { workflow: WorkflowNode as NodeTypes[string] }
 
+type SaveState = "idle" | "saving" | "saved" | "error"
+
 export function WorkflowEditor({ path }: Props) {
   const [workflow, setWorkflow] = useState<WorkflowFile | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [nodes, setNodes] = useState<RFNode[]>([])
+  const [saveState, setSaveState] = useState<SaveState>("idle")
   const theme = useThemeStore((s) => s.theme)
+
+  // Always-current ref so persist callbacks don't close over stale nodes
+  const nodesRef = useRef<RFNode[]>([])
+  const workflowRef = useRef<WorkflowFile | null>(null)
+  // Debounce timer ref
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     let alive = true
     setError(null)
     setWorkflow(null)
+    setNodes([])
     fetchWorkflowFile(path)
       .then((wf) => {
-        if (alive) setWorkflow(wf)
+        if (alive) {
+          setWorkflow(wf)
+          workflowRef.current = wf
+        }
       })
       .catch((e: Error) => {
         if (alive) setError(e.message)
       })
     return () => {
       alive = false
+      if (saveTimerRef.current !== null) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
     }
   }, [path])
 
-  const { nodes, edges } = useMemo<{ nodes: RFNode[]; edges: Edge[] }>(() => {
-    if (!workflow) return { nodes: [], edges: [] }
-
-    const wfNodes: RFNode[] = Object.entries(workflow.nodes).map(([id, instance], i) => {
+  // Initialise nodes whenever workflow loads
+  useEffect(() => {
+    if (!workflow) return
+    const initial: RFNode[] = Object.entries(workflow.nodes).map(([id, instance], i) => {
       const view = workflow.view?.[id]
       return {
         id,
@@ -57,18 +77,67 @@ export function WorkflowEditor({ path }: Props) {
         data: { id, instance },
       }
     })
+    setNodes(initial)
+    nodesRef.current = initial
+  }, [workflow])
 
+  const edges = useMemo<Edge[]>(() => {
+    if (!workflow) return []
     const refs = extractReferences(workflow)
-    const wfEdges: Edge[] = refs.map((r, i) => ({
+    return refs.map((r, i) => ({
       id: `e-${i}`,
       source: r.from.nodeId,
       target: r.to.nodeId,
       label: r.from.path.length > 0 ? `${r.from.path.join(".")} → ${r.to.field}` : r.to.field,
       animated: false,
     }))
-
-    return { nodes: wfNodes, edges: wfEdges }
   }, [workflow])
+
+  const persistViewPositions = useCallback(async () => {
+    const wf = workflowRef.current
+    if (!wf) return
+    setSaveState("saving")
+    const newView: Record<string, { x: number; y: number }> = {}
+    for (const n of nodesRef.current) {
+      newView[n.id] = { x: Math.round(n.position.x), y: Math.round(n.position.y) }
+    }
+    const updated: WorkflowFile = { ...wf, view: newView }
+    try {
+      await saveFile(path, `${JSON.stringify(updated, null, 2)}\n`)
+      // Update the in-memory workflow so subsequent saves start from the new state
+      workflowRef.current = updated
+      setSaveState("saved")
+      setTimeout(() => setSaveState("idle"), 1500)
+    } catch (e) {
+      console.error("Failed to persist workflow positions:", e)
+      setSaveState("error")
+    }
+  }, [path])
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      // Eagerly compute and store the next nodes in the ref so the debounced
+      // persist callback always sees the latest positions — even if React hasn't
+      // committed the state update yet (important for fake-timer tests and
+      // React 18 concurrent rendering).
+      const next = applyNodeChanges(changes, nodesRef.current)
+      nodesRef.current = next
+      setNodes(next)
+
+      // When any drag ends, schedule a debounced persist
+      const dragEnded = changes.some((c) => c.type === "position" && c.dragging === false)
+      if (dragEnded) {
+        if (saveTimerRef.current !== null) {
+          clearTimeout(saveTimerRef.current)
+        }
+        saveTimerRef.current = setTimeout(() => {
+          saveTimerRef.current = null
+          void persistViewPositions()
+        }, 250)
+      }
+    },
+    [persistViewPositions],
+  )
 
   if (error) {
     return (
@@ -87,18 +156,31 @@ export function WorkflowEditor({ path }: Props) {
   }
 
   return (
-    <div className="h-full w-full">
+    <div className="relative h-full w-full">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
         fitView
         colorMode={theme}
+        nodesConnectable={false}
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={20} size={1} />
         <Controls />
       </ReactFlow>
+      {saveState !== "idle" && (
+        <div
+          className={
+            saveState === "error"
+              ? "absolute bottom-3 right-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-1 text-xs text-destructive"
+              : "absolute bottom-3 right-3 rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground"
+          }
+        >
+          {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save failed"}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,36 +1,60 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { WorkflowFile } from "@/lib/api"
+
+// Capture onNodesChange so tests can fire drag events
+let capturedOnNodesChange: ((changes: unknown[]) => void) | null = null
 
 // Mock @xyflow/react — the actual library uses ResizeObserver + canvas APIs
 // that aren't available in jsdom. We replace with minimal stubs.
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({ nodes }: { nodes: { id: string }[] }) => (
-    <div data-testid="react-flow" data-nodecount={nodes.length}>
-      {nodes.map((n) => (
-        <div key={n.id} data-testid={`rf-node-${n.id}`} />
-      ))}
-    </div>
-  ),
+  ReactFlow: ({
+    nodes,
+    onNodesChange,
+  }: {
+    nodes: { id: string }[]
+    onNodesChange?: (changes: unknown[]) => void
+  }) => {
+    capturedOnNodesChange = onNodesChange ?? null
+    return (
+      <div data-testid="react-flow" data-nodecount={nodes.length}>
+        {nodes.map((n) => (
+          <div key={n.id} data-testid={`rf-node-${n.id}`} />
+        ))}
+      </div>
+    )
+  },
   Background: () => <div data-testid="rf-background" />,
   Controls: () => <div data-testid="rf-controls" />,
   Handle: () => null,
   Position: { Left: "left", Right: "right" },
+  applyNodeChanges: (
+    changes: { type: string; id: string; position?: { x: number; y: number } }[],
+    nodes: { id: string; position: { x: number; y: number } }[],
+  ) => {
+    // Minimal implementation: apply position changes
+    return nodes.map((n) => {
+      const change = changes.find((c) => c.type === "position" && c.id === n.id)
+      if (change?.position) return { ...n, position: change.position }
+      return n
+    })
+  },
 }))
 
 // Mock the CSS import from @xyflow/react
 vi.mock("@xyflow/react/dist/style.css", () => ({}))
 
-// Mock fetchWorkflowFile
+// Mock fetchWorkflowFile and saveFile
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>()
   return {
     ...actual,
     fetchWorkflowFile: vi.fn(),
+    saveFile: vi.fn().mockResolvedValue({ path: "workflows/users/create.workflow", bytes: 100 }),
   }
 })
 
-import { fetchWorkflowFile } from "@/lib/api"
+import { fetchWorkflowFile, saveFile } from "@/lib/api"
 import { useThemeStore } from "@/store/theme"
 import { WorkflowEditor } from "./workflow-editor.js"
 
@@ -49,8 +73,10 @@ const sampleWorkflow: WorkflowFile = {
 }
 
 beforeEach(() => {
+  capturedOnNodesChange = null
   useThemeStore.setState({ theme: "light" })
   vi.mocked(fetchWorkflowFile).mockResolvedValue(sampleWorkflow)
+  vi.mocked(saveFile).mockResolvedValue({ path: "workflows/users/create.workflow", bytes: 100 })
 })
 afterEach(() => {
   cleanup()
@@ -95,5 +121,33 @@ describe("WorkflowEditor", () => {
     await waitFor(() => {
       expect(vi.mocked(fetchWorkflowFile)).toHaveBeenCalledWith("workflows/auth/login.workflow")
     })
+  })
+
+  it("calls saveFile when a drag-end change is fired via onNodesChange", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      render(<WorkflowEditor path="workflows/users/create.workflow" />)
+
+      // Let fetch + initial state settle
+      await vi.advanceTimersByTimeAsync(50)
+      await waitFor(() => screen.getByTestId("react-flow"))
+
+      // Fire a drag-end position change inside act() so React flushes state sync
+      await act(async () => {
+        capturedOnNodesChange?.([
+          { type: "position", id: "parseBody", dragging: false, position: { x: 100, y: 200 } },
+        ])
+        // Advance past the 250 ms debounce
+        await vi.advanceTimersByTimeAsync(300)
+      })
+
+      expect(vi.mocked(saveFile)).toHaveBeenCalledOnce()
+      const [savedPath, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+      expect(savedPath).toBe("workflows/users/create.workflow")
+      const parsed = JSON.parse(savedContent) as WorkflowFile
+      expect(parsed.view?.parseBody).toEqual({ x: 100, y: 200 })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

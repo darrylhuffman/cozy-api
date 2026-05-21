@@ -53,3 +53,21 @@ export async function fetchWorkflowFile(path: string): Promise<WorkflowFile> {
   const { content } = await fetchFile(path)
   return JSON.parse(content) as WorkflowFile
 }
+
+export interface SaveResult {
+  path: string
+  bytes: number
+}
+
+export async function saveFile(path: string, content: string): Promise<SaveResult> {
+  const res = await fetch("/api/workspace/file", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path, content }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string }
+    throw new Error(err.error ?? `Save failed: ${res.status}`)
+  }
+  return res.json() as Promise<SaveResult>
+}

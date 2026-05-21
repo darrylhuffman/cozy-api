@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 // Mock the resolution of @lorien/ide to a tmp dist so we can test runIde without
 // requiring an actual @lorien/ide build.
@@ -14,5 +17,87 @@ describe("ide command — registration smoke", () => {
   it("defaults to the 8188 starting port", async () => {
     const mod = await import("./ide.js")
     expect(mod.DEFAULT_IDE_PORT).toBe(8188)
+  })
+})
+
+describe("PUT /api/workspace/file", () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "lorien-ide-put-"))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  async function makeApp() {
+    const { createIdeApp } = await import("./ide.js")
+    return createIdeApp(dir)
+  }
+
+  it("writes a .ts file and returns path + bytes", async () => {
+    const app = await makeApp()
+    mkdirSync(join(dir, "nodes"))
+    const content = "export const x = 42\n"
+    const res = await app.request("/api/workspace/file", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "nodes/foo.ts", content }),
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json() as { path: string; bytes: number }
+    expect(json.path).toBe("nodes/foo.ts")
+    expect(json.bytes).toBe(content.length)
+    expect(readFileSync(join(dir, "nodes", "foo.ts"), "utf-8")).toBe(content)
+  })
+
+  it("writes a .workflow file and returns path + bytes", async () => {
+    const app = await makeApp()
+    mkdirSync(join(dir, "workflows"))
+    const content = JSON.stringify({ lorien: 1, nodes: {} }, null, 2) + "\n"
+    const res = await app.request("/api/workspace/file", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "workflows/create.workflow", content }),
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json() as { path: string; bytes: number }
+    expect(json.path).toBe("workflows/create.workflow")
+    expect(readFileSync(join(dir, "workflows", "create.workflow"), "utf-8")).toBe(content)
+  })
+
+  it("rejects missing body fields with 400", async () => {
+    const app = await makeApp()
+    const res = await app.request("/api/workspace/file", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "nodes/foo.ts" }),
+    })
+    expect(res.status).toBe(400)
+    const json = await res.json() as { error: string }
+    expect(json.error).toMatch(/content/)
+  })
+
+  it("rejects path traversal with 403", async () => {
+    const app = await makeApp()
+    const res = await app.request("/api/workspace/file", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "../../etc/passwd", content: "evil" }),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it("rejects disallowed extensions with 400", async () => {
+    const app = await makeApp()
+    const res = await app.request("/api/workspace/file", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "package.json", content: "{}" }),
+    })
+    expect(res.status).toBe(400)
+    const json = await res.json() as { error: string }
+    expect(json.error).toMatch(/\.workflow.*\.ts|\.ts.*\.workflow/)
   })
 })

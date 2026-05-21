@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import { readFile, readdir, stat } from "node:fs/promises"
+import { readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { serve } from "@hono/node-server"
@@ -51,15 +51,11 @@ export function registerIde(program: Command): void {
     })
 }
 
-export async function runIde(opts: IdeOptions): Promise<{ port: number; root: string }> {
-  const ideDistRoot = await resolveIdeDistRoot()
-  const workspaceRoot = resolve(opts.root ?? process.cwd())
-  const port = parseStartingPort(opts.port, DEFAULT_IDE_PORT)
-  const availablePort = await findAvailablePort(port)
-  if (availablePort !== port) {
-    console.log(`lorien IDE: port ${port} is busy; using ${availablePort}.`)
-  }
-
+/**
+ * Creates the Hono app for the IDE API routes.
+ * Exported so tests can call `app.request(...)` without spinning up a real server.
+ */
+export function createIdeApp(workspaceRoot: string): Hono {
   const app = new Hono()
 
   // CORS for API routes — needed when Vite dev (5173) talks to this server (3737)
@@ -127,6 +123,42 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
       return c.json({ error: "File not found" }, 404)
     }
   })
+
+  app.put("/api/workspace/file", async (c) => {
+    const body = await c.req.json().catch(() => null) as { path?: string; content?: string } | null
+    if (!body || typeof body.path !== "string" || typeof body.content !== "string") {
+      return c.json({ error: "Body must be { path: string, content: string }" }, 400)
+    }
+    const rawPath = body.path
+    const abs = resolve(workspaceRoot, rawPath)
+    if (!abs.startsWith(workspaceRoot + sep) && abs !== workspaceRoot) {
+      return c.json({ error: "Path traversal denied" }, 403)
+    }
+    // Only allow writes to .workflow JSON and .ts files (whitelist)
+    if (!abs.endsWith(".workflow") && !abs.endsWith(".ts")) {
+      return c.json({ error: "Only .workflow and .ts files may be written" }, 400)
+    }
+    try {
+      await writeFile(abs, body.content, "utf-8")
+      return c.json({ path: rawPath, bytes: body.content.length })
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 500)
+    }
+  })
+
+  return app
+}
+
+export async function runIde(opts: IdeOptions): Promise<{ port: number; root: string }> {
+  const ideDistRoot = await resolveIdeDistRoot()
+  const workspaceRoot = resolve(opts.root ?? process.cwd())
+  const port = parseStartingPort(opts.port, DEFAULT_IDE_PORT)
+  const availablePort = await findAvailablePort(port)
+  if (availablePort !== port) {
+    console.log(`lorien IDE: port ${port} is busy; using ${availablePort}.`)
+  }
+
+  const app = createIdeApp(workspaceRoot)
 
   // ── Static SPA ─────────────────────────────────────────────────────────────
 
