@@ -1,6 +1,62 @@
 import { useEffect, useRef } from "react"
 import { useAgentChats } from "@/store/agent-chats"
+import type { AgentEvent } from "@/store/agent-chats"
 import { InputBar } from "./input-bar"
+import {
+  AssistantText,
+  ToolUseBash,
+  ToolUseEdit,
+  ToolUseRead,
+  UserMessage,
+} from "./cards"
+
+function eventKey(event: AgentEvent, fallback: number): string {
+  if (event.kind === "tool_use" || event.kind === "tool_result") {
+    return `${event.kind}-${event.toolUseId}`
+  }
+  if (event.kind === "assistant_text" || event.kind === "turn_done") {
+    return `${event.kind}-${event.turnId}-${fallback}`
+  }
+  return `${event.kind}-${event.at}-${fallback}`
+}
+
+function EventRow({ event }: { event: AgentEvent }): React.ReactElement | null {
+  switch (event.kind) {
+    case "user_message":
+      return <UserMessage text={event.text} />
+    case "assistant_text":
+      return <AssistantText text={event.text} />
+    case "tool_use": {
+      const input = (event.input ?? {}) as Record<string, unknown>
+      const path = typeof input.path === "string" ? input.path : ""
+      const command =
+        typeof input.command === "string" ? input.command : ""
+      if (event.tool === "Read" || event.tool === "Grep") {
+        return <ToolUseRead path={path || event.tool} />
+      }
+      if (event.tool === "Edit" || event.tool === "Write") {
+        return <ToolUseEdit path={path} />
+      }
+      if (event.tool === "Bash") {
+        return <ToolUseBash command={command} />
+      }
+      return (
+        <div className="text-xs text-muted-foreground">
+          tool: {event.tool}
+        </div>
+      )
+    }
+    case "tool_result":
+      // Result events arrive after the tool_use card already exists. v1 doesn't
+      // render a separate row for results — the tool_use card stays as the
+      // visible artifact. Future versions could fold the summary back into it.
+      return null
+    case "turn_done":
+      return null
+    default:
+      return null
+  }
+}
 
 interface ChatViewProps {
   chatId: string
@@ -35,16 +91,8 @@ export function ChatView({ chatId }: ChatViewProps): React.ReactElement | null {
       )}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2">
         {tab.events.map((event, i) => (
-          <div
-            key={i}
-            data-testid="agent-event-row"
-            className="mb-2 text-xs text-foreground"
-          >
-            <span className="font-mono text-muted-foreground">[{event.kind}]</span>{" "}
-            {/* Real cards land in Task 8. */}
-            {event.kind === "assistant_text" || event.kind === "user_message"
-              ? event.text
-              : null}
+          <div key={eventKey(event, i)} data-testid="agent-event-row" className="mb-2">
+            <EventRow event={event} />
           </div>
         ))}
       </div>
