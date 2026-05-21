@@ -83,6 +83,12 @@ export function ToolUseBash({
   )
 }
 
+/**
+ * Inline error card. Currently unused — agent errors and subprocess-exit
+ * notifications are surfaced via the persistent banner in `ChatView` (driven
+ * by `tab.error`). Kept exported for future use when we decide to render
+ * errors inline alongside the message stream instead.
+ */
 export function AssistantError({
   message,
 }: {

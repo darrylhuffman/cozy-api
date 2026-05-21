@@ -131,6 +131,12 @@ export const useAgentChats = create<AgentChatsState>((set, get) => {
     }
     if (msg.type === "chat_closed") {
       get().setTurnInFlight(msg.chatId, false)
+      if (msg.reason === "subprocess_exit") {
+        get().setError(
+          msg.chatId,
+          "The agent process exited. Send another message to start a new turn.",
+        )
+      }
       return
     }
   }

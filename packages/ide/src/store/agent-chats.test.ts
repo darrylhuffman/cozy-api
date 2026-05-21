@@ -256,4 +256,44 @@ describe("useAgentChats WebSocket integration", () => {
       expect(tab.turnInFlight).toBe(true)
     }
   })
+
+  it("chat_closed { subprocess_exit } sets the chat error so the banner surfaces it", async () => {
+    useAgentChats.getState().connect()
+    await Promise.resolve()
+    const pickerId = useAgentChats.getState().newChat()
+    useAgentChats.getState().startClaudeChat(pickerId)
+    constructed[0]!.pushMessage({ type: "chat_created", chatId: "c-exit" })
+    useAgentChats.getState().setTurnInFlight("c-exit", true)
+    constructed[0]!.pushMessage({
+      type: "chat_closed",
+      chatId: "c-exit",
+      reason: "subprocess_exit",
+    })
+    const tab = useAgentChats.getState().chats["c-exit"]
+    if (tab?.kind === "chat") {
+      expect(tab.turnInFlight).toBe(false)
+      expect(tab.error).toMatch(/exited/i)
+    } else {
+      throw new Error("expected chat")
+    }
+  })
+
+  it("chat_closed { user_cancel } does NOT set an error", async () => {
+    useAgentChats.getState().connect()
+    await Promise.resolve()
+    const pickerId = useAgentChats.getState().newChat()
+    useAgentChats.getState().startClaudeChat(pickerId)
+    constructed[0]!.pushMessage({ type: "chat_created", chatId: "c-cnl" })
+    constructed[0]!.pushMessage({
+      type: "chat_closed",
+      chatId: "c-cnl",
+      reason: "user_cancel",
+    })
+    const tab = useAgentChats.getState().chats["c-cnl"]
+    if (tab?.kind === "chat") {
+      expect(tab.error).toBeNull()
+    } else {
+      throw new Error("expected chat")
+    }
+  })
 })
