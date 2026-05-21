@@ -10,6 +10,8 @@ function resetStore() {
   useTabsStore.setState({ tabs: [], activeWorkflowId: null, activeCodeId: null })
 }
 
+const wf1WithPath = { ...wf1, path: "workflows/a.workflow" }
+
 beforeEach(() => {
   localStorage.clear()
   resetStore()
@@ -128,6 +130,38 @@ describe("useTabsStore", () => {
     useTabsStore.getState().closeTab("n1")
     expect(useTabsStore.getState().activeWorkflowId).toBe("f1")
     expect(useTabsStore.getState().activeCodeId).toBeNull()
+  })
+
+  describe("setDirty", () => {
+    it("sets dirty=true on a tab", () => {
+      useTabsStore.getState().openTab(wf1WithPath)
+      useTabsStore.getState().setDirty("f1", true)
+      const tab = useTabsStore.getState().tabs.find((t) => t.id === "f1")
+      expect(tab?.dirty).toBe(true)
+    })
+
+    it("sets dirty=false on a tab", () => {
+      useTabsStore.getState().openTab(wf1WithPath)
+      useTabsStore.getState().setDirty("f1", true)
+      useTabsStore.getState().setDirty("f1", false)
+      const tab = useTabsStore.getState().tabs.find((t) => t.id === "f1")
+      expect(tab?.dirty).toBe(false)
+    })
+
+    it("only marks the specified tab dirty — not other tabs", () => {
+      useTabsStore.getState().openTab(wf1WithPath)
+      useTabsStore.getState().openTab({ ...wf2, path: "workflows/b.workflow" })
+      useTabsStore.getState().setDirty("f1", true)
+      const tab2 = useTabsStore.getState().tabs.find((t) => t.id === "f2")
+      expect(tab2?.dirty).toBeFalsy()
+    })
+
+    it("is a no-op for unknown tab ids", () => {
+      useTabsStore.getState().openTab(wf1WithPath)
+      useTabsStore.getState().setDirty("does-not-exist", true)
+      // Store should not throw and the tab should be unchanged
+      expect(useTabsStore.getState().tabs).toHaveLength(1)
+    })
   })
 
   describe("migrate", () => {

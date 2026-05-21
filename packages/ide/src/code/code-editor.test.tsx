@@ -1,5 +1,6 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { useTabsStore } from "@/store/tabs"
 import { CodeEditor } from "./code-editor"
 
 // Mock @monaco-editor/react — jsdom can't instantiate Monaco's full editor.
@@ -29,8 +30,19 @@ vi.mock("@monaco-editor/react", () => ({
   },
 }))
 
+// Mock events module — SSE isn't available in jsdom
+vi.mock("@/lib/events", () => ({
+  subscribeToFileEvents: vi.fn(() => () => {}),
+}))
+
+function resetStore() {
+  useTabsStore.setState({ tabs: [], activeWorkflowId: null, activeCodeId: null })
+}
+
 beforeEach(() => {
   capturedOnMount = null
+  resetStore()
+  useTabsStore.getState().openTab({ id: "test-tab", title: "foo.ts", kind: "node" })
   vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
     const method = (init?.method ?? "GET").toUpperCase()
     if (method === "PUT") {
@@ -53,11 +65,12 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  resetStore()
 })
 
 describe("CodeEditor", () => {
   it("shows loading state then renders Monaco with the file's content", async () => {
-    render(<CodeEditor path="nodes/foo.ts" />)
+    render(<CodeEditor path="nodes/foo.ts" tabId="test-tab" />)
     expect(screen.getByText(/Loading/)).toBeInTheDocument()
     await waitFor(() => expect(screen.getByTestId("monaco-stub")).toBeInTheDocument())
     expect(screen.getByTestId("monaco-stub")).toHaveTextContent("export const x = 1")
@@ -66,12 +79,12 @@ describe("CodeEditor", () => {
 
   it("shows an error if the fetch fails", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("network down"))
-    render(<CodeEditor path="nodes/bad.ts" />)
+    render(<CodeEditor path="nodes/bad.ts" tabId="test-tab" />)
     await waitFor(() => expect(screen.getByText(/Error loading file/)).toBeInTheDocument())
   })
 
   it("shows 'Saved' status pill after a successful Ctrl-S save", async () => {
-    render(<CodeEditor path="nodes/foo.ts" />)
+    render(<CodeEditor path="nodes/foo.ts" tabId="test-tab" />)
     await waitFor(() => expect(screen.getByTestId("monaco-stub")).toBeInTheDocument())
 
     // Simulate Monaco calling onMount with a fake editor + monaco
@@ -88,6 +101,28 @@ describe("CodeEditor", () => {
     capturedOnMount?.(fakeEditor, fakeMonaco)
 
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+  })
+
+  it("calls setDirty(false) in the store after a successful save", async () => {
+    // Spy on the store action to observe the false call, independent of any re-render
+    // that may re-mark dirty via the mock's onChange.
+    const setDirtySpy = vi.spyOn(useTabsStore.getState(), "setDirty")
+
+    render(<CodeEditor path="nodes/foo.ts" tabId="test-tab" />)
+    await waitFor(() => expect(screen.getByTestId("monaco-stub")).toBeInTheDocument())
+
+    const fakeMonaco = { KeyMod: { CtrlCmd: 1 }, KeyCode: { KeyS: 83 } }
+    const fakeEditor = {
+      addCommand: (_key: number, handler: () => void) => {
+        handler()
+      },
+    }
+    capturedOnMount?.(fakeEditor, fakeMonaco)
+
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+
+    // setDirty must have been called with false at some point during save
+    expect(setDirtySpy).toHaveBeenCalledWith("test-tab", false)
   })
 
   it("shows error pill if save fails", async () => {
@@ -109,7 +144,7 @@ describe("CodeEditor", () => {
       )
     })
 
-    render(<CodeEditor path="nodes/foo.ts" />)
+    render(<CodeEditor path="nodes/foo.ts" tabId="test-tab" />)
     await waitFor(() => expect(screen.getByTestId("monaco-stub")).toBeInTheDocument())
 
     const fakeMonaco = { KeyMod: { CtrlCmd: 1 }, KeyCode: { KeyS: 83 } }

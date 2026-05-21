@@ -19,6 +19,17 @@ export function WorkflowEditorPanel() {
 
   const active = tabs.find((t) => t.id === activeId) ?? tabs[0]
 
+  function handleClose(tabId: string) {
+    const tab = tabs.find((t) => t.id === tabId)
+    if (tab?.dirty) {
+      const confirmed = window.confirm(
+        `"${tab.title}" has unsaved changes. Close without saving?`,
+      )
+      if (!confirmed) return
+    }
+    closeTab(tabId)
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* Custom tab strip for workflow tabs */}
@@ -42,10 +53,11 @@ export function WorkflowEditorPanel() {
               )}
             >
               {tab.title}
+              {tab.dirty && <span className="ml-1 text-muted-foreground">&bull;</span>}
             </button>
             <button
               type="button"
-              onClick={() => closeTab(tab.id)}
+              onClick={() => handleClose(tab.id)}
               className="rounded-sm p-0.5 text-muted-foreground opacity-60 hover:bg-accent hover:opacity-100"
               aria-label={`Close ${tab.title}`}
             >
@@ -58,7 +70,7 @@ export function WorkflowEditorPanel() {
       {/* Content area */}
       <div className="flex-1 overflow-auto">
         {active?.path ? (
-          <WorkflowEditor path={active.path} />
+          <WorkflowEditor path={active.path} tabId={active.id} />
         ) : active ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
             <h2 className="text-xl font-semibold">{active.title}</h2>

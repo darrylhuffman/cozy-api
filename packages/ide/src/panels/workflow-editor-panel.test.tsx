@@ -58,12 +58,44 @@ describe("WorkflowEditorPanel", () => {
     expect(screen.getByText(/open a .workflow file/i)).toBeInTheDocument()
   })
 
-  it("closing a tab removes it from the panel", () => {
+  it("closing a clean tab removes it from the panel without confirm", () => {
     useTabsStore.getState().openTab({ id: "x", title: "x.workflow", kind: "workflow" })
     render(<WorkflowEditorPanel />)
     fireEvent.click(screen.getByRole("button", { name: /close x.workflow/i }))
     expect(useTabsStore.getState().tabs).toEqual([])
     expect(useTabsStore.getState().activeWorkflowId).toBeNull()
+  })
+
+  it("closing a dirty tab prompts confirm — cancelling keeps the tab", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false)
+    useTabsStore.getState().openTab({ id: "x", title: "x.workflow", kind: "workflow" })
+    useTabsStore.getState().setDirty("x", true)
+    render(<WorkflowEditorPanel />)
+    fireEvent.click(screen.getByRole("button", { name: /close x.workflow/i }))
+    // confirm was called
+    expect(window.confirm).toHaveBeenCalledOnce()
+    // tab still present
+    expect(useTabsStore.getState().tabs).toHaveLength(1)
+  })
+
+  it("closing a dirty tab prompts confirm — confirming closes the tab", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true)
+    useTabsStore.getState().openTab({ id: "x", title: "x.workflow", kind: "workflow" })
+    useTabsStore.getState().setDirty("x", true)
+    render(<WorkflowEditorPanel />)
+    fireEvent.click(screen.getByRole("button", { name: /close x.workflow/i }))
+    expect(window.confirm).toHaveBeenCalledOnce()
+    expect(useTabsStore.getState().tabs).toHaveLength(0)
+  })
+
+  it("dirty tab shows a bullet marker in the tab title", () => {
+    useTabsStore.getState().openTab({ id: "x", title: "x.workflow", kind: "workflow" })
+    useTabsStore.getState().setDirty("x", true)
+    render(<WorkflowEditorPanel />)
+    // The dirty tab's button name becomes "x.workflow •" (includes the bullet)
+    const tabBtn = screen.getByRole("button", { name: "x.workflow •" })
+    expect(tabBtn).toBeInTheDocument()
+    expect(tabBtn.querySelector("span")).toBeTruthy()
   })
 
   it("selecting a different tab updates activeWorkflowId", () => {

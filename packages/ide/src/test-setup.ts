@@ -26,3 +26,18 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
     }),
   })
 }
+
+// jsdom does not implement EventSource — used by lib/events.ts for SSE.
+// Provide a minimal stub so components that call subscribeToFileEvents don't throw.
+class FakeEventSource {
+  url: string
+  constructor(url: string) {
+    this.url = url
+  }
+  addEventListener() {}
+  removeEventListener() {}
+  close() {}
+}
+if (typeof globalThis.EventSource === "undefined") {
+  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource
+}

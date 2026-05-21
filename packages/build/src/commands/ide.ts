@@ -5,8 +5,10 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { serve } from "@hono/node-server"
 import { serveStatic } from "@hono/node-server/serve-static"
 import type { Command } from "commander"
+import chokidar from "chokidar"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
+import { streamSSE } from "hono/streaming"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
 
 // ── FileNode types (mirrors packages/ide/src/data/mock-files.ts) ─────────────
@@ -144,6 +146,51 @@ export function createIdeApp(workspaceRoot: string): Hono {
     } catch (e) {
       return c.json({ error: (e as Error).message }, 500)
     }
+  })
+
+  // ── SSE file-change events ─────────────────────────────────────────────────
+
+  app.get("/api/events", (c) => {
+    return streamSSE(c, async (stream) => {
+      const watchPaths = [join(workspaceRoot, "workflows"), join(workspaceRoot, "nodes")]
+      const watcher = chokidar.watch(watchPaths, {
+        ignored: /(^|[/\\])\../,
+        ignoreInitial: true,
+        persistent: true,
+      })
+
+      const emit = async (kind: "change" | "add" | "unlink", absPath: string) => {
+        const rel = relative(workspaceRoot, absPath).replaceAll("\\", "/")
+        try {
+          await stream.writeSSE({
+            event: kind,
+            data: JSON.stringify({ path: rel }),
+          })
+        } catch {
+          // Client disconnected; will be cleaned up below
+        }
+      }
+
+      watcher.on("change", (p) => { void emit("change", p) })
+      watcher.on("add",    (p) => { void emit("add", p) })
+      watcher.on("unlink", (p) => { void emit("unlink", p) })
+
+      // Periodic keep-alive so proxies don't close the connection
+      const keepAlive = setInterval(() => {
+        void stream.writeSSE({ event: "ping", data: "" })
+      }, 15000)
+
+      // Clean up on disconnect
+      stream.onAbort(() => {
+        clearInterval(keepAlive)
+        void watcher.close()
+      })
+
+      // Hold the stream open until the client disconnects
+      await new Promise<void>((resolve_) => {
+        stream.onAbort(resolve_)
+      })
+    })
   })
 
   return app

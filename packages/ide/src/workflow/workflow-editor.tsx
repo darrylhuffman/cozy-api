@@ -11,6 +11,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "@xyflow/react/dist/style.css"
 import { fetchWorkflowFile, saveFile, type WorkflowFile } from "@/lib/api"
+import { subscribeToFileEvents } from "@/lib/events"
+import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
 import { extractReferences } from "./parse-references"
 import { WorkflowNode } from "./workflow-node"
@@ -18,6 +20,8 @@ import { WorkflowNode } from "./workflow-node"
 interface Props {
   /** API path like "workflows/users/create.workflow" */
   path: string
+  /** Tab ID so we can update dirty state in the store. */
+  tabId: string
 }
 
 // Cast to NodeTypes to avoid the strict generic constraint mismatch.
@@ -28,24 +32,36 @@ const nodeTypes: NodeTypes = { workflow: WorkflowNode as NodeTypes[string] }
 
 type SaveState = "idle" | "saving" | "saved" | "error"
 
-export function WorkflowEditor({ path }: Props) {
+export function WorkflowEditor({ path, tabId }: Props) {
   const [workflow, setWorkflow] = useState<WorkflowFile | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [nodes, setNodes] = useState<RFNode[]>([])
   const [saveState, setSaveState] = useState<SaveState>("idle")
+  const [dirty, setLocalDirty] = useState(false)
   const theme = useThemeStore((s) => s.theme)
+  const setDirty = useTabsStore((s) => s.setDirty)
 
   // Always-current ref so persist callbacks don't close over stale nodes
   const nodesRef = useRef<RFNode[]>([])
   const workflowRef = useRef<WorkflowFile | null>(null)
-  // Debounce timer ref
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Track dirty in a ref too so the Ctrl+S handler always sees fresh value
+  const dirtyRef = useRef(false)
 
-  useEffect(() => {
+  const markDirty = useCallback(
+    (value: boolean) => {
+      setLocalDirty(value)
+      dirtyRef.current = value
+      setDirty(tabId, value)
+    },
+    [tabId, setDirty],
+  )
+
+  const doFetch = useCallback(() => {
     let alive = true
     setError(null)
     setWorkflow(null)
     setNodes([])
+    markDirty(false)
     fetchWorkflowFile(path)
       .then((wf) => {
         if (alive) {
@@ -58,12 +74,12 @@ export function WorkflowEditor({ path }: Props) {
       })
     return () => {
       alive = false
-      if (saveTimerRef.current !== null) {
-        clearTimeout(saveTimerRef.current)
-        saveTimerRef.current = null
-      }
     }
-  }, [path])
+  }, [path, markDirty])
+
+  useEffect(() => {
+    return doFetch()
+  }, [doFetch])
 
   // Initialise nodes whenever workflow loads
   useEffect(() => {
@@ -93,7 +109,7 @@ export function WorkflowEditor({ path }: Props) {
     }))
   }, [workflow])
 
-  const persistViewPositions = useCallback(async () => {
+  const save = useCallback(async () => {
     const wf = workflowRef.current
     if (!wf) return
     setSaveState("saving")
@@ -106,38 +122,53 @@ export function WorkflowEditor({ path }: Props) {
       await saveFile(path, `${JSON.stringify(updated, null, 2)}\n`)
       // Update the in-memory workflow so subsequent saves start from the new state
       workflowRef.current = updated
+      markDirty(false)
       setSaveState("saved")
       setTimeout(() => setSaveState("idle"), 1500)
     } catch (e) {
       console.error("Failed to persist workflow positions:", e)
       setSaveState("error")
     }
-  }, [path])
+  }, [path, markDirty])
+
+  // Ctrl+S / Cmd+S — global listener (fine in v1; scope to div if needed later)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault()
+        void save()
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [save])
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      // Eagerly compute and store the next nodes in the ref so the debounced
-      // persist callback always sees the latest positions — even if React hasn't
-      // committed the state update yet (important for fake-timer tests and
-      // React 18 concurrent rendering).
+      // Eagerly compute and store the next nodes in the ref so the Ctrl+S
+      // handler always sees the latest positions.
       const next = applyNodeChanges(changes, nodesRef.current)
       nodesRef.current = next
       setNodes(next)
 
-      // When any drag ends, schedule a debounced persist
+      // When any drag ends, mark the tab dirty (no autosave)
       const dragEnded = changes.some((c) => c.type === "position" && c.dragging === false)
       if (dragEnded) {
-        if (saveTimerRef.current !== null) {
-          clearTimeout(saveTimerRef.current)
-        }
-        saveTimerRef.current = setTimeout(() => {
-          saveTimerRef.current = null
-          void persistViewPositions()
-        }, 250)
+        markDirty(true)
       }
     },
-    [persistViewPositions],
+    [markDirty],
   )
+
+  // Subscribe to live file events — reload if the file changes externally,
+  // but only when this tab doesn't have unsaved drags (don't clobber local work).
+  useEffect(() => {
+    return subscribeToFileEvents((e) => {
+      if (e.path !== path) return
+      if (dirtyRef.current) return // keep local state
+      doFetch()
+    })
+  }, [path, doFetch])
 
   if (error) {
     return (
@@ -179,6 +210,11 @@ export function WorkflowEditor({ path }: Props) {
           }
         >
           {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save failed"}
+        </div>
+      )}
+      {dirty && saveState === "idle" && (
+        <div className="absolute bottom-3 left-3 rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+          Unsaved changes — Ctrl+S to save
         </div>
       )}
     </div>

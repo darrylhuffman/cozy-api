@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { WorkflowFile } from "@/lib/api"
 
@@ -54,7 +54,13 @@ vi.mock("@/lib/api", async (importOriginal) => {
   }
 })
 
+// Mock events module — SSE isn't available in jsdom
+vi.mock("@/lib/events", () => ({
+  subscribeToFileEvents: vi.fn(() => () => {}),
+}))
+
 import { fetchWorkflowFile, saveFile } from "@/lib/api"
+import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
 import { WorkflowEditor } from "./workflow-editor.js"
 
@@ -72,32 +78,44 @@ const sampleWorkflow: WorkflowFile = {
   },
 }
 
+function resetStore() {
+  useTabsStore.setState({ tabs: [], activeWorkflowId: null, activeCodeId: null })
+}
+
 beforeEach(() => {
   capturedOnNodesChange = null
   useThemeStore.setState({ theme: "light" })
   vi.mocked(fetchWorkflowFile).mockResolvedValue(sampleWorkflow)
   vi.mocked(saveFile).mockResolvedValue({ path: "workflows/users/create.workflow", bytes: 100 })
+  resetStore()
+  // Open a workflow tab so tabId is valid in the store
+  useTabsStore.getState().openTab({
+    id: "test-tab",
+    title: "create.workflow",
+    kind: "workflow",
+    path: "workflows/users/create.workflow",
+  })
 })
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  resetStore()
 })
 
 describe("WorkflowEditor", () => {
   it("shows a loading state while fetching", () => {
     // Don't resolve yet
     vi.mocked(fetchWorkflowFile).mockReturnValue(new Promise(() => {}))
-    render(<WorkflowEditor path="workflows/users/create.workflow" />)
+    render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
 
   it("renders React Flow with one node per workflow node after fetch", async () => {
-    render(<WorkflowEditor path="workflows/users/create.workflow" />)
+    render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+    // Wait until all 3 nodes are rendered (two async effects: fetch → workflow, then workflow → nodes)
     await waitFor(() => {
-      expect(screen.getByTestId("react-flow")).toBeInTheDocument()
+      expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
     })
-    // 3 nodes in sampleWorkflow
-    expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
     expect(screen.getByTestId("rf-node-parseBody")).toBeInTheDocument()
     expect(screen.getByTestId("rf-node-validate")).toBeInTheDocument()
     expect(screen.getByTestId("rf-node-save")).toBeInTheDocument()
@@ -105,7 +123,7 @@ describe("WorkflowEditor", () => {
 
   it("shows an error state when fetch fails", async () => {
     vi.mocked(fetchWorkflowFile).mockRejectedValue(new Error("Network error"))
-    render(<WorkflowEditor path="workflows/users/create.workflow" />)
+    render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
     await waitFor(() => {
       expect(screen.getByText(/error loading workflow/i)).toBeInTheDocument()
     })
@@ -113,41 +131,140 @@ describe("WorkflowEditor", () => {
   })
 
   it("re-fetches when path changes", async () => {
-    const { rerender } = render(<WorkflowEditor path="workflows/users/create.workflow" />)
+    const { rerender } = render(
+      <WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />,
+    )
     await waitFor(() => screen.getByTestId("react-flow"))
     expect(vi.mocked(fetchWorkflowFile)).toHaveBeenCalledWith("workflows/users/create.workflow")
 
-    rerender(<WorkflowEditor path="workflows/auth/login.workflow" />)
+    rerender(<WorkflowEditor path="workflows/auth/login.workflow" tabId="test-tab" />)
     await waitFor(() => {
       expect(vi.mocked(fetchWorkflowFile)).toHaveBeenCalledWith("workflows/auth/login.workflow")
     })
   })
 
-  it("calls saveFile when a drag-end change is fired via onNodesChange", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-    try {
-      render(<WorkflowEditor path="workflows/users/create.workflow" />)
+  it("dragging a node sets dirty flag — does NOT autosave", async () => {
+    render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+    await waitFor(() => screen.getByTestId("react-flow"))
 
-      // Let fetch + initial state settle
-      await vi.advanceTimersByTimeAsync(50)
-      await waitFor(() => screen.getByTestId("react-flow"))
+    // Fire a drag-end position change
+    act(() => {
+      capturedOnNodesChange?.([
+        { type: "position", id: "parseBody", dragging: false, position: { x: 100, y: 200 } },
+      ])
+    })
 
-      // Fire a drag-end position change inside act() so React flushes state sync
-      await act(async () => {
-        capturedOnNodesChange?.([
-          { type: "position", id: "parseBody", dragging: false, position: { x: 100, y: 200 } },
-        ])
-        // Advance past the 250 ms debounce
-        await vi.advanceTimersByTimeAsync(300)
-      })
+    // saveFile must NOT have been called
+    expect(vi.mocked(saveFile)).not.toHaveBeenCalled()
 
+    // Tab should be dirty in the store
+    const tab = useTabsStore.getState().tabs.find((t) => t.id === "test-tab")
+    expect(tab?.dirty).toBe(true)
+
+    // Dirty hint appears in the UI
+    expect(screen.getByText(/unsaved changes/i)).toBeInTheDocument()
+  })
+
+  it("Ctrl+S triggers save and clears dirty", async () => {
+    render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+    await waitFor(() => screen.getByTestId("react-flow"))
+
+    // Drag a node to make it dirty
+    act(() => {
+      capturedOnNodesChange?.([
+        { type: "position", id: "parseBody", dragging: false, position: { x: 150, y: 250 } },
+      ])
+    })
+
+    expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(true)
+
+    // Press Ctrl+S
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+    })
+
+    await waitFor(() => {
       expect(vi.mocked(saveFile)).toHaveBeenCalledOnce()
-      const [savedPath, savedContent] = vi.mocked(saveFile).mock.calls[0]!
-      expect(savedPath).toBe("workflows/users/create.workflow")
-      const parsed = JSON.parse(savedContent) as WorkflowFile
-      expect(parsed.view?.parseBody).toEqual({ x: 100, y: 200 })
-    } finally {
-      vi.useRealTimers()
-    }
+    })
+
+    // Verify the saved content has the updated positions
+    const [savedPath, savedContent] = vi.mocked(saveFile).mock.calls[0]!
+    expect(savedPath).toBe("workflows/users/create.workflow")
+    const parsed = JSON.parse(savedContent) as WorkflowFile
+    expect(parsed.view?.parseBody).toEqual({ x: 150, y: 250 })
+
+    // Dirty clears after save
+    await waitFor(() => {
+      const tab = useTabsStore.getState().tabs.find((t) => t.id === "test-tab")
+      expect(tab?.dirty).toBe(false)
+    })
+  })
+
+  it("multiple drags before Ctrl+S result in a single save", async () => {
+    render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+    await waitFor(() => screen.getByTestId("react-flow"))
+
+    // Multiple drags
+    act(() => {
+      capturedOnNodesChange?.([
+        { type: "position", id: "parseBody", dragging: false, position: { x: 10, y: 20 } },
+      ])
+    })
+    act(() => {
+      capturedOnNodesChange?.([
+        { type: "position", id: "validate", dragging: false, position: { x: 200, y: 30 } },
+      ])
+    })
+    act(() => {
+      capturedOnNodesChange?.([
+        { type: "position", id: "save", dragging: false, position: { x: 400, y: 30 } },
+      ])
+    })
+
+    expect(vi.mocked(saveFile)).not.toHaveBeenCalled()
+
+    // Single Ctrl+S
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+    })
+
+    await waitFor(() => {
+      expect(vi.mocked(saveFile)).toHaveBeenCalledOnce()
+    })
+  })
+
+  it("shows Saving… → Saved status after Ctrl+S", async () => {
+    // Delay save resolution so we can catch the "Saving…" state
+    let resolveSave!: () => void
+    vi.mocked(saveFile).mockImplementation(
+      () =>
+        new Promise<{ path: string; bytes: number }>((res) => {
+          resolveSave = () => res({ path: "workflows/users/create.workflow", bytes: 100 })
+        }),
+    )
+
+    render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+    await waitFor(() => screen.getByTestId("react-flow"))
+
+    // Make it dirty first
+    act(() => {
+      capturedOnNodesChange?.([
+        { type: "position", id: "parseBody", dragging: false, position: { x: 10, y: 20 } },
+      ])
+    })
+
+    // Trigger Ctrl+S
+    act(() => {
+      fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+    })
+
+    await waitFor(() => expect(screen.getByText("Saving…")).toBeInTheDocument())
+
+    // Resolve the save
+    await act(async () => {
+      resolveSave()
+    })
+
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
   })
 })

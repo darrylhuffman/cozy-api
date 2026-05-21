@@ -8,6 +8,7 @@ export interface OpenTab {
   title: string // display label
   kind: FileKind
   path?: string // relative path from workspace root (e.g., "workflows/users/create.workflow")
+  dirty?: boolean // true when the tab has unsaved changes
 }
 
 interface TabsState {
@@ -18,6 +19,7 @@ interface TabsState {
   openTab(tab: OpenTab): void
   closeTab(id: string): void
   selectTab(id: string): void
+  setDirty(id: string, dirty: boolean): void
 }
 
 /** Returns the state slice that tracks which tab is active for this tab's kind. */
@@ -81,10 +83,16 @@ export const useTabsStore = create<TabsState>()(
         if (!tab) return
         set(activationUpdate(tab))
       },
+
+      setDirty(id, dirty) {
+        set((s) => ({
+          tabs: s.tabs.map((t) => (t.id === id ? { ...t, dirty } : t)),
+        }))
+      },
     }),
     {
       name: "lorien-ide-tabs",
-      version: 2,
+      version: 3,
       migrate(persistedState, fromVersion) {
         const state = persistedState as {
           tabs?: unknown
@@ -96,6 +104,7 @@ export const useTabsStore = create<TabsState>()(
           // (missing path, and activeId is now split into activeWorkflowId / activeCodeId).
           return { tabs: [], activeWorkflowId: null, activeCodeId: null }
         }
+        // v2 → v3: dirty field added (optional, defaults to undefined = clean). No migration needed.
         return state as never
       },
     },

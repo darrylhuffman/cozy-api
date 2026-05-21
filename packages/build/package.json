@@ -45,6 +45,7 @@
     "@darrylondil/lorien-openapi": "workspace:*",
     "@darrylondil/lorien-runtime": "workspace:*",
     "@hono/node-server": "^1.13.0",
+    "chokidar": "^5.0.0",
     "commander": "^12.1.0",
     "hono": "^4.12.21"
   },

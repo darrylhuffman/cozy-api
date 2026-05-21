@@ -11,6 +11,7 @@ import { useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { type FileFolder, type FileNode, mockNodes, mockWorkflows } from "@/data/mock-files"
 import { fetchWorkspaceTree } from "@/lib/api"
+import { subscribeToFileEvents } from "@/lib/events"
 import { cn } from "@/lib/utils"
 import { useDockviewApi } from "@/store/dockview-api"
 import { useTabsStore } from "@/store/tabs"
@@ -21,6 +22,18 @@ export function FilesPanel() {
   const [workflows, setWorkflows] = useState<FileFolder>(mockWorkflows)
   const [nodes, setNodes] = useState<FileFolder>(mockNodes)
   const [loadState, setLoadState] = useState<LoadState>("loading")
+
+  const refreshTree = () => {
+    fetchWorkspaceTree()
+      .then((tree) => {
+        setWorkflows(tree.workflows)
+        setNodes(tree.nodes)
+        setLoadState("ready")
+      })
+      .catch(() => {
+        setLoadState("fallback")
+      })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -38,6 +51,17 @@ export function FilesPanel() {
     return () => {
       cancelled = true
     }
+  }, [])
+
+  // Re-fetch the tree when files are added or removed
+  useEffect(() => {
+    return subscribeToFileEvents((e) => {
+      if (e.type === "add" || e.type === "unlink") {
+        refreshTree()
+      }
+    })
+    // refreshTree is stable (defined outside effect); no deps needed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
