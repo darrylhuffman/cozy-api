@@ -13,6 +13,10 @@ let capturedOnEdgesDelete: ((deleted: CapturedEdge[]) => void) | null = null
 let capturedOnReconnectEnd:
   | ((event: unknown, edge: CapturedEdge, handleType: unknown, connectionState: unknown) => void)
   | null = null
+let capturedOnNodeClick:
+  | ((event: unknown, node: { id: string }) => void)
+  | null = null
+let capturedOnPaneClick: (() => void) | null = null
 // Capture what edges/edgeTypes the editor passed to React Flow
 interface CapturedMapping {
   source: string
@@ -47,6 +51,8 @@ vi.mock("@xyflow/react", () => ({
     onNodesDelete,
     onEdgesDelete,
     onReconnectEnd,
+    onNodeClick,
+    onPaneClick,
   }: {
     nodes: { id: string; type?: string; data: Record<string, unknown> }[]
     edges?: CapturedEdge[]
@@ -62,12 +68,16 @@ vi.mock("@xyflow/react", () => ({
     onNodesDelete?: (deleted: { id: string }[]) => void
     onEdgesDelete?: (deleted: CapturedEdge[]) => void
     onReconnectEnd?: (event: unknown, edge: CapturedEdge, handleType: unknown, connectionState: unknown) => void
+    onNodeClick?: (event: unknown, node: { id: string }) => void
+    onPaneClick?: () => void
   }) => {
     capturedOnNodesChange = onNodesChange ?? null
     capturedOnConnect = onConnect ?? null
     capturedOnNodesDelete = onNodesDelete ?? null
     capturedOnEdgesDelete = onEdgesDelete ?? null
     capturedOnReconnectEnd = onReconnectEnd ?? null
+    capturedOnNodeClick = onNodeClick ?? null
+    capturedOnPaneClick = onPaneClick ?? null
     capturedEdges = edges ?? null
     capturedEdgeTypes = edgeTypes ?? null
     capturedNodes = nodes ?? null
@@ -179,6 +189,8 @@ beforeEach(() => {
   capturedOnNodesDelete = null
   capturedOnEdgesDelete = null
   capturedOnReconnectEnd = null
+  capturedOnNodeClick = null
+  capturedOnPaneClick = null
   capturedEdges = null
   capturedEdgeTypes = null
   capturedNodes = null
@@ -1020,6 +1032,44 @@ describe("WorkflowEditor", () => {
       })
 
       // Selection should be cleared
+      expect(useSelectionStore.getState().selectedNodeId).toBeNull()
+    })
+  })
+
+  describe("selection wiring (onNodeClick / onPaneClick)", () => {
+    it("onNodeClick sets selectedNodeId in the selection store", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      expect(useSelectionStore.getState().selectedNodeId).toBeNull()
+
+      act(() => {
+        capturedOnNodeClick?.({}, { id: "save" })
+      })
+
+      expect(useSelectionStore.getState().selectedNodeId).toBe("save")
+    })
+
+    it("onPaneClick clears selectedNodeId in the selection store", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Pre-select a node
+      act(() => {
+        capturedOnNodeClick?.({}, { id: "request" })
+      })
+      expect(useSelectionStore.getState().selectedNodeId).toBe("request")
+
+      // Click the pane → clears selection
+      act(() => {
+        capturedOnPaneClick?.()
+      })
       expect(useSelectionStore.getState().selectedNodeId).toBeNull()
     })
   })

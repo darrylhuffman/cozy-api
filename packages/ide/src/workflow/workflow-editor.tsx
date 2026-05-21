@@ -84,6 +84,23 @@ export function WorkflowEditor({ path, tabId }: Props) {
   );
   const theme = useThemeStore((s) => s.theme);
   const setDirty = useTabsStore((s) => s.setDirty);
+  const setSelected = useSelectionStore((s) => s.setSelected);
+
+  const onNodeClick = useCallback(
+    (_e: ReactMouseEvent, n: RFNode) => {
+      setSelected(n.id);
+    },
+    [setSelected],
+  );
+
+  const onPaneClick = useCallback(() => {
+    setSelected(null);
+  }, [setSelected]);
+
+  // Clear selection when switching away from this tab
+  useEffect(() => {
+    return () => setSelected(null);
+  }, [setSelected]);
 
   // Always-current ref so persist callbacks don't close over stale nodes
   const nodesRef = useRef<RFNode[]>([]);
@@ -627,6 +644,8 @@ export function WorkflowEditor({ path, tabId }: Props) {
           onReconnectStart={onReconnectStart}
           onReconnect={onReconnect}
           onReconnectEnd={onReconnectEnd}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
           onPaneContextMenu={onPaneContextMenu}
           fitView
           colorMode={theme}
