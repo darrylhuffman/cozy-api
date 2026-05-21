@@ -169,10 +169,11 @@ export function restBase(): string {
       ?.VITE_LORIEN_API_URL
   // In test environments, vi.stubEnv sets process.env but not import.meta.env
   // (Vite inlines VITE_* at transform time). Fall back to process.env for testability.
-  const procUrl =
-    typeof process !== "undefined"
-      ? (process.env as Record<string, string | undefined>).VITE_LORIEN_API_URL
-      : undefined
+  // Accessed via globalThis so the IDE's browser-only tsconfig (no node types)
+  // doesn't see a bare `process` reference.
+  const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process
+  const procUrl = proc?.env?.VITE_LORIEN_API_URL
   return viteUrl ?? procUrl ?? DEFAULT_BASE
 }
 
