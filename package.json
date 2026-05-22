@@ -16,11 +16,12 @@
     "dev:demo": "pnpm run dev:demo:prebuild && concurrently --kill-others-on-fail --names \"backend,frontend\" --prefix-colors \"cyan,magenta\" \"pnpm run dev:demo:backend\" \"pnpm run dev:demo:frontend\"",
     "dev:demo:prebuild": "pnpm --filter @darrylondil/lorien-runtime --filter @darrylondil/lorien-openapi --filter @darrylondil/lorien-build build",
     "dev:demo:backend": "node packages/build/dist/cli.js ide --no-open --root examples/basic-api --port 3737",
-    "dev:demo:frontend": "pnpm --filter @darrylondil/lorien-ide dev"
+    "dev:demo:frontend": "cross-env VITE_LORIEN_API_URL=http://localhost:3737 pnpm --filter @darrylondil/lorien-ide dev"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
     "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
     "typescript": "^6.0.3"
   }
 }

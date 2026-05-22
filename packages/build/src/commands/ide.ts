@@ -4,6 +4,10 @@ import { createRequire } from "node:module"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { serve } from "@hono/node-server"
 import { serveStatic } from "@hono/node-server/serve-static"
+import {
+  attachAgentBroker,
+  mountAgentBroker,
+} from "@darrylondil/lorien-runtime/agent-broker"
 import chokidar from "chokidar"
 import type { Command } from "commander"
 import { Hono } from "hono"
@@ -215,6 +219,10 @@ export function createIdeApp(workspaceRoot: string): Hono {
     }
   })
 
+  // ── Agent broker (REST half — WS upgrade attached after serve() in runIde) ──
+
+  mountAgentBroker(app, { projectRoot: workspaceRoot })
+
   // ── SSE file-change events ─────────────────────────────────────────────────
 
   app.get("/api/events", (c) => {
@@ -299,7 +307,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
   app.get("*", serveStatic({ root: ideDistRoot, path: "index.html" }))
 
   return new Promise((resolveStarted) => {
-    serve({ fetch: app.fetch, port: availablePort }, ({ port: actualPort }) => {
+    const server = serve({ fetch: app.fetch, port: availablePort }, ({ port: actualPort }) => {
       const url = `http://localhost:${actualPort}`
       console.log(`lorien IDE running at ${url}`)
       console.log(`  workspace: ${workspaceRoot}`)
@@ -311,6 +319,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
       }
       resolveStarted({ port: actualPort, root: ideDistRoot })
     })
+    attachAgentBroker({ app, server, projectRoot: workspaceRoot })
   })
 }
 
