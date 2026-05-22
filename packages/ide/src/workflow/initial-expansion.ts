@@ -71,17 +71,20 @@ export function computeInitialInputExpansion(
 }
 
 /**
- * Returns the initial expanded set for the outputs side: every branch starts
- * expanded. We walk the tree and collect every branch path into the set.
+ * Returns the initial expanded set for the outputs side: schema-declared
+ * branches start expanded; INFERRED branches (synthesised from references
+ * into an opaque output) start collapsed so the inferred structure stays
+ * hidden until the user opens it.
  *
- * Output trees are presented as an array of top-level ports (no synthetic root),
- * so the implicit "root" is not part of the expansion model — each top-level
- * branch must explicitly appear in the set to show its children.
+ * Output trees are presented as an array of top-level ports (no synthetic
+ * root), so the implicit "root" is not part of the expansion model — each
+ * top-level branch must explicitly appear in the set to show its children.
  */
 export function computeInitialOutputExpansion(outputs: PortNode[]): Set<string> {
   const expanded = new Set<string>()
   const walk = (port: PortNode): void => {
     if (port.children.length === 0) return
+    if (port.inferred) return
     expanded.add(port.id)
     for (const child of port.children) walk(child)
   }

@@ -15,6 +15,15 @@ const leaf = (name: string) => ({
   isLeaf: true,
 })
 
+/** Leaf inferred from references (legacy top-level inference marks these). */
+const inferredLeaf = (name: string) => ({
+  id: name,
+  label: name,
+  children: [],
+  isLeaf: true,
+  inferred: true,
+})
+
 /** Empty root input port (no children — leaf). */
 const emptyRoot = { id: "", label: "input", children: [], isLeaf: true }
 
@@ -59,11 +68,11 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
       save: { uses: "./nodes/save", in: { body: "request.body" } },
     })
     const ports = derivePorts(wf)
-    expect(ports.get("request")!.outputs).toEqual([leaf("body")])
+    expect(ports.get("request")!.outputs).toEqual([inferredLeaf("body")])
     expect(ports.get("save")!.inputs).toEqual(rootBranch([leaf("body")]))
   })
 
-  it("deduplicates output ports when multiple fields reference the same source port", () => {
+  it("nested references grow the source's output tree with inferred children", () => {
     const wf = baseWorkflow({
       request: { uses: "@core/http-request" },
       save: {
@@ -75,8 +84,20 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
       },
     })
     const ports = derivePorts(wf)
-    expect(ports.get("request")!.outputs).toHaveLength(1)
-    expect(ports.get("request")!.outputs[0]).toEqual(leaf("body"))
+    const requestOutputs = ports.get("request")!.outputs
+    expect(requestOutputs).toHaveLength(1)
+    const body = requestOutputs[0]!
+    expect(body.id).toBe("body")
+    expect(body.isLeaf).toBe(false)
+    expect(body.inferred).toBe(true)
+    expect(body.children.map((c) => c.id).sort()).toEqual([
+      "body.email",
+      "body.password",
+    ])
+    for (const child of body.children) {
+      expect(child.inferred).toBe(true)
+      expect(child.isLeaf).toBe(true)
+    }
   })
 
   it("creates distinct output ports for different first segments", () => {
@@ -90,6 +111,15 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
     expect(srcPorts.outputs).toHaveLength(2)
     const ids = srcPorts.outputs.map((p) => p.id).sort()
     expect(ids).toEqual(["body", "headers"])
+  })
+
+  it("legacy top-level inference marks ports as inferred", () => {
+    const wf = baseWorkflow({
+      request: { uses: "@core/http-request" },
+      save: { uses: "./nodes/save", in: { body: "request.body" } },
+    })
+    const ports = derivePorts(wf)
+    expect(ports.get("request")!.outputs[0]!.inferred).toBe(true)
   })
 
   it("literal values in values: blocks do not create output ports", () => {
@@ -112,7 +142,7 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
       b: { uses: "@core/transform", in: { input: "a" } },
     })
     const ports = derivePorts(wf)
-    expect(ports.get("a")!.outputs).toEqual([leaf("out")])
+    expect(ports.get("a")!.outputs).toEqual([inferredLeaf("out")])
   })
 
   it("references to unknown nodes are skipped", () => {
@@ -160,11 +190,21 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
     // without schema information the fallback can only see what's there.
     // In production, CORE_SCHEMAS dictates that http-request has no input root.
     expect(requestPorts.inputs).toEqual(rootBranch([leaf("path"), leaf("method")]))
-    expect(requestPorts.outputs).toEqual([leaf("body")])
+    // body is promoted to a branch by nested inference because `save` refers
+    // into request.body.email / request.body.password.
+    expect(requestPorts.outputs).toHaveLength(1)
+    const body = requestPorts.outputs[0]!
+    expect(body.id).toBe("body")
+    expect(body.inferred).toBe(true)
+    expect(body.isLeaf).toBe(false)
+    expect(body.children.map((c) => c.id).sort()).toEqual([
+      "body.email",
+      "body.password",
+    ])
 
     const savePorts = ports.get("save")!
     expect(savePorts.inputs).toEqual(rootBranch([leaf("email"), leaf("password")]))
-    expect(savePorts.outputs).toEqual([leaf("user")])
+    expect(savePorts.outputs).toEqual([inferredLeaf("user")])
 
     const responsePorts = ports.get("response")!
     expect(responsePorts.inputs).toEqual(rootBranch([leaf("body"), leaf("status")]))
@@ -261,7 +301,7 @@ describe("derivePorts (with schemas)", () => {
       save: { uses: "./nodes/save", in: "request.body" },
     })
     const ports = derivePorts(wf, {})
-    expect(ports.get("request")!.outputs).toEqual([leaf("body")])
+    expect(ports.get("request")!.outputs).toEqual([inferredLeaf("body")])
     // The save node's input — no schema, no per-field keys → empty leaf root.
     expect(ports.get("save")!.inputs).toEqual(emptyRoot)
   })
@@ -272,7 +312,7 @@ describe("derivePorts (with schemas)", () => {
       save: { uses: "./nodes/users/save-user", in: "request.body" },
     })
     const ports = derivePorts(wf, schemas)
-    expect(ports.get("request")!.outputs).toEqual([leaf("body")])
+    expect(ports.get("request")!.outputs).toEqual([inferredLeaf("body")])
     const inputs = ports.get("save")!.inputs
     expect(inputs.id).toBe("")
     expect(inputs.isLeaf).toBe(false)
@@ -288,7 +328,7 @@ describe("derivePorts (with schemas)", () => {
       },
     })
     const ports = derivePorts(wf, {})
-    expect(ports.get("request")!.outputs).toEqual([leaf("body")])
+    expect(ports.get("request")!.outputs).toEqual([inferredLeaf("body")])
   })
 
   it("@core/http-request: body output present when method is POST", () => {
@@ -371,6 +411,84 @@ describe("derivePorts (with schemas)", () => {
     const ports = derivePorts(wf, httpSchemas)
     const outputIds = ports.get("req")!.outputs.map((p) => p.id)
     expect(outputIds).not.toContain("body")
+  })
+
+  it("promotes a schema-declared opaque body leaf when a reference reaches into it", () => {
+    // @core/http-request declares body as { type: "object" } with no properties,
+    // so schemaToTree treats it as a leaf. A reference like
+    // request.body.email should promote that leaf to a branch with inferred
+    // children email / password, and mark them all inferred.
+    const httpSchemas: Record<string, NodeSchemas> = {
+      "@core/http-request": {
+        inputs: { type: "object", properties: {} },
+        outputs: {
+          type: "object",
+          properties: {
+            body: { type: "object" },
+          },
+        },
+      },
+    }
+    const wf = baseWorkflow({
+      request: { uses: "@core/http-request" },
+      save: {
+        uses: "./nodes/save",
+        in: {
+          email: "request.body.email",
+          password: "request.body.password",
+        },
+      },
+    })
+    const ports = derivePorts(wf, httpSchemas)
+    const body = ports.get("request")!.outputs.find((p) => p.id === "body")!
+    expect(body.isLeaf).toBe(false)
+    expect(body.inferred).toBe(true)
+    expect(body.schema).toBeUndefined() // schema dropped on promotion
+    expect(body.children.map((c) => c.id).sort()).toEqual([
+      "body.email",
+      "body.password",
+    ])
+    for (const child of body.children) {
+      expect(child.inferred).toBe(true)
+    }
+  })
+
+  it("leaves typed primitive leaves alone (no promotion)", () => {
+    // If the schema declares a property as a string, a reference that drills
+    // into it (e.g. user.name.first when name is a string) is a workflow bug,
+    // not a hint. The string leaf must remain a leaf.
+    const primSchemas: Record<string, NodeSchemas> = {
+      "@core/produce": {
+        inputs: { type: "object", properties: {} },
+        outputs: {
+          type: "object",
+          properties: { name: { type: "string" } },
+        },
+      },
+    }
+    const wf = baseWorkflow({
+      a: { uses: "@core/produce" },
+      b: { uses: "./consume", in: { x: "a.name.first" } },
+    })
+    const ports = derivePorts(wf, primSchemas)
+    const name = ports.get("a")!.outputs.find((p) => p.id === "name")!
+    expect(name.isLeaf).toBe(true)
+    expect(name.children).toEqual([])
+  })
+
+  it("does not duplicate or shadow schema-declared nested children", () => {
+    // body.user.email is declared by the schema. A reference to it should be
+    // a no-op for the port tree.
+    const wf = baseWorkflow({
+      save: { uses: "./nodes/users/save-user" },
+      consume: { uses: "./consume", in: { x: "save.user.email" } },
+    })
+    const ports = derivePorts(wf, schemas)
+    const user = ports.get("save")!.outputs.find((p) => p.id === "user")!
+    expect(user.inferred).toBeUndefined() // still schema-declared
+    const email = user.children.find((c) => c.id === "user.email")!
+    expect(email.inferred).toBeUndefined()
+    expect(user.children).toHaveLength(2) // id and email — no duplicates
   })
 
   it("nested object → branch with children at every level", () => {

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { JsonSchema, NodeInstance } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSelectionStore } from "@/store/selection";
+import { idFromUses } from "./add-node";
 import type { NodePorts, PortNode } from "./derive-ports";
 import { resolveAccentColor } from "./tailwind-colors";
 import { expandTemplate } from "./template";
@@ -14,6 +15,12 @@ export interface WorkflowNodeData {
   ports: NodePorts;
   /** Accent color (CSS color string). When set, renders a left stripe. */
   color?: string | null;
+  /**
+   * Display name pulled from the node's schema (`defineNode({ name })` or a
+   * `@core/*` built-in). Preferred over the technical id so duplicate drops
+   * like `save-user-2` still render as "Save User".
+   */
+  schemaName?: string | null;
   /** Set of EXPANDED parent paths for the inputs tree. Optional — defaults to
    *  the natural "everything collapsed" state.  The editor passes this in to
    *  lift expansion state out of the node and into a single source of truth. */
@@ -70,6 +77,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     instance,
     ports,
     color,
+    schemaName,
     expandedInputs,
     expandedOutputs,
     onTogglePort,
@@ -81,7 +89,16 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
   const isCore = instance.uses.startsWith("@core/");
   const isLocal = instance.uses.startsWith("./");
   const kindLabel = isCore ? "core" : isLocal ? "node" : "external";
-  const displayName = instance.label ?? id;
+  // Display name precedence:
+  //   1. instance.label  — explicit user-set label on this specific drop.
+  //   2. schemaName      — the node's own `defineNode({ name })` (or @core
+  //      built-in). Authoritative human-readable name; this is what avoids
+  //      disambiguation suffixes like `save-user-2` showing in the header.
+  //   3. labelFromUses   — derive from the `uses` path when the schema is
+  //      absent or doesn't declare a name.
+  //   4. id              — last-resort fallback.
+  const displayName =
+    instance.label ?? schemaName ?? idFromUses(instance.uses) ?? id;
   const safePorts: NodePorts = ports ?? {
     inputs: EMPTY_ROOT_INPUT,
     outputs: [],
@@ -115,7 +132,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     <div
       data-testid="node-card"
       className={cn(
-        "rounded-md border border-border bg-card text-card-foreground shadow-sm hover:brightness-115",
+        "rounded-md border border-border bg-card text-card-foreground shadow-sm hover:brightness-98 dark:hover:brightness-115",
         isSelected && "ring-2 ring-primary",
       )}
       style={{

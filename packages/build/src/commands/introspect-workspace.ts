@@ -14,6 +14,8 @@ export interface JsonSchema {
 }
 
 export interface NodeSchemas {
+  /** Human-readable display name from defineNode({ name }). Null when unset. */
+  name?: string | null
   inputs: JsonSchema
   outputs: JsonSchema
   /** Optional accent color (free-form CSS string). Null when unset. */
@@ -25,6 +27,7 @@ export interface NodeSchemas {
 /** Built-in @core/* node schemas, hardcoded — they don't ship as user files. */
 export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
   "@core/http-request": {
+    name: "HTTP Request",
     color: null,
     description:
       "HTTP request trigger. The `method` and `path` inputs define the route this workflow handles. The path defaults to the workflow's folder location.",
@@ -62,6 +65,7 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
     },
   },
   "@core/response": {
+    name: "Response",
     color: null,
     inputs: {
       type: "object",
@@ -78,6 +82,7 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
 interface CacheEntry {
   mtimeMs: number
   uses: string
+  name: string | null
   inputs: JsonSchema
   outputs: JsonSchema
   color: string | null
@@ -152,6 +157,7 @@ export async function introspectWorkspace(workspaceRoot: string): Promise<Intros
     for (const file of nodeFiles) {
       const entry = cache.get(file.abs)!
       result[entry.uses] = {
+        name: entry.name,
         inputs: entry.inputs,
         outputs: entry.outputs,
         color: entry.color,
@@ -177,11 +183,13 @@ export async function introspectWorkspace(workspaceRoot: string): Promise<Intros
     try {
       const entry = JSON.parse(line) as {
         uses: string
+        name?: string | null
         inputs: JsonSchema
         outputs: JsonSchema
         color?: string | null
         description?: string | null
       }
+      const name = entry.name ?? null
       const color = entry.color ?? null
       const description = entry.description ?? null
       const fileInfo = fileByUses.get(entry.uses)
@@ -189,13 +197,20 @@ export async function introspectWorkspace(workspaceRoot: string): Promise<Intros
         cache.set(fileInfo.abs, {
           mtimeMs: fileInfo.mtimeMs,
           uses: entry.uses,
+          name,
           inputs: entry.inputs,
           outputs: entry.outputs,
           color,
           description,
         })
       }
-      result[entry.uses] = { inputs: entry.inputs, outputs: entry.outputs, color, description }
+      result[entry.uses] = {
+        name,
+        inputs: entry.inputs,
+        outputs: entry.outputs,
+        color,
+        description,
+      }
     } catch (e) {
       warnings.push(`Failed to parse worker output line: ${(e as Error).message}`)
     }

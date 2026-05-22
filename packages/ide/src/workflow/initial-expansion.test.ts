@@ -101,6 +101,32 @@ describe("computeInitialOutputExpansion", () => {
       new Set(["body", "body.user"]),
     )
   })
+
+  it("skips inferred branches so they start collapsed", () => {
+    // body was promoted from a leaf by nested-reference inference. The user
+    // should see it as a single handle until they explicitly expand it.
+    const tree = [
+      { ...branch("body", [leaf("body.email"), leaf("body.password")]), inferred: true },
+    ]
+    expect(computeInitialOutputExpansion(tree)).toEqual(new Set())
+  })
+
+  it("auto-expands schema-declared branches even when they have inferred children", () => {
+    // Schema declared body.user as a branch; a reference adds an inferred
+    // body.user.extra child. body.user is NOT inferred itself, so it stays
+    // auto-expanded.
+    const tree = [
+      branch("body", [
+        branch("body.user", [
+          leaf("body.user.name"),
+          { ...leaf("body.user.extra"), inferred: true },
+        ]),
+      ]),
+    ]
+    expect(computeInitialOutputExpansion(tree)).toEqual(
+      new Set(["body", "body.user"]),
+    )
+  })
 })
 
 describe("computeInitialExpansion (combined)", () => {

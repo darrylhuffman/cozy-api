@@ -1,33 +1,33 @@
-import { X } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { useTabsStore, useWorkflowTabs } from "@/store/tabs"
-import { WorkflowEditor } from "@/workflow/workflow-editor"
+import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useTabsStore, useWorkflowTabs } from "@/store/tabs";
+import { WorkflowEditor } from "@/workflow/workflow-editor";
 
 export function WorkflowEditorPanel() {
-  const tabs = useWorkflowTabs()
-  const activeId = useTabsStore((s) => s.activeWorkflowId)
-  const selectTab = useTabsStore((s) => s.selectTab)
-  const closeTab = useTabsStore((s) => s.closeTab)
+  const tabs = useWorkflowTabs();
+  const activeId = useTabsStore((s) => s.activeWorkflowId);
+  const selectTab = useTabsStore((s) => s.selectTab);
+  const closeTab = useTabsStore((s) => s.closeTab);
 
   if (tabs.length === 0) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-muted-foreground">
         <p className="text-sm">Open a .workflow file to see its graph here.</p>
       </div>
-    )
+    );
   }
 
-  const active = tabs.find((t) => t.id === activeId) ?? tabs[0]
+  const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
 
   function handleClose(tabId: string) {
-    const tab = tabs.find((t) => t.id === tabId)
+    const tab = tabs.find((t) => t.id === tabId);
     if (tab?.dirty) {
       const confirmed = window.confirm(
         `"${tab.title}" has unsaved changes. Close without saving?`,
-      )
-      if (!confirmed) return
+      );
+      if (!confirmed) return;
     }
-    closeTab(tabId)
+    closeTab(tabId);
   }
 
   return (
@@ -37,9 +37,15 @@ export function WorkflowEditorPanel() {
         {tabs.map((tab) => (
           <div
             key={tab.id}
+            onMouseDown={(e) => {
+              if (e.button === 1) {
+                e.preventDefault();
+                handleClose(tab.id);
+              }
+            }}
             className={cn(
               "group flex shrink-0 items-center gap-2 border-r border-border bg-muted px-3 py-1.5 text-sm",
-              tab.id === activeId && "bg-background",
+              tab.id !== activeId && "bg-background",
             )}
           >
             <button
@@ -53,7 +59,9 @@ export function WorkflowEditorPanel() {
               )}
             >
               {tab.title}
-              {tab.dirty && <span className="ml-1 text-muted-foreground">&bull;</span>}
+              {tab.dirty && (
+                <span className="ml-1 text-muted-foreground">&bull;</span>
+              )}
             </button>
             <button
               type="button"
@@ -81,5 +89,5 @@ export function WorkflowEditorPanel() {
         ) : null}
       </div>
     </div>
-  )
+  );
 }

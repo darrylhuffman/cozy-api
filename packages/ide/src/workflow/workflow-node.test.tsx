@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 // Mock @xyflow/react — Handle and Position only
@@ -37,8 +37,13 @@ const branch = (name: string, children: PortNode[], idOverride?: string): PortNo
   isLeaf: false,
 })
 
-function makeData(id: string, instance: NodeInstance, ports: NodePorts): Record<string, unknown> {
-  return { id, instance, ports }
+function makeData(
+  id: string,
+  instance: NodeInstance,
+  ports: NodePorts,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { id, instance, ports, ...extra }
 }
 
 /** Empty root input port — used for nodes with no inputs (triggers). */
@@ -52,10 +57,62 @@ const inputRoot = (children: PortNode[]): PortNode => ({
 })
 
 describe("WorkflowNode", () => {
-  it("renders node id as display name when no label is set", () => {
+  it("renders the name derived from `uses` when no label is set", () => {
     const data = makeData("myNode", { uses: "./nodes/myNode" }, { inputs: emptyInputRoot, outputs: [] })
     render(<WorkflowNode data={data} />)
     expect(screen.getByText("myNode")).toBeInTheDocument()
+  })
+
+  it("prefers schemaName from `defineNode({ name })` over the `uses`-derived name", () => {
+    // Dropping a second `./nodes/users/save-user` produces id `save-user-2`.
+    // The card header should read the schema's declared "Save User", not the
+    // disambiguated technical id.
+    const data = makeData(
+      "save-user-2",
+      { uses: "./nodes/users/save-user" },
+      { inputs: emptyInputRoot, outputs: [] },
+      { schemaName: "Save User" },
+    )
+    render(<WorkflowNode data={data} />)
+    expect(screen.getByText("Save User")).toBeInTheDocument()
+    expect(screen.queryByText("save-user-2")).not.toBeInTheDocument()
+    expect(screen.queryByText("save-user")).not.toBeInTheDocument()
+  })
+
+  it("falls back to the `uses`-derived name when no schemaName is provided", () => {
+    const data = makeData(
+      "save-user-2",
+      { uses: "./nodes/users/save-user" },
+      { inputs: emptyInputRoot, outputs: [] },
+    )
+    render(<WorkflowNode data={data} />)
+    expect(screen.getByText("save-user")).toBeInTheDocument()
+    expect(screen.queryByText("save-user-2")).not.toBeInTheDocument()
+  })
+
+  it("instance.label takes precedence over schemaName", () => {
+    const data = makeData(
+      "save-user",
+      { uses: "./nodes/users/save-user", label: "My Custom Label" },
+      { inputs: emptyInputRoot, outputs: [] },
+      { schemaName: "Save User" },
+    )
+    render(<WorkflowNode data={data} />)
+    expect(screen.getByText("My Custom Label")).toBeInTheDocument()
+    expect(screen.queryByText("Save User")).not.toBeInTheDocument()
+  })
+
+  it("strips `@core/` and file extensions from the display name", () => {
+    const data = makeData(
+      "request",
+      { uses: "@core/http-request" },
+      { inputs: emptyInputRoot, outputs: [] },
+    )
+    render(<WorkflowNode data={data} />)
+    // Header shows the bare node name; the kind chip ("core") and footer
+    // (`@core/http-request`) carry the prefix info.
+    const header = screen.getByTestId("node-header")
+    expect(within(header).getByText("http-request")).toBeInTheDocument()
   })
 
   it("renders label when instance.label is set", () => {
@@ -142,9 +199,14 @@ describe("WorkflowNode", () => {
 
   it("renders correctly with zero ports (trigger node)", () => {
     const ports: NodePorts = { inputs: emptyInputRoot, outputs: [] }
-    const data = makeData("request", { uses: "@core/http-request" }, ports)
+    const data = makeData(
+      "request",
+      { uses: "@core/http-request" },
+      ports,
+      { schemaName: "HTTP Request" },
+    )
     render(<WorkflowNode data={data} />)
-    expect(screen.getByText("request")).toBeInTheDocument()
+    expect(screen.getByText("HTTP Request")).toBeInTheDocument()
     expect(screen.queryByTestId(/^handle-target/)).not.toBeInTheDocument()
     expect(screen.queryByTestId(/^handle-source/)).not.toBeInTheDocument()
   })
@@ -155,7 +217,8 @@ describe("WorkflowNode", () => {
       instance: { uses: "@core/http-request" },
     }
     render(<WorkflowNode data={data} />)
-    expect(screen.getByText("legacy")).toBeInTheDocument()
+    // No schemaName and no instance.label — falls back to the `uses`-derived name.
+    expect(screen.getByText("http-request")).toBeInTheDocument()
   })
 
   describe("expandable port tree", () => {

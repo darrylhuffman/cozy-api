@@ -33,8 +33,12 @@ import { CanvasContextMenu } from "./canvas-context-menu";
 import { CommandPalette } from "./command-palette";
 import { NewNodeDialog } from "./new-node-dialog";
 import { NodeContextMenu } from "./node-context-menu";
-import { derivePorts } from "./derive-ports";
-import { effectiveHandle } from "./effective-handle";
+import { derivePorts, type NodePorts } from "./derive-ports";
+import {
+  computeVisibleInputPaths,
+  computeVisibleOutputPaths,
+  effectiveHandle,
+} from "./effective-handle";
 import { computeInitialExpansion } from "./initial-expansion";
 import { extractReferences } from "./parse-references";
 import { PathEdge, type PathMapping } from "./path-edge";
@@ -393,10 +397,17 @@ export function WorkflowEditor({ path, tabId }: Props) {
     [],
   );
 
+  // Derive ports once per (workflow, schemas) — shared by node init and edge
+  // routing. Edge routing needs the port trees to know which handle ids are
+  // actually mounted in the DOM.
+  const portsByNode = useMemo<Map<string, NodePorts>>(() => {
+    if (!workflow) return new Map();
+    return derivePorts(workflow, schemas);
+  }, [workflow, schemas]);
+
   // Initialise nodes whenever workflow OR schemas change
   useEffect(() => {
     if (!workflow) return;
-    const portsByNode = derivePorts(workflow, schemas);
 
     // Seed expansion state for newly-introduced nodes using satisfaction
     // defaults. Existing entries are kept (manual toggles persist).
@@ -428,7 +439,9 @@ export function WorkflowEditor({ path, tabId }: Props) {
           inputs: { id: "", label: "input", children: [], isLeaf: true },
           outputs: [],
         };
-        const color = schemas[instance.uses]?.color ?? null;
+        const schema = schemas[instance.uses];
+        const color = schema?.color ?? null;
+        const schemaName = schema?.name ?? null;
         // Read the current expansion state from the ref so re-runs caused by
         // onInputValueChange (workflow changes) don't reset the user's
         // expanded/collapsed state back to empty sets.
@@ -443,6 +456,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
             instance,
             ports: np,
             color,
+            schemaName,
             workflowPath: path,
             expandedInputs: existingExp?.inputs ?? new Set<string>(),
             expandedOutputs: existingExp?.outputs ?? new Set<string>(),
@@ -456,7 +470,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
     );
     setNodes(initial);
     nodesRef.current = initial;
-  }, [workflow, schemas, onTogglePort, onInputValueChange, path]);
+  }, [workflow, schemas, portsByNode, onTogglePort, onInputValueChange, path]);
 
   // Push the latest expansion state into each node's data so React Flow
   // re-renders the node when expansion changes.  Separated from initialise
@@ -490,6 +504,26 @@ export function WorkflowEditor({ path, tabId }: Props) {
     if (!workflow) return [];
     const refs = extractReferences(workflow);
 
+    // Per-node visible handle paths — the set of handle ids actually mounted
+    // in the DOM right now. effectiveHandle anchors each reference to the
+    // deepest visible ancestor of its logical path, which is the only way to
+    // produce a sourceHandle / targetHandle that React Flow can resolve when
+    // expansion state and port tree shape diverge (e.g. a reference into an
+    // opaque body output).
+    const visibleInputsByNode = new Map<string, ReadonlySet<string>>();
+    const visibleOutputsByNode = new Map<string, ReadonlySet<string>>();
+    for (const [nodeId, np] of portsByNode) {
+      const exp = expansion.get(nodeId);
+      visibleInputsByNode.set(
+        nodeId,
+        computeVisibleInputPaths(np.inputs, exp?.inputs ?? new Set()),
+      );
+      visibleOutputsByNode.set(
+        nodeId,
+        computeVisibleOutputPaths(np.outputs, exp?.outputs ?? new Set()),
+      );
+    }
+
     // For each underlying reference, compute the rendered (post-collapse)
     // endpoints AND the canonical source/target paths for the hover table.
     // Then group by the effective (source, sourceHandle, target, targetHandle)
@@ -508,14 +542,14 @@ export function WorkflowEditor({ path, tabId }: Props) {
         .filter((s) => s.length > 0)
         .join(".");
 
-      const srcExp = expansion.get(r.source.nodeId)?.outputs;
-      const renderedSource = srcExp
-        ? effectiveHandle(logicalSourcePath, srcExp)
+      const srcVisible = visibleOutputsByNode.get(r.source.nodeId);
+      const renderedSource = srcVisible
+        ? effectiveHandle(logicalSourcePath, srcVisible)
         : logicalSourcePath;
 
-      const tgtExp = expansion.get(r.target.nodeId)?.inputs;
-      const rawRenderedTarget = tgtExp
-        ? effectiveHandle(r.target.portId, tgtExp)
+      const tgtVisible = visibleInputsByNode.get(r.target.nodeId);
+      const rawRenderedTarget = tgtVisible
+        ? effectiveHandle(r.target.portId, tgtVisible)
         : r.target.portId;
       // Translate the root sentinel "" to ROOT_HANDLE_ID so the edge
       // targetHandle matches the actual rendered handle id in the DOM.
@@ -578,7 +612,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
       animated: false,
       data: { mappings: group.mappings },
     }));
-  }, [workflow, expansion]);
+  }, [workflow, expansion, portsByNode]);
 
   const save = useCallback(async () => {
     const wf = workflowRef.current;

@@ -112,7 +112,46 @@ export function derivePorts(
       if (!np) continue
       const portName = rest[0] ?? "out"
       if (np.outputs.some((p) => p.id === portName)) continue
-      np.outputs.push({ id: portName, label: portName, children: [], isLeaf: true })
+      np.outputs.push({
+        id: portName,
+        label: portName,
+        children: [],
+        isLeaf: true,
+        inferred: true,
+      })
+    }
+  }
+
+  // Nested inference: when a reference reaches into an opaque output (e.g.
+  // `request.body.email` where `body` is a leaf of unknown shape), grow the
+  // tree so the leaf becomes a branch with inferred children matching the
+  // reference path. This keeps edge rendering anchored to real handles —
+  // `effectiveHandle("body.email", ...)` now has a real "body.email" to walk
+  // up to — and makes the structure discoverable when the user expands `body`.
+  //
+  // Rules:
+  //  - Top-level segments are NOT added here; the legacy pass above respects
+  //    schema authority by not introducing new top-level ports for
+  //    schema-derived nodes. Nested grafting starts from an EXISTING port.
+  //  - A leaf is only promoted to a branch when it is "safe to grow": no
+  //    schema, or schema describes an opaque object (`type: "object"` with no
+  //    `properties`). Primitives are left alone.
+  //  - Created or promoted ports carry `inferred: true` so the initial-
+  //    expansion logic can keep them collapsed by default.
+  for (const instance of Object.values(workflow.nodes)) {
+    if (!instance.in) continue
+    const refValues: unknown[] =
+      typeof instance.in === "string" ? [instance.in] : Object.values(instance.in)
+    for (const value of refValues) {
+      if (typeof value !== "string") continue
+      if (!REFERENCE.test(value)) continue
+      const [sourceNodeId, ...rest] = value.split(".")
+      if (!sourceNodeId) continue
+      if (!workflow.nodes[sourceNodeId]) continue
+      if (rest.length < 2) continue
+      const np = result.get(sourceNodeId)
+      if (!np) continue
+      growNestedFromRef(np.outputs, rest)
     }
   }
 
@@ -153,6 +192,64 @@ function applyHttpRequestConditional(ports: NodePorts, instance: NodeInstance): 
   return {
     ...ports,
     outputs: ports.outputs.filter((p) => p.id !== "body"),
+  }
+}
+
+/**
+ * A leaf is safe to promote to a branch if it has no schema (purely inferred)
+ * or its schema describes an opaque object (`type: "object"` without
+ * `properties`). Primitives, arrays, and enums are left alone — a reference
+ * that drills into them is a workflow bug, not a hint about structure.
+ */
+function isPromotableLeaf(port: PortNode): boolean {
+  if (!port.isLeaf) return false
+  if (!port.schema) return true
+  return port.schema.type === "object"
+}
+
+/**
+ * Walks `segments` into an output tree, promoting leaves to branches and
+ * creating missing children as needed. Every port created or promoted by this
+ * walk is marked `inferred: true`. Bails out silently if it hits a leaf that
+ * is not safe to grow (e.g. a typed primitive).
+ *
+ * Top-level segments must already exist — this only grafts nested structure
+ * onto ports the upstream passes (schema or legacy inference) have already
+ * established.
+ */
+function growNestedFromRef(outputs: PortNode[], segments: string[]): void {
+  if (segments.length < 2) return
+  const [first, ...rest] = segments
+  if (!first) return
+  const topPort = outputs.find((p) => p.id === first)
+  if (!topPort) return
+  let port = topPort
+  let pathPrefix = first
+  for (let i = 0; i < rest.length; i++) {
+    const seg = rest[i]!
+    const fullPath = `${pathPrefix}.${seg}`
+    const isLast = i === rest.length - 1
+    if (port.isLeaf) {
+      if (!isPromotableLeaf(port)) return
+      port.isLeaf = false
+      port.inferred = true
+      port.children = []
+      delete port.schema
+    }
+    let next = port.children.find((c) => c.id === fullPath)
+    if (!next) {
+      next = {
+        id: fullPath,
+        label: seg,
+        children: [],
+        isLeaf: true,
+        inferred: true,
+      }
+      port.children.push(next)
+    }
+    if (isLast) return
+    port = next
+    pathPrefix = fullPath
   }
 }
 

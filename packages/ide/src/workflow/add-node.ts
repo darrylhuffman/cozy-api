@@ -18,7 +18,16 @@ export function addNode(
   }
 }
 
-function idFromUses(uses: string): string {
+/**
+ * Returns the last meaningful segment of a `uses` string, suitable as both
+ * the seed for unique-id generation AND the display label on a node card.
+ *
+ * Examples:
+ *   "@core/http-request"           → "http-request"
+ *   "./nodes/users/save-user"      → "save-user"
+ *   "./nodes/users/save-user.ts"   → "save-user"
+ */
+export function idFromUses(uses: string): string {
   const stripped = uses.startsWith("@core/") ? uses.slice("@core/".length) : uses
   const last = stripped.split("/").filter(Boolean).pop() ?? "node"
   return last.replace(/\.[tj]sx?$/, "").replace(/[^a-zA-Z0-9-]/g, "-")

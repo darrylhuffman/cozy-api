@@ -18,6 +18,12 @@ export interface PortNode {
    * ports inferred from `in:` keys (no schema available).
    */
   schema?: JsonSchema | undefined
+  /**
+   * True when this port (or this port's branch structure) was synthesised from
+   * references in the workflow rather than declared by a schema. Used by the
+   * initial-expansion logic to keep inferred branches collapsed by default.
+   */
+  inferred?: boolean
 }
 
 /**
