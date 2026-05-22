@@ -1,6 +1,7 @@
 import type { Server as HttpServer, IncomingMessage } from "node:http"
 import type { Duplex } from "node:stream"
 import type { Hono } from "hono"
+import { cors } from "hono/cors"
 import { WebSocketServer, type WebSocket } from "ws"
 import { AvailabilityProbe } from "./availability.js"
 import {
@@ -27,11 +28,40 @@ export interface MountAgentBrokerOptions {
   availability?: AvailabilityProbe
 }
 
+/**
+ * Origin guard for CORS + WS upgrade: only loopback origins are allowed.
+ * Same posture as the WS upgrade check below. The IDE Vite dev server typically
+ * runs on a different localhost port (e.g. 5173) than the broker (e.g. 3000),
+ * so cross-origin browser fetches need explicit CORS — but only from loopback.
+ */
+function isLoopbackOriginString(origin: string | undefined | null): boolean {
+  if (!origin) return false
+  try {
+    const u = new URL(origin)
+    return (
+      u.hostname === "localhost" ||
+      u.hostname === "127.0.0.1" ||
+      u.hostname === "[::1]"
+    )
+  } catch {
+    return false
+  }
+}
+
 export function mountAgentBroker(
   app: Hono,
   opts: MountAgentBrokerOptions,
 ): void {
   const availability = opts.availability ?? new AvailabilityProbe()
+
+  // CORS for the REST endpoints — restricted to loopback origins so the
+  // IDE (typically on localhost:5173 during dev) can fetch from the broker
+  // (typically on localhost:3000) without exposing the dev-only API to the web.
+  app.use("/__lorien/agents/*", cors({
+    origin: (origin) => (isLoopbackOriginString(origin) ? origin : null),
+    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowHeaders: ["content-type"],
+  }))
 
   app.get("/__lorien/agents/availability", async (c) => {
     const r = await availability.probe()
@@ -62,20 +92,6 @@ export interface AttachAgentBrokerOptions {
 }
 
 const WS_PATH = "/__lorien/agents/ws"
-
-function isLoopbackOrigin(origin: string | undefined): boolean {
-  if (!origin) return false
-  try {
-    const u = new URL(origin)
-    return (
-      u.hostname === "localhost" ||
-      u.hostname === "127.0.0.1" ||
-      u.hostname === "[::1]"
-    )
-  } catch {
-    return false
-  }
-}
 
 interface ChatLifecycle {
   proc: ClaudeProcess | null
@@ -276,7 +292,7 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
       const url = req.url ?? ""
       if (!url.startsWith(WS_PATH)) return
       const origin = req.headers.origin
-      if (!isLoopbackOrigin(origin)) {
+      if (!isLoopbackOriginString(origin)) {
         socket.write(
           "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n",
         )

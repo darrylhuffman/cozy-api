@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { restBase } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useAgentChats, type AgentAvailability, type AvailabilityResponse } from "@/store/agent-chats"
@@ -7,21 +7,43 @@ interface AgentPickerProps {
   pickerId: string
 }
 
+type ProbeState =
+  | { kind: "loading" }
+  | { kind: "ok" }
+  | { kind: "error"; message: string }
+
 export function AgentPicker({ pickerId }: AgentPickerProps): React.ReactElement {
   const availability = useAgentChats((s) => s.availability)
   const setAvailability = useAgentChats((s) => s.setAvailability)
   const startClaudeChat = useAgentChats((s) => s.startClaudeChat)
+  const [probeState, setProbeState] = useState<ProbeState>({ kind: "loading" })
 
   useEffect(() => {
     let cancelled = false
     async function probe(): Promise<void> {
       try {
         const res = await fetch(`${restBase()}/__lorien/agents/availability`)
-        if (!res.ok) return
+        if (!res.ok) {
+          if (!cancelled) {
+            setProbeState({
+              kind: "error",
+              message: `Broker responded ${res.status}. Is \`lorien dev\` running?`,
+            })
+          }
+          return
+        }
         const av = (await res.json()) as AvailabilityResponse
-        if (!cancelled) setAvailability(av)
-      } catch {
-        /* leave availability null; cards render in error state */
+        if (!cancelled) {
+          setAvailability(av)
+          setProbeState({ kind: "ok" })
+        }
+      } catch (err) {
+        if (cancelled) return
+        const message =
+          err instanceof TypeError
+            ? `Couldn't reach the agent broker at ${restBase()}. Is \`lorien dev\` running?`
+            : `Unexpected error: ${(err as Error).message}`
+        setProbeState({ kind: "error", message })
       }
     }
     void probe()
@@ -29,6 +51,19 @@ export function AgentPicker({ pickerId }: AgentPickerProps): React.ReactElement 
       cancelled = true
     }
   }, [setAvailability])
+
+  if (probeState.kind === "error") {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+        <p className="text-sm text-destructive">{probeState.message}</p>
+        <p className="text-xs text-muted-foreground">
+          Run <code className="rounded bg-muted/40 px-1 font-mono">{`npm run dev:server`}</code>{" "}
+          (or <code className="rounded bg-muted/40 px-1 font-mono">{`pnpm dev:server`}</code>) in
+          your project, then close this tab and start a new chat.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full items-center justify-center p-6">
