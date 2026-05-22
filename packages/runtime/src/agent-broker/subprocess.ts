@@ -37,6 +37,10 @@ export interface ClaudeProcess {
 function defaultArgs(resumeSessionId?: string): string[] {
   const a = [
     "-p",
+    // Required by Claude Code CLI when combining --print with
+    // --output-format=stream-json. Without it, the CLI errors out with:
+    //   "When using --print, --output-format=stream-json requires --verbose"
+    "--verbose",
     "--input-format",
     "stream-json",
     "--output-format",
