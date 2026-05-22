@@ -170,11 +170,17 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
         if (!sawEvent) {
           // Subprocess died without producing any normalized output.
           // Most common cause: `claude` CLI not installed or not authenticated.
+          // Surface stderr tail when present so the user sees the real cause
+          // (e.g. "Please run /login first", "command not found", ENOENT).
+          const stderr = proc.stderrTail()
+          const baseMessage = `The agent CLI exited (code ${code ?? "unknown"}) without producing output. Check that \`claude\` is installed and signed in.`
+          const message = stderr
+            ? `${baseMessage}\n\nStderr (last ~2KB):\n${stderr}`
+            : baseMessage
           emit(chatId, {
             type: "agent_error",
             chatId,
-            message:
-              "The agent CLI exited without producing any output. Check that `claude` is installed and signed in.",
+            message,
             recoverable: true,
           })
         }

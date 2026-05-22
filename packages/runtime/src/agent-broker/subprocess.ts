@@ -30,6 +30,8 @@ export interface ClaudeProcess {
   readonly exit: Promise<number | null>
   /** Latest session id seen from the CLI (captured from the init event). */
   sessionId(): string | null
+  /** Last ~2KB of stderr captured from the subprocess, for diagnostics. */
+  stderrTail(): string
 }
 
 function defaultArgs(resumeSessionId?: string): string[] {
@@ -86,6 +88,17 @@ export function spawnClaude(opts: SpawnClaudeOptions): ClaudeProcess {
 
   let sessionId: string | null = null
 
+  // Buffer the tail of stderr so we can surface it in agent_error messages
+  // when the subprocess exits without useful stdout (e.g. auth errors).
+  const STDERR_MAX = 2048
+  let stderrBuf = ""
+  child.stderr.on("data", (chunk: Buffer | string) => {
+    stderrBuf += chunk.toString()
+    if (stderrBuf.length > STDERR_MAX) {
+      stderrBuf = stderrBuf.slice(-STDERR_MAX)
+    }
+  })
+
   const rl = createInterface({ input: child.stdout })
   rl.on("line", (line) => {
     const sid = extractClaudeSessionId(line)
@@ -93,7 +106,13 @@ export function spawnClaude(opts: SpawnClaudeOptions): ClaudeProcess {
     for (const ev of normalizeClaude(line)) push(ev)
   })
   rl.on("close", finish)
-  child.on("error", finish)
+  child.on("error", (err) => {
+    // Spawn-time errors (ENOENT, EACCES) arrive here, never on stderr.
+    stderrBuf = `${stderrBuf}\n${err instanceof Error ? err.message : String(err)}`.slice(
+      -STDERR_MAX,
+    )
+    finish()
+  })
 
   const exit: Promise<number | null> = new Promise((resolve) => {
     child.on("close", (code) => {
@@ -142,5 +161,6 @@ export function spawnClaude(opts: SpawnClaudeOptions): ClaudeProcess {
     },
     exit,
     sessionId: () => sessionId,
+    stderrTail: () => stderrBuf.trim(),
   }
 }

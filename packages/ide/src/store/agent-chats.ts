@@ -132,10 +132,16 @@ export const useAgentChats = create<AgentChatsState>((set, get) => {
     if (msg.type === "chat_closed") {
       get().setTurnInFlight(msg.chatId, false)
       if (msg.reason === "subprocess_exit") {
-        get().setError(
-          msg.chatId,
-          "The agent process exited. Send another message to start a new turn.",
-        )
+        // Only set a generic message if no more-specific error was already
+        // surfaced by an `agent_error` (which arrives just before this when
+        // the broker detects the subprocess exited without producing output).
+        const tab = get().chats[msg.chatId]
+        if (tab?.kind === "chat" && tab.error === null) {
+          get().setError(
+            msg.chatId,
+            "The agent process exited. Send another message to start a new turn.",
+          )
+        }
       }
       return
     }

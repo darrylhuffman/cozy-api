@@ -85,7 +85,7 @@ export function ChatView({ chatId }: ChatViewProps): React.ReactElement | null {
         <span className="ml-2 text-muted-foreground">· {tab.agent}</span>
       </div>
       {tab.error && (
-        <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        <div className="max-h-48 shrink-0 overflow-y-auto whitespace-pre-wrap border-b border-destructive/30 bg-destructive/10 px-3 py-2 font-mono text-[11px] text-destructive">
           {tab.error}
         </div>
       )}

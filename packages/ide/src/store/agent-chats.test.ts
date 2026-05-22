@@ -278,6 +278,34 @@ describe("useAgentChats WebSocket integration", () => {
     }
   })
 
+  it("chat_closed { subprocess_exit } after agent_error preserves the specific agent_error message", async () => {
+    useAgentChats.getState().connect()
+    await Promise.resolve()
+    const pickerId = useAgentChats.getState().newChat()
+    useAgentChats.getState().startClaudeChat(pickerId)
+    constructed[0]!.pushMessage({ type: "chat_created", chatId: "c-spec" })
+    // Broker emits agent_error first (the specific message), then chat_closed.
+    constructed[0]!.pushMessage({
+      type: "agent_error",
+      chatId: "c-spec",
+      message: "Check that `claude` is installed and signed in.",
+      recoverable: true,
+    })
+    constructed[0]!.pushMessage({
+      type: "chat_closed",
+      chatId: "c-spec",
+      reason: "subprocess_exit",
+    })
+    const tab = useAgentChats.getState().chats["c-spec"]
+    if (tab?.kind === "chat") {
+      // The more specific agent_error message wins; chat_closed must not clobber it.
+      expect(tab.error).toMatch(/signed in/i)
+      expect(tab.error).not.toMatch(/Send another message/i)
+    } else {
+      throw new Error("expected chat")
+    }
+  })
+
   it("chat_closed { user_cancel } does NOT set an error", async () => {
     useAgentChats.getState().connect()
     await Promise.resolve()
