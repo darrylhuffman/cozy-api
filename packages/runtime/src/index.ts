@@ -57,4 +57,15 @@ export type {
 export type { ValidationError, ValidationResult } from "./workflow/validate.js";
 export { validateWorkflow } from "./workflow/validate.js";
 
+export { attachDebugWebSocket } from "./dev-server/debug-ws.js"
+export type { AttachDebugWebSocketOptions } from "./dev-server/debug-ws.js"
+export { DebugSession } from "./dev-server/debug-session.js"
+export type { DebugSessionDeps } from "./dev-server/debug-session.js"
+export type {
+  Breakpoint,
+  ClientMessage,
+  ServerMessage,
+  RequestEnvelope,
+} from "./dev-server/debug-protocol.js"
+
 export const VERSION = "0.0.0";
