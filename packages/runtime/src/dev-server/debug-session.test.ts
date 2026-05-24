@@ -208,3 +208,106 @@ describe("DebugSession — state + commands", () => {
     expect(session.stepOverNodeId).toBeNull()
   })
 })
+
+describe("DebugSession.buildHooks — pause matrix", () => {
+  function newSession() {
+    return new DebugSession({
+      getWorkflow: () => null,
+      getServices: async () => ({}),
+      resolveNode: () => null,
+    })
+  }
+
+  it("no breakpoints, no step → never pauses", async () => {
+    const session = newSession()
+    const { ws } = makeMockClient()
+    session.connect(ws)
+    const { onBeforeNode, onAfterNode } = session.buildHooks("wf", "run-1")
+    await expect(Promise.race([
+      onBeforeNode("n1", {}),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("hung")), 50)),
+    ])).resolves.toBeUndefined()
+    await expect(Promise.race([
+      onAfterNode("n1", {}),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("hung")), 50)),
+    ])).resolves.toBeUndefined()
+  })
+
+  it("before-bp on node X pauses in onBeforeNode(X)", async () => {
+    const session = newSession()
+    const { ws, sent } = makeMockClient()
+    session.connect(ws)
+    await session.onMessage(ws, {
+      type: "set-breakpoints",
+      breakpoints: [{ workflowPath: "wf", nodeId: "X", kind: "before" }],
+    })
+    const { onBeforeNode } = session.buildHooks("wf", "run-1")
+    const pending = onBeforeNode("X", { foo: 1 })
+    await new Promise((r) => setTimeout(r, 10))
+    expect(sent.some((m) => m.type === "paused" && m.nodeId === "X" && m.phase === "before")).toBe(true)
+    await session.onMessage(ws, { type: "continue" })
+    await pending
+  })
+
+  it("port-bp on node X pauses in onAfterNode(X)", async () => {
+    const session = newSession()
+    const { ws, sent } = makeMockClient()
+    session.connect(ws)
+    await session.onMessage(ws, {
+      type: "set-breakpoints",
+      breakpoints: [{ workflowPath: "wf", nodeId: "X", kind: "port:foo" }],
+    })
+    const { onAfterNode } = session.buildHooks("wf", "run-1")
+    const pending = onAfterNode("X", { foo: 1 })
+    await new Promise((r) => setTimeout(r, 10))
+    expect(sent.some((m) => m.type === "paused" && m.nodeId === "X" && m.phase === "after")).toBe(true)
+    await session.onMessage(ws, { type: "continue" })
+    await pending
+  })
+
+  it("step pauses at the very next hook call", async () => {
+    const session = newSession()
+    const { ws, sent } = makeMockClient()
+    session.connect(ws)
+    session.stepMode = "step"
+    const { onBeforeNode } = session.buildHooks("wf", "run-1")
+    const pending = onBeforeNode("Y", {})
+    await new Promise((r) => setTimeout(r, 10))
+    expect(sent.some((m) => m.type === "paused" && m.nodeId === "Y")).toBe(true)
+    await session.onMessage(ws, { type: "continue" })
+    await pending
+  })
+
+  it("step-over of X suppresses port-bps on X, pauses at next node's before", async () => {
+    const session = newSession()
+    const { ws, sent } = makeMockClient()
+    session.connect(ws)
+    await session.onMessage(ws, {
+      type: "set-breakpoints",
+      breakpoints: [{ workflowPath: "wf", nodeId: "X", kind: "port:p" }],
+    })
+    session.stepMode = "step-over"
+    session.stepOverNodeId = "X"
+    const { onBeforeNode, onAfterNode } = session.buildHooks("wf", "run-1")
+    await onAfterNode("X", {})
+    expect(sent.some((m) => m.type === "paused" && m.nodeId === "X" && m.phase === "after")).toBe(false)
+    const pending = onBeforeNode("Y", {})
+    await new Promise((r) => setTimeout(r, 10))
+    expect(sent.some((m) => m.type === "paused" && m.nodeId === "Y" && m.phase === "before")).toBe(true)
+    await session.onMessage(ws, { type: "continue" })
+    await pending
+  })
+
+  it("on actual pause, stepMode is cleared so subsequent runs don't auto-step", async () => {
+    const session = newSession()
+    const { ws } = makeMockClient()
+    session.connect(ws)
+    session.stepMode = "step"
+    const { onBeforeNode } = session.buildHooks("wf", "run-1")
+    const pending = onBeforeNode("Y", {})
+    await new Promise((r) => setTimeout(r, 10))
+    expect(session.stepMode).toBe("none")
+    await session.onMessage(ws, { type: "continue" })
+    await pending
+  })
+})

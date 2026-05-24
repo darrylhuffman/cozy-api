@@ -175,6 +175,62 @@ export class DebugSession {
     return `s-${Math.random().toString(36).slice(2, 10)}`
   }
 
+  buildHooks(workflowPath: string, runId: string): {
+    onBeforeNode: (nodeId: string, input: Record<string, unknown>) => Promise<void>
+    onAfterNode: (nodeId: string, output: Record<string, unknown>) => Promise<void>
+  } {
+    const shouldPause = (nodeId: string, phase: "before" | "after"): boolean => {
+      // `step`: pause at the very next hook call regardless of bps.
+      if (this.stepMode === "step") return true
+      const bps = this.breakpoints.get(workflowPath) ?? []
+      if (phase === "before") {
+        // step-over: when we enter a DIFFERENT node than the one being stepped
+        // over, we want to pause (we've completed the stepped node).
+        if (this.stepMode === "step-over" && this.stepOverNodeId !== nodeId) return true
+        return bps.some((b) => b.nodeId === nodeId && b.kind === "before")
+      }
+      // phase === "after"
+      // step-over: suppress port + after bps on the stepped-over node itself.
+      if (this.stepMode === "step-over" && this.stepOverNodeId === nodeId) return false
+      return bps.some(
+        (b) =>
+          b.nodeId === nodeId &&
+          (b.kind === "after" || b.kind.startsWith("port:")),
+      )
+    }
+
+    const pause = (
+      nodeId: string,
+      phase: "before" | "after",
+      payload: unknown,
+    ): Promise<void> => {
+      this.broadcast({ type: "paused", runId, nodeId, phase, payload })
+      this.pauseFrame = { runId, nodeId, phase }
+      return new Promise<void>((resolve, reject) => {
+        this.activePause = { runId, resolve, reject }
+      })
+    }
+
+    return {
+      onBeforeNode: async (nodeId, input) => {
+        if (shouldPause(nodeId, "before")) {
+          // Clear step modes on actual pause — arming another step needs an
+          // explicit command from the client.
+          this.stepMode = "none"
+          this.stepOverNodeId = null
+          await pause(nodeId, "before", input)
+        }
+      },
+      onAfterNode: async (nodeId, output) => {
+        if (shouldPause(nodeId, "after")) {
+          this.stepMode = "none"
+          this.stepOverNodeId = null
+          await pause(nodeId, "after", output)
+        }
+      },
+    }
+  }
+
   // Test-only seam helpers
   _setActivePauseForTest(p: ActivePause | null): void {
     this.activePause = p
