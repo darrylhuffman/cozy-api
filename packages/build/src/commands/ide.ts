@@ -1,13 +1,23 @@
 import { spawn } from "node:child_process"
 import { access, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
+import type { Server as HttpServer } from "node:http"
 import { createRequire } from "node:module"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
+import { pathToFileURL } from "node:url"
 import { serve } from "@hono/node-server"
 import { serveStatic } from "@hono/node-server/serve-static"
 import {
   attachAgentBroker,
   mountAgentBroker,
 } from "@darrylondil/lorien-runtime/agent-broker"
+import {
+  attachDebugWebSocket,
+  createServiceResolver,
+  DebugSession,
+  importNodes,
+  loadWorkspace,
+  type Services,
+} from "@darrylondil/lorien-runtime"
 import chokidar from "chokidar"
 import type { Command } from "commander"
 import { Hono } from "hono"
@@ -293,6 +303,49 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
 
   const app = createIdeApp(workspaceRoot)
 
+  // ── Load workspace (workflows + nodes) for DebugSession ───────────────────
+
+  const [ws, importResult] = await Promise.all([
+    loadWorkspace(workspaceRoot),
+    importNodes(workspaceRoot),
+  ])
+  const loadedWorkflows = ws.workflows
+  const loadedNodes = { ...importResult.nodes }
+
+  // ── Load services from lorien.config.ts (mirrors startLorienServer) ───────
+
+  const loadedServices = await (async () => {
+    const configPath = join(workspaceRoot, "lorien.config.ts")
+    let configServices: Record<string, unknown> = {}
+    try {
+      await stat(configPath)
+      try {
+        const mod = (await import(pathToFileURL(configPath).href)) as {
+          default?: { services?: Record<string, unknown> }
+        }
+        if (mod.default?.services) {
+          configServices = mod.default.services
+        }
+      } catch {
+        // Config failed to load — proceed with empty services
+      }
+    } catch {
+      // No lorien.config.ts — services will be empty
+    }
+    const resolver = createServiceResolver(configServices)
+    const resolved = await resolver.resolve({ requestId: `ide-boot-${Math.random().toString(36).slice(2)}`, timestamp: Date.now() })
+    return resolved as Services
+  })()
+
+  // ── DebugSession — points at the same workspace state as real HTTP traffic ─
+
+  const debugSession = new DebugSession({
+    getWorkflow: (workflowPath) =>
+      loadedWorkflows.find((w) => w.relativePath === workflowPath) ?? null,
+    getServices: async (_ctx) => loadedServices,
+    resolveNode: (uses) => loadedNodes[uses] ?? null,
+  })
+
   // ── Static SPA ─────────────────────────────────────────────────────────────
 
   app.use(
@@ -319,7 +372,12 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
       }
       resolveStarted({ port: actualPort, root: ideDistRoot })
     })
-    attachAgentBroker({ app, server, projectRoot: workspaceRoot })
+    // @hono/node-server's serve() returns ServerType (HTTP1 | HTTP2); both brokers
+    // only use the subset of the http.Server API (the 'upgrade' event), so the cast
+    // is safe in practice.
+    const httpServer = server as unknown as HttpServer
+    attachAgentBroker({ app, server: httpServer, projectRoot: workspaceRoot })
+    attachDebugWebSocket({ app, server: httpServer, session: debugSession })
   })
 }
 

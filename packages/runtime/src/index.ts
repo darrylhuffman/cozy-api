@@ -67,5 +67,8 @@ export type {
   ServerMessage,
   RequestEnvelope,
 } from "./dev-server/debug-protocol.js"
+// Services
+export { createServiceResolver } from "./services/resolve.js"
+export type { ServiceResolver, ServicesConfig } from "./services/types.js"
 
 export const VERSION = "0.0.0";
