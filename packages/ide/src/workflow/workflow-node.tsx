@@ -42,6 +42,16 @@ export interface WorkflowNodeData {
    * widget shows a sensible "/users" instead of the raw template.
    */
   workflowPath?: string;
+  /**
+   * When true, renders a red dot on the node header to indicate a node-level
+   * breakpoint ("before" or "after") is set for this node.
+   */
+  hasNodeBreakpoint?: boolean;
+  /**
+   * Set of output port ids that have a port-level breakpoint set. A red dot is
+   * rendered overlaid on the matching output port handle.
+   */
+  portBreakpoints?: Set<string>;
 }
 
 // Using the xyflow NodeProps generic requires the data type to extend Node which
@@ -83,6 +93,8 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     onTogglePort,
     onInputValueChange,
     workflowPath,
+    hasNodeBreakpoint,
+    portBreakpoints,
   } = data as unknown as WorkflowNodeData;
 
   const isSelected = useSelectionStore((s) => s.selectedNodeId === id);
@@ -158,9 +170,16 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
       {/* Header — also the drag handle for React Flow's dragHandle prop */}
       <div
         data-testid="node-header"
-        className="node-drag-handle border-b border-border bg-muted px-3 py-1.5 text-xs"
+        className="node-drag-handle relative border-b border-border bg-muted px-3 py-1.5 text-xs"
         style={headerBg ? { background: headerBg } : undefined}
       >
+        {hasNodeBreakpoint && (
+          <span
+            data-testid="node-breakpoint-dot"
+            className="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-red-600"
+            aria-label="breakpoint"
+          />
+        )}
         <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
           {kindLabel}
         </div>
@@ -190,6 +209,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
             side="output"
             expandedSet={expandedOutputs}
             onToggle={onTogglePort}
+            {...(portBreakpoints !== undefined ? { portBreakpoints } : {})}
           />
         </div>
       </div>
@@ -210,11 +230,13 @@ function PortTree({
   side,
   expandedSet,
   onToggle,
+  portBreakpoints,
 }: {
   ports: PortNode[];
   side: "input" | "output";
   expandedSet: ReadonlySet<string> | undefined;
   onToggle: ((side: "input" | "output", handleId: string) => void) | undefined;
+  portBreakpoints?: Set<string>;
 }) {
   return (
     <div>
@@ -226,6 +248,7 @@ function PortTree({
           side={side}
           expandedSet={expandedSet}
           onToggle={onToggle}
+          portBreakpoints={portBreakpoints}
         />
       ))}
     </div>
@@ -242,6 +265,7 @@ function PortRow({
   instanceValues,
   workflowPath,
   onInputValueChange,
+  portBreakpoints,
 }: {
   port: PortNode;
   depth: number;
@@ -252,6 +276,7 @@ function PortRow({
   instanceValues?: Record<string, unknown> | undefined;
   workflowPath?: string | undefined;
   onInputValueChange?: ((portId: string, value: unknown) => void) | undefined;
+  portBreakpoints?: Set<string> | undefined;
 }) {
   // When the editor provides controlled state, defer to it. Otherwise fall
   // back to local state (preserved for test-only usage of WorkflowNode).
@@ -386,6 +411,13 @@ function PortRow({
               : "var(--muted-foreground)",
           }}
         />
+        {isOutput && portBreakpoints?.has(port.id) && (
+          <span
+            data-testid={`port-breakpoint-${port.id}`}
+            className="absolute rounded-full bg-red-600"
+            style={{ right: -4, top: "50%", transform: "translateY(-50%)", width: 8, height: 8 }}
+          />
+        )}
         {isOutput ? (
           <>
             {label}
@@ -427,6 +459,7 @@ function PortRow({
               instanceValues={instanceValues}
               workflowPath={workflowPath}
               onInputValueChange={onInputValueChange}
+              portBreakpoints={portBreakpoints}
             />
           ))}
           {hiddenCount > 0 && (

@@ -9,9 +9,22 @@ interface Props {
   onReset: () => void
   /** When provided, a "View source" button is rendered at the top of the menu. */
   onViewSource?: () => void
+  /** When provided, renders "Toggle breakpoint (before)" and "Toggle breakpoint (after)" items. */
+  onToggleBreakpointBefore?: () => void
+  onToggleBreakpointAfter?: () => void
 }
 
-export function NodeContextMenu({ open, onOpenChange, x, y, onDelete, onReset, onViewSource }: Props) {
+export function NodeContextMenu({
+  open,
+  onOpenChange,
+  x,
+  y,
+  onDelete,
+  onReset,
+  onViewSource,
+  onToggleBreakpointBefore,
+  onToggleBreakpointAfter,
+}: Props) {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -42,6 +55,30 @@ export function NodeContextMenu({ open, onOpenChange, x, y, onDelete, onReset, o
         >
           Reset connections
         </button>
+        {onToggleBreakpointBefore && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenChange(false)
+              onToggleBreakpointBefore()
+            }}
+            className="w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent"
+          >
+            Toggle breakpoint (before)
+          </button>
+        )}
+        {onToggleBreakpointAfter && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenChange(false)
+              onToggleBreakpointAfter()
+            }}
+            className="w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent"
+          >
+            Toggle breakpoint (after)
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {

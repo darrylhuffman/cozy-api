@@ -132,6 +132,8 @@ let capturedNodeMenuProps: {
   y: number
   onDelete: () => void
   onReset: () => void
+  onToggleBreakpointBefore?: () => void
+  onToggleBreakpointAfter?: () => void
 } | null = null
 
 vi.mock("./node-context-menu", () => ({
@@ -142,6 +144,8 @@ vi.mock("./node-context-menu", () => ({
     y: number
     onDelete: () => void
     onReset: () => void
+    onToggleBreakpointBefore?: () => void
+    onToggleBreakpointAfter?: () => void
   }) => {
     capturedNodeMenuProps = props
     if (!props.open) return null
@@ -153,6 +157,16 @@ vi.mock("./node-context-menu", () => ({
         <button type="button" onClick={props.onDelete}>
           Delete node
         </button>
+        {props.onToggleBreakpointBefore && (
+          <button type="button" onClick={props.onToggleBreakpointBefore}>
+            Toggle breakpoint (before)
+          </button>
+        )}
+        {props.onToggleBreakpointAfter && (
+          <button type="button" onClick={props.onToggleBreakpointAfter}>
+            Toggle breakpoint (after)
+          </button>
+        )}
       </div>
     )
   },
@@ -179,6 +193,7 @@ import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
+import { useDebugSessionStore } from "@/store/debug-session"
 import { defaultPathForWorkflow, WorkflowEditor } from "./workflow-editor.js"
 
 const sampleWorkflow: WorkflowFile = {
@@ -254,6 +269,7 @@ afterEach(() => {
   resetStore()
   useSelectionStore.setState({ selectedNodeId: null })
   useLiveWorkflowStore.setState({ workflow: null, tabId: null })
+  useDebugSessionStore.setState({ breakpoints: [] })
 })
 
 describe("defaultPathForWorkflow", () => {
@@ -1472,6 +1488,146 @@ describe("WorkflowEditor", () => {
         const updatedNode = capturedNodes?.find((n) => n.id === "req")
         const expanded = updatedNode?.data.expandedInputs as Set<string> | undefined
         expect(expanded?.has("")).toBe(true)
+      })
+    })
+  })
+
+  describe("breakpoint context menu items", () => {
+    it("right-clicking a node passes onToggleBreakpointBefore and onToggleBreakpointAfter to NodeContextMenu", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      act(() => {
+        capturedOnNodeContextMenu?.(
+          { preventDefault: vi.fn(), clientX: 150, clientY: 200 },
+          { id: "save" },
+        )
+      })
+
+      await waitFor(() => {
+        expect(screen.getByTestId("node-context-menu")).toBeInTheDocument()
+      })
+
+      expect(screen.getByText(/Toggle breakpoint \(before\)/i)).toBeInTheDocument()
+      expect(screen.getByText(/Toggle breakpoint \(after\)/i)).toBeInTheDocument()
+    })
+
+    it("clicking 'Toggle breakpoint (before)' toggles a 'before' breakpoint in the store", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      act(() => {
+        capturedOnNodeContextMenu?.(
+          { preventDefault: vi.fn(), clientX: 150, clientY: 200 },
+          { id: "save" },
+        )
+      })
+
+      await waitFor(() => {
+        expect(screen.getByTestId("node-context-menu")).toBeInTheDocument()
+      })
+
+      act(() => {
+        fireEvent.click(screen.getByText(/Toggle breakpoint \(before\)/i))
+      })
+
+      const bps = useDebugSessionStore.getState().breakpoints
+      expect(bps).toContainEqual({
+        workflowPath: "workflows/users/create.workflow",
+        nodeId: "save",
+        kind: "before",
+      })
+    })
+
+    it("clicking 'Toggle breakpoint (after)' toggles an 'after' breakpoint in the store", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      act(() => {
+        capturedOnNodeContextMenu?.(
+          { preventDefault: vi.fn(), clientX: 150, clientY: 200 },
+          { id: "save" },
+        )
+      })
+
+      await waitFor(() => {
+        expect(screen.getByTestId("node-context-menu")).toBeInTheDocument()
+      })
+
+      act(() => {
+        fireEvent.click(screen.getByText(/Toggle breakpoint \(after\)/i))
+      })
+
+      const bps = useDebugSessionStore.getState().breakpoints
+      expect(bps).toContainEqual({
+        workflowPath: "workflows/users/create.workflow",
+        nodeId: "save",
+        kind: "after",
+      })
+    })
+
+    it("toggling the same breakpoint twice removes it from the store", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Toggle once to add
+      act(() => {
+        capturedOnNodeContextMenu?.(
+          { preventDefault: vi.fn(), clientX: 150, clientY: 200 },
+          { id: "save" },
+        )
+      })
+      await waitFor(() => expect(screen.getByTestId("node-context-menu")).toBeInTheDocument())
+      act(() => {
+        fireEvent.click(screen.getByText(/Toggle breakpoint \(before\)/i))
+      })
+      expect(useDebugSessionStore.getState().breakpoints).toHaveLength(1)
+
+      // Toggle again to remove — re-open the menu
+      act(() => {
+        capturedOnNodeContextMenu?.(
+          { preventDefault: vi.fn(), clientX: 150, clientY: 200 },
+          { id: "save" },
+        )
+      })
+      await waitFor(() => expect(screen.getByTestId("node-context-menu")).toBeInTheDocument())
+      act(() => {
+        fireEvent.click(screen.getByText(/Toggle breakpoint \(before\)/i))
+      })
+      expect(useDebugSessionStore.getState().breakpoints).toHaveLength(0)
+    })
+
+    it("breakpoints effect sets hasNodeBreakpoint on the matching RFNode", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+
+      // Pre-populate a breakpoint in the store
+      act(() => {
+        useDebugSessionStore.getState().toggleBreakpoint({
+          workflowPath: "workflows/users/create.workflow",
+          nodeId: "save",
+          kind: "before",
+        })
+      })
+
+      await waitFor(() => {
+        const saveNode = capturedNodes?.find((n) => n.id === "save")
+        expect(saveNode?.data.hasNodeBreakpoint).toBe(true)
       })
     })
   })

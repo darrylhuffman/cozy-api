@@ -95,6 +95,8 @@ export function WorkflowEditor({ path, tabId }: Props) {
   const setDirty = useTabsStore((s) => s.setDirty);
   const setSelected = useSelectionStore((s) => s.setSelected);
   const nodeStatuses = useDebugSessionStore((s) => s.nodeStatuses);
+  const breakpoints = useDebugSessionStore((s) => s.breakpoints);
+  const toggleBreakpoint = useDebugSessionStore((s) => s.toggleBreakpoint);
 
   const onNodeClick = useCallback(
     (_e: ReactMouseEvent, n: RFNode) => {
@@ -289,6 +291,18 @@ export function WorkflowEditor({ path, tabId }: Props) {
     const filePath = `${instance.uses.replace(/^\.\//, "")}.ts`;
     openCodeFile(filePath);
   }, [nodeMenu.nodeId]);
+
+  const handleToggleBreakpointBefore = useCallback(() => {
+    const id = nodeMenu.nodeId;
+    if (!id) return;
+    toggleBreakpoint({ workflowPath: path, nodeId: id, kind: "before" });
+  }, [nodeMenu.nodeId, path, toggleBreakpoint]);
+
+  const handleToggleBreakpointAfter = useCallback(() => {
+    const id = nodeMenu.nodeId;
+    if (!id) return;
+    toggleBreakpoint({ workflowPath: path, nodeId: id, kind: "after" });
+  }, [nodeMenu.nodeId, path, toggleBreakpoint]);
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     if (e.dataTransfer.types.includes("application/lorien-node")) {
@@ -513,6 +527,30 @@ export function WorkflowEditor({ path, tabId }: Props) {
       })),
     );
   }, [nodeStatuses, setNodes]);
+
+  // Push the latest breakpoint state into each RFNode's data so the canvas
+  // renders red dots for nodes/ports that have breakpoints set.
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        const bps = breakpoints.filter(
+          (b) => b.workflowPath === path && b.nodeId === n.id,
+        );
+        const hasNodeBreakpoint = bps.some(
+          (b) => b.kind === "before" || b.kind === "after",
+        );
+        const portBreakpoints = new Set(
+          bps
+            .filter((b) => b.kind.startsWith("port:"))
+            .map((b) => b.kind.slice("port:".length)),
+        );
+        return {
+          ...n,
+          data: { ...n.data, hasNodeBreakpoint, portBreakpoints },
+        };
+      }),
+    );
+  }, [breakpoints, path, setNodes]);
 
   const edges = useMemo<Edge[]>(() => {
     if (!workflow) return [];
@@ -927,6 +965,8 @@ export function WorkflowEditor({ path, tabId }: Props) {
         y={nodeMenu.y}
         onDelete={handleDeleteFromMenu}
         onReset={handleResetConnections}
+        onToggleBreakpointBefore={handleToggleBreakpointBefore}
+        onToggleBreakpointAfter={handleToggleBreakpointAfter}
         {...(nodeMenu.nodeId &&
           workflow?.nodes[nodeMenu.nodeId]?.uses.startsWith(".")
           ? { onViewSource: handleViewSource }

@@ -546,6 +546,47 @@ describe("WorkflowNode", () => {
     })
   })
 
+  describe("breakpoint dots", () => {
+    const baseData = () =>
+      makeData("n1", { uses: "@core/http-request" }, { inputs: emptyInputRoot, outputs: [] })
+
+    it("renders a red dot on the header when data.hasNodeBreakpoint is true", () => {
+      const { container } = render(<WorkflowNode data={{ ...baseData(), hasNodeBreakpoint: true }} />)
+      expect(container.querySelector('[data-testid="node-breakpoint-dot"]')).toBeTruthy()
+    })
+
+    it("does NOT render a breakpoint dot when data.hasNodeBreakpoint is falsy", () => {
+      const { container } = render(<WorkflowNode data={baseData()} />)
+      expect(container.querySelector('[data-testid="node-breakpoint-dot"]')).toBeFalsy()
+    })
+
+    it("renders a port breakpoint dot at the matching output port", () => {
+      const data = {
+        ...baseData(),
+        ports: {
+          inputs: emptyInputRoot,
+          outputs: [{ id: "foo", label: "foo", children: [], isLeaf: true }],
+        },
+        portBreakpoints: new Set(["foo"]),
+      }
+      const { container } = render(<WorkflowNode data={data} />)
+      expect(container.querySelector('[data-testid="port-breakpoint-foo"]')).toBeTruthy()
+    })
+
+    it("does NOT render a port dot for a port not in portBreakpoints", () => {
+      const data = {
+        ...baseData(),
+        ports: {
+          inputs: emptyInputRoot,
+          outputs: [{ id: "bar", label: "bar", children: [], isLeaf: true }],
+        },
+        portBreakpoints: new Set<string>(),
+      }
+      const { container } = render(<WorkflowNode data={data} />)
+      expect(container.querySelector('[data-testid="port-breakpoint-bar"]')).toBeFalsy()
+    })
+  })
+
   describe("inline input editing (B3)", () => {
     /** Helper: leaf port with an attached schema */
     const schemaLeaf = (name: string, schema: NonNullable<PortNode["schema"]>): PortNode => {
