@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
+import { debugWsUrl } from "./api"
 
 describe("api URL helpers", () => {
   beforeEach(() => {
@@ -33,5 +34,20 @@ describe("api URL helpers", () => {
     vi.stubEnv("VITE_LORIEN_API_URL", "http://10.0.0.5:8080/")
     const { wsUrl } = await import("./api.js")
     expect(wsUrl()).toBe("ws://10.0.0.5:8080/__lorien/agents/ws")
+  })
+})
+
+describe("debugWsUrl", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it("derives ws://host:port/__lorien/debug/ws from the default REST base", () => {
+    expect(debugWsUrl()).toBe("ws://localhost:3000/__lorien/debug/ws")
+  })
+
+  it("uses wss for https REST base", () => {
+    vi.stubEnv("VITE_LORIEN_API_URL", "https://api.example.com")
+    expect(debugWsUrl()).toBe("wss://api.example.com/__lorien/debug/ws")
   })
 })

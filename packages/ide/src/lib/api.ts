@@ -185,3 +185,10 @@ export function wsUrl(): string {
   const host = base.replace(/^https?:\/\//, "").replace(/\/+$/, "")
   return `${wsScheme}${host}/__lorien/agents/ws`
 }
+
+export function debugWsUrl(): string {
+  const base = restBase()
+  const wsScheme = base.startsWith("https://") ? "wss://" : "ws://"
+  const host = base.replace(/^https?:\/\//, "").replace(/\/+$/, "")
+  return `${wsScheme}${host}/__lorien/debug/ws`
+}
