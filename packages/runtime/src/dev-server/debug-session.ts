@@ -66,6 +66,8 @@ export class DebugSession {
       this.activePause = null
       this.pauseFrame = null
       this.activeRun = null
+      this.stepMode = "none"
+      this.stepOverNodeId = null
     }
   }
 
@@ -152,6 +154,8 @@ export class DebugSession {
           this.activePause.reject(new AbortError("stopped"))
           this.activePause = null
           this.pauseFrame = null
+          this.stepMode = "none"
+          this.stepOverNodeId = null
         }
         return
     }
@@ -180,7 +184,7 @@ export class DebugSession {
     this.pauseFrame = f
   }
 
-  setActiveRunForTest(r: ActiveRun | null): void {
+  _setActiveRunForTest(r: ActiveRun | null): void {
     this.activeRun = r
   }
 }

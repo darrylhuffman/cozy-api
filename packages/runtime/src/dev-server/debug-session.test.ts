@@ -78,7 +78,7 @@ describe("DebugSession — state + commands", () => {
       resolve: () => { resolved = true },
       reject: () => {},
     })
-    session.setActiveRunForTest({ runId: "r1" })
+    session._setActiveRunForTest({ runId: "r1" })
     await session.onMessage(ws, { type: "continue" })
     expect(resolved).toBe(true)
     expect(sent.some((m) => m.type === "resumed" && m.runId === "r1")).toBe(true)
@@ -101,7 +101,7 @@ describe("DebugSession — state + commands", () => {
       resolve: () => {},
       reject: () => {},
     })
-    session.setActiveRunForTest({ runId: "r1" })
+    session._setActiveRunForTest({ runId: "r1" })
     await session.onMessage(ws, { type: "step" })
     expect(session.stepMode).toBe("step")
   })
@@ -115,7 +115,7 @@ describe("DebugSession — state + commands", () => {
       resolve: () => {},
       reject: () => {},
     })
-    session.setActiveRunForTest({ runId: "r1" })
+    session._setActiveRunForTest({ runId: "r1" })
     session._setPauseFrameForTest({
       runId: "r1",
       nodeId: "parseBody",
@@ -135,7 +135,7 @@ describe("DebugSession — state + commands", () => {
       resolve: () => {},
       reject: () => {},
     })
-    session.setActiveRunForTest({ runId: "r1" })
+    session._setActiveRunForTest({ runId: "r1" })
     session._setPauseFrameForTest({
       runId: "r1",
       nodeId: "parseBody",
@@ -156,7 +156,7 @@ describe("DebugSession — state + commands", () => {
       resolve: () => {},
       reject: (e) => { rejection = e },
     })
-    session.setActiveRunForTest({ runId: "r1" })
+    session._setActiveRunForTest({ runId: "r1" })
     await session.onMessage(ws, { type: "stop" })
     expect((rejection as Error).name).toBe("AbortError")
   })
@@ -171,8 +171,40 @@ describe("DebugSession — state + commands", () => {
       resolve: () => {},
       reject: (e) => { rejection = e },
     })
-    session.setActiveRunForTest({ runId: "r1" })
+    session._setActiveRunForTest({ runId: "r1" })
     session.disconnect(a.ws)
     expect((rejection as Error).name).toBe("AbortError")
+  })
+
+  it("stop clears stepMode and stepOverNodeId", async () => {
+    const session = makeSession()
+    const { ws } = makeMockClient()
+    session.connect(ws)
+    session.stepMode = "step-over"
+    session.stepOverNodeId = "parseBody"
+    session._setActivePauseForTest({
+      runId: "r1",
+      resolve: () => {},
+      reject: () => {},
+    })
+    await session.onMessage(ws, { type: "stop" })
+    expect(session.stepMode).toBe("none")
+    expect(session.stepOverNodeId).toBeNull()
+  })
+
+  it("last-client disconnect clears stepMode and stepOverNodeId", () => {
+    const session = makeSession()
+    const a = makeMockClient()
+    session.connect(a.ws)
+    session.stepMode = "step"
+    session.stepOverNodeId = "x"
+    session._setActivePauseForTest({
+      runId: "r1",
+      resolve: () => {},
+      reject: () => {},
+    })
+    session.disconnect(a.ws)
+    expect(session.stepMode).toBe("none")
+    expect(session.stepOverNodeId).toBeNull()
   })
 })
