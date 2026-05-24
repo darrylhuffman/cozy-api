@@ -97,6 +97,12 @@ export function WorkflowEditor({ path, tabId }: Props) {
   const nodeStatuses = useDebugSessionStore((s) => s.nodeStatuses);
   const breakpoints = useDebugSessionStore((s) => s.breakpoints);
   const toggleBreakpoint = useDebugSessionStore((s) => s.toggleBreakpoint);
+  const runs = useDebugSessionStore((s) => s.runs);
+  const selectedRunId = useDebugSessionStore((s) => s.selectedRunId);
+
+  // Set of "sourceNodeId||sourceHandle" keys for edges currently flashing
+  const [flashingEdges, setFlashingEdges] = useState<Set<string>>(() => new Set());
+  const lastEventIdxRef = useRef<number>(-1);
 
   const onNodeClick = useCallback(
     (_e: ReactMouseEvent, n: RFNode) => {
@@ -552,6 +558,48 @@ export function WorkflowEditor({ path, tabId }: Props) {
     );
   }, [breakpoints, path, setNodes]);
 
+  // Subscribe to edge-fired events from the currently-selected run and briefly
+  // flash the matching React Flow edge (300ms animated highlight).
+  const currentRun = runs.find((r) => r.runId === selectedRunId) ?? runs[0];
+  useEffect(() => {
+    if (!currentRun) return;
+    const evts = currentRun.events;
+    // When a new run starts (events reset), reset the cursor
+    if (evts.length === 0) {
+      lastEventIdxRef.current = -1;
+      return;
+    }
+    for (let i = lastEventIdxRef.current + 1; i < evts.length; i++) {
+      const e = evts[i]!.event;
+      if (e.type !== "edge-fired") continue;
+      // Parse "fromNode.field" → match against edge.source + sourceHandle
+      const dot = e.from.indexOf(".");
+      const fromNode = dot >= 0 ? e.from.slice(0, dot) : e.from;
+      const fromHandle = dot >= 0 ? e.from.slice(dot + 1) : "";
+      const flashKey = `${fromNode}||${fromHandle}`;
+      setFlashingEdges((prev) => {
+        const next = new Set(prev);
+        next.add(flashKey);
+        return next;
+      });
+      setTimeout(() => {
+        setFlashingEdges((prev) => {
+          const next = new Set(prev);
+          next.delete(flashKey);
+          return next;
+        });
+      }, 300);
+    }
+    lastEventIdxRef.current = evts.length - 1;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRun?.events.length]);
+
+  // When the selected run changes, reset the event cursor so we don't
+  // replay events from a previous run on the next mount.
+  useEffect(() => {
+    lastEventIdxRef.current = -1;
+  }, [selectedRunId]);
+
   const edges = useMemo<Edge[]>(() => {
     if (!workflow) return [];
     const refs = extractReferences(workflow);
@@ -665,6 +713,21 @@ export function WorkflowEditor({ path, tabId }: Props) {
       data: { mappings: group.mappings },
     }));
   }, [workflow, expansion, portsByNode]);
+
+  // Merge flash state into edges for display — only `animated` and
+  // `style.strokeOpacity` are touched; source/target/handles are untouched.
+  const displayEdges = useMemo<Edge[]>(() => {
+    if (flashingEdges.size === 0) return edges;
+    return edges.map((ed) => {
+      const flashKey = `${ed.source}||${ed.sourceHandle ?? ""}`;
+      if (!flashingEdges.has(flashKey)) return ed;
+      return {
+        ...ed,
+        animated: true,
+        style: { ...ed.style, strokeOpacity: 1 },
+      };
+    });
+  }, [edges, flashingEdges]);
 
   const save = useCallback(async () => {
     const wf = workflowRef.current;
@@ -891,7 +954,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
       <div ref={reactFlowRef} className="h-full w-full">
         <ReactFlow
           nodes={nodes}
-          edges={edges}
+          edges={displayEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           onNodesChange={onNodesChange}
