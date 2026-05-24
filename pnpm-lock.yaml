@@ -103,6 +103,9 @@ importers:
 
   packages/ide:
     dependencies:
+      '@darrylondil/lorien-runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
