@@ -3,6 +3,8 @@ import { useDebugSessionStore } from "@/store/debug-session"
 import { TriggerSelector } from "./trigger-selector"
 import { RequestBuilder } from "./request-builder"
 import { StatusBanner } from "./status-banner"
+import { Timeline } from "./timeline"
+import { RunPicker } from "./run-picker"
 
 export function RunTab() {
   const { send } = useDebugTransport()
@@ -20,6 +22,11 @@ export function RunTab() {
       <TriggerSelector />
       <RequestBuilder />
       <StatusBanner send={send} />
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Timeline</div>
+        <RunPicker />
+      </div>
+      <Timeline />
     </div>
   )
 }
