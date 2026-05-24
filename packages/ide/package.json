@@ -28,6 +28,7 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@darrylondil/lorien-runtime": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
     "@xyflow/react": "^12.10.2",
     "class-variance-authority": "^0.7.1",
