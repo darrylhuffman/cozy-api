@@ -1,4 +1,9 @@
+import { useState } from "react"
+import type { ClientMessage, RequestEnvelope } from "@darrylondil/lorien-runtime"
 import { useDebugSessionStore } from "@/store/debug-session"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
+import { useTabsStore } from "@/store/tabs"
+import { useDebugTransport } from "@/hooks/use-debug-transport"
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const
 
@@ -56,6 +61,7 @@ export function RequestBuilder() {
           onChange={(query) => setRequestForm((c) => ({ ...c, query }))}
         />
       </details>
+      <SendButton />
     </div>
   )
 }
@@ -106,6 +112,65 @@ function KeyValueGrid({
       >
         + add
       </button>
+    </div>
+  )
+}
+
+function SendButton() {
+  const form = useDebugSessionStore((s) => s.requestForm)
+  const status = useDebugSessionStore((s) => s.status)
+  const recordFire = useDebugSessionStore((s) => s.recordFire)
+  const liveTabId = useLiveWorkflowStore((s) => s.tabId)
+  const tabs = useTabsStore((s) => s.tabs)
+  const workflowPath = tabs.find((t) => t.id === liveTabId)?.path ?? ""
+  const { send } = useDebugTransport()
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
+  const inFlight = status === "running" || status === "paused"
+
+  const onClick = () => {
+    if (!form.triggerNodeId || !workflowPath) return
+    let body: unknown = undefined
+    if (form.body.trim().length > 0) {
+      try {
+        body = JSON.parse(form.body)
+      } catch (e) {
+        setJsonError((e as Error).message)
+        return
+      }
+    }
+    setJsonError(null)
+    const envelope: RequestEnvelope = {
+      method: form.method,
+      path: form.path,
+      ...(body !== undefined ? { body } : {}),
+      ...(form.query.length > 0
+        ? { query: Object.fromEntries(form.query.filter(([k]) => k.length > 0)) }
+        : {}),
+      ...(form.headers.length > 0
+        ? { headers: Object.fromEntries(form.headers.filter(([k]) => k.length > 0)) }
+        : {}),
+    }
+    recordFire(workflowPath, form.triggerNodeId, envelope)
+    send({
+      type: "fire",
+      workflowPath,
+      triggerNodeId: form.triggerNodeId,
+      request: envelope,
+    } satisfies ClientMessage)
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        disabled={inFlight || !form.triggerNodeId}
+        className="rounded-md border bg-primary px-3 py-1 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        onClick={onClick}
+      >
+        Send
+      </button>
+      {jsonError && <span className="text-red-700">{jsonError}</span>}
     </div>
   )
 }
