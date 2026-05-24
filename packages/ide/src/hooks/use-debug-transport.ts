@@ -6,9 +6,69 @@ import type {
 import { debugWsUrl } from "../lib/api"
 import { useDebugSessionStore } from "../store/debug-session"
 
-let singleton: { ws: WebSocket; refCount: number } | null = null
+interface Singleton {
+  ws: WebSocket
+  refCount: number
+  attempt: number
+  closing: boolean
+}
+
+let singleton: Singleton | null = null
 
 const BACKOFFS = [1000, 2000, 5000, 10_000]
+
+function connect(inst: Singleton): void {
+  const ws = new WebSocket(debugWsUrl())
+  inst.ws = ws
+
+  ws.onopen = () => {
+    inst.attempt = 0
+    const bps = useDebugSessionStore.getState().breakpoints
+    ws.send(JSON.stringify({ type: "hello", breakpoints: bps } satisfies ClientMessage))
+  }
+
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data as string) as ServerMessage
+      useDebugSessionStore.getState().applyMessage(msg)
+    } catch {
+      /* swallow malformed payload */
+    }
+  }
+
+  ws.onclose = () => {
+    if (inst.closing) return
+    useDebugSessionStore.getState().setConnected(false)
+    const wait = BACKOFFS[Math.min(inst.attempt, BACKOFFS.length - 1)]
+    inst.attempt += 1
+    setTimeout(() => {
+      if (inst.closing) return
+      // Only reconnect if this instance is still the active singleton (not torn down)
+      if (singleton !== inst) return
+      connect(inst)
+    }, wait)
+  }
+
+  ws.onerror = () => {
+    try {
+      ws.close()
+    } catch {
+      /* */
+    }
+  }
+}
+
+function ensureConnection(): void {
+  if (singleton !== null) return
+  const inst: Singleton = {
+    ws: null as unknown as WebSocket, // assigned immediately by connect()
+    refCount: 0,
+    attempt: 0,
+    closing: false,
+  }
+  singleton = inst
+  connect(inst)
+}
 
 export function useDebugTransport(): {
   send: (msg: ClientMessage) => void
@@ -16,62 +76,34 @@ export function useDebugTransport(): {
   const sendRef = useRef<(msg: ClientMessage) => void>(() => {})
 
   useEffect(() => {
-    let cancelled = false
-    let attempt = 0
+    // Hydrate breakpoints from localStorage before first hello
+    useDebugSessionStore.getState().hydrateBreakpoints()
 
-    const connect = () => {
-      const ws = new WebSocket(debugWsUrl())
-      singleton = { ws, refCount: (singleton?.refCount ?? 0) + 1 }
+    // ensureConnection() is idempotent — creates the singleton only once
+    ensureConnection()
+    singleton!.refCount += 1
 
-      ws.onopen = () => {
-        attempt = 0
-        const bps = useDebugSessionStore.getState().breakpoints
-        ws.send(JSON.stringify({ type: "hello", breakpoints: bps } satisfies ClientMessage))
-      }
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data as string) as ServerMessage
-          useDebugSessionStore.getState().applyMessage(msg)
-        } catch {
-          /* swallow malformed payload */
-        }
-      }
-      ws.onclose = () => {
-        if (cancelled) return
-        useDebugSessionStore.getState().setConnected(false)
-        const wait = BACKOFFS[Math.min(attempt, BACKOFFS.length - 1)]
-        attempt++
-        setTimeout(connect, wait)
-      }
-      ws.onerror = () => {
-        try {
-          ws.close()
-        } catch {
-          /* */
-        }
-      }
-
-      sendRef.current = (msg) => {
-        if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg))
+    // sendRef closes over the module-level singleton so it tracks ws replacements
+    sendRef.current = (msg) => {
+      const s = singleton
+      if (!s) return
+      if (s.ws.readyState === WebSocket.OPEN) {
+        s.ws.send(JSON.stringify(msg))
       }
     }
 
-    // Hydrate breakpoints from localStorage before first hello
-    useDebugSessionStore.getState().hydrateBreakpoints()
-    connect()
-
     return () => {
-      cancelled = true
-      if (singleton) {
-        singleton.refCount = Math.max(0, singleton.refCount - 1)
-        if (singleton.refCount === 0) {
-          try {
-            singleton.ws.close()
-          } catch {
-            /* */
-          }
-          singleton = null
+      const s = singleton
+      if (!s) return
+      s.refCount = Math.max(0, s.refCount - 1)
+      if (s.refCount === 0) {
+        s.closing = true
+        try {
+          s.ws.close()
+        } catch {
+          /* */
         }
+        singleton = null
       }
     }
   }, [])
