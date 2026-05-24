@@ -452,6 +452,38 @@ describe("WorkflowNode", () => {
     })
   })
 
+  describe("node status borders (debugger)", () => {
+    const baseData = () =>
+      makeData("n1", { uses: "@core/http-request" }, { inputs: emptyInputRoot, outputs: [] })
+
+    it("applies lorien-running class when data.nodeStatus === 'running'", () => {
+      const { container } = render(
+        <WorkflowNode data={{ ...baseData(), nodeStatus: "running" }} />,
+      )
+      expect(container.querySelector(".lorien-running")).toBeTruthy()
+    })
+
+    it("applies lorien-paused class when data.nodeStatus === 'paused'", () => {
+      const { container } = render(
+        <WorkflowNode data={{ ...baseData(), nodeStatus: "paused" }} />,
+      )
+      expect(container.querySelector(".lorien-paused")).toBeTruthy()
+    })
+
+    it("applies lorien-errored class when data.nodeStatus === 'errored'", () => {
+      const { container } = render(
+        <WorkflowNode data={{ ...baseData(), nodeStatus: "errored" }} />,
+      )
+      expect(container.querySelector(".lorien-errored")).toBeTruthy()
+    })
+
+    it("no status class when data.nodeStatus is undefined", () => {
+      const { container } = render(<WorkflowNode data={baseData()} />)
+      expect(container.querySelector(".lorien-running")).toBeFalsy()
+      expect(container.querySelector(".lorien-paused")).toBeFalsy()
+    })
+  })
+
   describe("accent card wash", () => {
     it("washes the card and header with a faint accent when color is set", () => {
       const data: Record<string, unknown> = {

@@ -45,6 +45,7 @@ import { PathEdge, type PathMapping } from "./path-edge";
 import { WorkflowNode, ROOT_HANDLE_ID } from "./workflow-node";
 import { useSelectionStore } from "@/store/selection";
 import { useLiveWorkflowStore } from "@/store/live-workflow";
+import { useDebugSessionStore } from "@/store/debug-session";
 import { openCodeFile } from "@/lib/open-code-file";
 
 interface Props {
@@ -93,6 +94,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
   const theme = useThemeStore((s) => s.theme);
   const setDirty = useTabsStore((s) => s.setDirty);
   const setSelected = useSelectionStore((s) => s.setSelected);
+  const nodeStatuses = useDebugSessionStore((s) => s.nodeStatuses);
 
   const onNodeClick = useCallback(
     (_e: ReactMouseEvent, n: RFNode) => {
@@ -499,6 +501,18 @@ export function WorkflowEditor({ path, tabId }: Props) {
       return next;
     });
   }, [expansion]);
+
+  // Push the latest node status from the debug-session store into each RFNode's
+  // data. Separated from the node-init effect so debug status changes never
+  // cause a full rebuild (and never interfere with collapse-on-edit behaviour).
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        data: { ...n.data, nodeStatus: nodeStatuses.get(n.id) },
+      })),
+    );
+  }, [nodeStatuses, setNodes]);
 
   const edges = useMemo<Edge[]>(() => {
     if (!workflow) return [];

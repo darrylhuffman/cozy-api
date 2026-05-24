@@ -152,3 +152,27 @@ body,
     --dv-tabs-container-scrollbar-color: var(--muted-foreground);
     --dv-paneview-active-outline-color: var(--ring);
 }
+
+@keyframes lorien-pulse-blue {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgb(59 130 246 / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgb(59 130 246 / 0);
+  }
+}
+
+.lorien-running {
+  animation: lorien-pulse-blue 1.2s ease-in-out infinite;
+  border-color: rgb(59 130 246);
+}
+.lorien-completed {
+  border-color: rgb(34 197 94);
+}
+.lorien-errored {
+  border-color: rgb(239 68 68);
+}
+.lorien-paused {
+  border-color: rgb(234 179 8);
+  border-width: 2px;
+}

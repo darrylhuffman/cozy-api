@@ -113,6 +113,19 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     safePorts.inputs.children.length === 0
   );
 
+  const nodeStatus = (data as { nodeStatus?: "running" | "completed" | "errored" | "paused" })
+    .nodeStatus;
+  const statusClass =
+    nodeStatus === "running"
+      ? "lorien-running"
+      : nodeStatus === "completed"
+        ? "lorien-completed"
+        : nodeStatus === "errored"
+          ? "lorien-errored"
+          : nodeStatus === "paused"
+            ? "lorien-paused"
+            : "";
+
   const accent = color ? resolveAccentColor(color) : null;
   // Faint wash across the whole card. Mix the accent into both the card and
   // muted layers so the header stays a touch darker than the body.
@@ -134,6 +147,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
       className={cn(
         "rounded-md border border-border bg-card text-card-foreground shadow-sm hover:brightness-98 dark:hover:brightness-115",
         isSelected && "ring-2 ring-primary",
+        statusClass,
       )}
       style={{
         width: 240,
