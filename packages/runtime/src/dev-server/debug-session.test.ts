@@ -311,3 +311,132 @@ describe("DebugSession.buildHooks — pause matrix", () => {
     await pending
   })
 })
+
+import { defineNode } from "../define-node.js"
+import { z } from "zod"
+import type { LoadedWorkflow } from "./load.js"
+
+describe("DebugSession.fire — workflow integration", () => {
+  function tinyLoadedWorkflow(): LoadedWorkflow {
+    const file = {
+      lorien: 1 as const,
+      nodes: {
+        request: {
+          uses: "@core/http-request" as const,
+          values: { path: "/echo", method: "POST" },
+        },
+        echo: {
+          uses: "./nodes/echo" as const,
+          in: { msg: "request.body.msg" },
+        },
+        response: {
+          uses: "@core/response" as const,
+          in: { body: "echo.msg" },
+        },
+      },
+    }
+    return {
+      relativePath: "workflows/echo.workflow",
+      file,
+    } as unknown as LoadedWorkflow
+  }
+
+  const echoNode = defineNode({
+    name: "echo",
+    inputs: z.object({ msg: z.string() }),
+    outputs: z.object({ msg: z.string() }),
+    async run({ msg }) {
+      return { msg }
+    },
+  })
+
+  function makeFireSession() {
+    const wf = tinyLoadedWorkflow()
+    return new DebugSession({
+      getWorkflow: (path) => (path === wf.relativePath ? wf : null),
+      getServices: async () => ({}) as never,
+      resolveNode: (uses) => {
+        if (uses === "./nodes/echo") return echoNode
+        return null
+      },
+    })
+  }
+
+  it("fire runs the workflow end-to-end and emits run-complete", async () => {
+    const session = makeFireSession()
+    const { ws, sent } = makeMockClient()
+    session.connect(ws)
+    await session.onMessage(ws, {
+      type: "fire",
+      workflowPath: "workflows/echo.workflow",
+      triggerNodeId: "request",
+      request: { method: "POST", path: "/echo", body: { msg: "hi" } },
+    })
+    await new Promise((r) => setTimeout(r, 50))
+    const complete = sent.find((m) => m.type === "run-complete")
+    expect(complete).toBeTruthy()
+    expect((complete as Extract<ServerMessage, { type: "run-complete" }>).body).toBe("hi")
+  })
+
+  it("fire broadcasts lifecycle events as 'event' server messages", async () => {
+    const session = makeFireSession()
+    const { ws, sent } = makeMockClient()
+    session.connect(ws)
+    await session.onMessage(ws, {
+      type: "fire",
+      workflowPath: "workflows/echo.workflow",
+      triggerNodeId: "request",
+      request: { method: "POST", path: "/echo", body: { msg: "hi" } },
+    })
+    await new Promise((r) => setTimeout(r, 50))
+    const events = sent.filter((m): m is Extract<ServerMessage, { type: "event" }> => m.type === "event")
+    expect(events.some((e) => e.event.type === "before-node" && e.event.nodeId === "echo")).toBe(true)
+    expect(events.some((e) => e.event.type === "after-node" && e.event.nodeId === "echo")).toBe(true)
+  })
+
+  it("fire while running → run-error", async () => {
+    const session = makeFireSession()
+    const { ws, sent } = makeMockClient()
+    session.connect(ws)
+    await session.onMessage(ws, {
+      type: "set-breakpoints",
+      breakpoints: [{ workflowPath: "workflows/echo.workflow", nodeId: "echo", kind: "before" }],
+    })
+    void session.onMessage(ws, {
+      type: "fire",
+      workflowPath: "workflows/echo.workflow",
+      triggerNodeId: "request",
+      request: { method: "POST", path: "/echo", body: { msg: "first" } },
+    })
+    await new Promise((r) => setTimeout(r, 30))
+    await session.onMessage(ws, {
+      type: "fire",
+      workflowPath: "workflows/echo.workflow",
+      triggerNodeId: "request",
+      request: { method: "POST", path: "/echo", body: { msg: "second" } },
+    })
+    const err = sent.find((m) => m.type === "run-error")
+    expect(err).toBeTruthy()
+    expect((err as Extract<ServerMessage, { type: "run-error" }>).message).toMatch(/in flight|already running/i)
+    await session.onMessage(ws, { type: "continue" })
+  })
+
+  it("replay re-fires the last request envelope", async () => {
+    const session = makeFireSession()
+    const { ws, sent } = makeMockClient()
+    session.connect(ws)
+    await session.onMessage(ws, {
+      type: "fire",
+      workflowPath: "workflows/echo.workflow",
+      triggerNodeId: "request",
+      request: { method: "POST", path: "/echo", body: { msg: "first" } },
+    })
+    await new Promise((r) => setTimeout(r, 50))
+    const firstCompletes = sent.filter((m) => m.type === "run-complete").length
+    expect(firstCompletes).toBe(1)
+    await session.onMessage(ws, { type: "replay" })
+    await new Promise((r) => setTimeout(r, 50))
+    const secondCompletes = sent.filter((m) => m.type === "run-complete").length
+    expect(secondCompletes).toBe(2)
+  })
+})

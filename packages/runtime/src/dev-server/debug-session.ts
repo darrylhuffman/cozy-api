@@ -1,7 +1,13 @@
 import type { WebSocket } from "ws"
-import type { Breakpoint, ClientMessage, ServerMessage } from "./debug-protocol.js"
+import type { Breakpoint, ClientMessage, RequestEnvelope, ServerMessage } from "./debug-protocol.js"
 import type { AnyNodeOrTrigger, Services } from "../types.js"
 import type { LoadedWorkflow } from "./load.js"
+import { runWorkflow } from "../exec/run.js"
+import { computeExecutionPlan } from "../exec/topology.js"
+import { validateWorkflow } from "../workflow/validate.js"
+import { buildTriggerSlice, extractParams } from "./trigger-slice.js"
+import { LifecycleEmitter } from "../exec/lifecycle.js"
+import { resolveCoreNode } from "../core/registry.js"
 
 export interface DebugSessionDeps {
   /** Look up a loaded workflow by its workspace-relative path. */
@@ -23,7 +29,6 @@ interface ActiveRun {
   workflowPath?: string
   triggerNodeId?: string
   startedAt?: number
-  lastRequest?: import("./debug-protocol.js").RequestEnvelope
 }
 
 interface PauseFrame {
@@ -44,6 +49,11 @@ export class DebugSession {
   private pauseFrame: PauseFrame | null = null
   stepMode: "none" | "step" | "step-over" = "none"
   stepOverNodeId: string | null = null
+  private lastRequest: {
+    workflowPath: string
+    triggerNodeId: string
+    request: RequestEnvelope
+  } | null = null
 
   constructor(private deps: DebugSessionDeps) {}
 
@@ -137,17 +147,39 @@ export class DebugSession {
         }
         return
 
-      case "replay":
-        ws.send(
-          JSON.stringify({ type: "ack", for: "replay" } satisfies ServerMessage),
-        )
+      case "fire": {
+        if (this.activeRun) {
+          ws.send(
+            JSON.stringify({
+              type: "run-error",
+              runId: this.activeRun.runId,
+              message: "another run is in flight",
+            } satisfies ServerMessage),
+          )
+          return
+        }
+        void this.runFire(msg.workflowPath, msg.triggerNodeId, msg.request)
         return
-
-      case "fire":
-        ws.send(
-          JSON.stringify({ type: "ack", for: "fire" } satisfies ServerMessage),
-        )
+      }
+      case "replay": {
+        if (this.activeRun) {
+          ws.send(
+            JSON.stringify({
+              type: "run-error",
+              runId: this.activeRun.runId,
+              message: "another run is in flight",
+            } satisfies ServerMessage),
+          )
+          return
+        }
+        const last = this.lastRequest
+        if (!last) {
+          ws.send(JSON.stringify({ type: "ack", for: "replay" } satisfies ServerMessage))
+          return
+        }
+        void this.runFire(last.workflowPath, last.triggerNodeId, last.request)
         return
+      }
 
       case "stop":
         if (this.activePause) {
@@ -228,6 +260,112 @@ export class DebugSession {
           await pause(nodeId, "after", output)
         }
       },
+    }
+  }
+
+  private async runFire(
+    workflowPath: string,
+    triggerNodeId: string,
+    request: RequestEnvelope,
+  ): Promise<void> {
+    const wf = this.deps.getWorkflow(workflowPath)
+    if (!wf) {
+      this.broadcast({
+        type: "run-error",
+        runId: "n/a",
+        message: `workflow not found: ${workflowPath}`,
+      })
+      return
+    }
+
+    const runId = `r-${Math.random().toString(36).slice(2, 10)}`
+    this.activeRun = { runId, workflowPath, triggerNodeId, startedAt: Date.now() }
+    this.lastRequest = { workflowPath, triggerNodeId, request }
+
+    // Validate + project trigger slice (mirrors server.ts mountWorkflows logic)
+    const { errors, depsByNode } = validateWorkflow(wf.file)
+    if (errors.length > 0) {
+      this.broadcast({
+        type: "run-error",
+        runId,
+        message: `validation: ${errors.map((e) => `${e.nodeId}.${e.field}: ${e.message}`).join("; ")}`,
+      })
+      this.activeRun = null
+      return
+    }
+    const projected = buildTriggerSlice(wf.file, triggerNodeId, depsByNode)
+    const { depsByNode: sliceDeps } = validateWorkflow(projected)
+    const plan = computeExecutionPlan(projected, sliceDeps)
+
+    // Synthesize trigger outputs from the envelope.
+    const triggerInstance = wf.file.nodes[triggerNodeId]
+    const triggerValues = (triggerInstance?.values ?? {}) as Record<string, unknown>
+    const triggerPathTemplate = (triggerValues.path as string | undefined) ?? "/"
+    const triggerOutputs: Record<string, unknown> = {
+      body: request.body ?? null,
+      params: extractParams(triggerPathTemplate, request.path),
+      query: request.query ?? {},
+      headers: request.headers ?? {},
+      context: { requestId: runId, timestamp: Date.now() },
+    }
+
+    // Lifecycle: every event becomes an `event` server message.
+    const startedAt = Date.now()
+    const lifecycle = new LifecycleEmitter()
+    for (const type of ["before-node", "after-node", "edge-fired", "error", "complete"] as const) {
+      lifecycle.on(type, (ev) => {
+        this.broadcast({
+          type: "event",
+          runId,
+          event: ev as never,
+          offsetMs: Date.now() - startedAt,
+        })
+      })
+    }
+
+    // Services resolved per-run via the deps factory.
+    const services = await this.deps.getServices({ requestId: runId, timestamp: Date.now() })
+
+    // Build the pause hooks.
+    const { onBeforeNode, onAfterNode } = this.buildHooks(workflowPath, runId)
+
+    try {
+      const result = await runWorkflow({
+        workflow: projected,
+        plan,
+        triggerNodeId,
+        triggerOutputs,
+        services,
+        resolveNode: (uses) => resolveCoreNode(uses) ?? this.deps.resolveNode(uses) ?? null,
+        lifecycle,
+        onBeforeNode,
+        onAfterNode,
+      })
+      this.broadcast({
+        type: "run-complete",
+        runId,
+        status: result.status,
+        body: result.body,
+        totalMs: Date.now() - startedAt,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const nodeId =
+        err && typeof err === "object" && "nodeId" in err
+          ? ((err as { nodeId: unknown }).nodeId as string | undefined)
+          : undefined
+      this.broadcast({
+        type: "run-error",
+        runId,
+        ...(nodeId !== undefined ? { nodeId } : {}),
+        message,
+      })
+    } finally {
+      this.activeRun = null
+      this.activePause = null
+      this.pauseFrame = null
+      this.stepMode = "none"
+      this.stepOverNodeId = null
     }
   }
 
