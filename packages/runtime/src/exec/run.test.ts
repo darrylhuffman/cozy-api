@@ -633,3 +633,200 @@ describe("runWorkflow", () => {
     ).rejects.toThrow(/boom/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Helpers shared by the pause-hooks describe below.
+// ---------------------------------------------------------------------------
+
+/** Standard trigger outputs used across hook tests. */
+const hookTriggerOutputs = {
+  body: { msg: "hello" },
+  params: {},
+  query: {},
+  headers: {},
+  context: { requestId: "r1", timestamp: 0 },
+}
+
+/**
+ * Builds a minimal trigger → echo → response workflow.
+ * echo node accepts `{ msg: string }` and returns `{ out: string }`.
+ */
+function buildTinyWorkflow() {
+  const echo = defineNode({
+    inputs: z.object({ msg: z.string() }),
+    outputs: z.object({ out: z.string() }),
+    async run({ msg }) {
+      return { out: msg }
+    },
+  })
+
+  const wf = parseWorkflow({
+    lorien: 1,
+    nodes: {
+      trigger: { uses: "@core/http-request", values: { path: "/hook-test", method: "POST" } },
+      echo: { uses: "./echo", in: { msg: "trigger.body.msg" } },
+      response: { uses: "@core/response", in: { body: "echo.out" } },
+    },
+  })
+  const { depsByNode } = validateWorkflow(wf)
+  const plan = computeExecutionPlan(wf, depsByNode)
+
+  return {
+    workflow: wf,
+    plan,
+    triggerNodeId: "trigger",
+    triggerOutputs: hookTriggerOutputs,
+    services: {},
+    resolveNode: (u: string) =>
+      resolveCoreNode(u) ?? ({ "./echo": echo } as Record<string, ReturnType<typeof defineNode>>)[u] ?? null,
+  }
+}
+
+/**
+ * Builds a workflow where the echo node's input fails Zod validation.
+ * echo expects `{ msg: z.string().email() }` but gets a non-email string.
+ */
+function buildWorkflowWithBadInput() {
+  const strict = defineNode({
+    inputs: z.object({ msg: z.string().email() }),
+    outputs: z.object({ out: z.string() }),
+    async run({ msg }) {
+      return { out: msg }
+    },
+  })
+
+  const wf = parseWorkflow({
+    lorien: 1,
+    nodes: {
+      trigger: { uses: "@core/http-request", values: { path: "/bad-input", method: "POST" } },
+      failing: { uses: "./strict", in: { msg: "trigger.body.msg" } },
+      response: { uses: "@core/response", in: { body: "failing.out" } },
+    },
+  })
+  const { depsByNode } = validateWorkflow(wf)
+  const plan = computeExecutionPlan(wf, depsByNode)
+
+  return {
+    workflow: wf,
+    plan,
+    triggerNodeId: "trigger",
+    triggerOutputs: hookTriggerOutputs, // body.msg = "hello" — not an email
+    services: {},
+    resolveNode: (u: string) =>
+      resolveCoreNode(u) ?? ({ "./strict": strict } as Record<string, ReturnType<typeof defineNode>>)[u] ?? null,
+  }
+}
+
+/**
+ * Builds a workflow where the "throwing" node's run() always throws.
+ */
+function buildWorkflowWithThrowingNode() {
+  const throwing = defineNode({
+    inputs: z.object({}),
+    outputs: z.object({}),
+    async run() {
+      throw new Error("boom")
+    },
+  })
+
+  const wf = parseWorkflow({
+    lorien: 1,
+    nodes: {
+      trigger: { uses: "@core/http-request", values: { path: "/throwing", method: "GET" } },
+      throwing: { uses: "./throwing", in: {} },
+      response: { uses: "@core/response", in: { body: "trigger.body" } },
+    },
+  })
+  const { depsByNode } = validateWorkflow(wf)
+  const plan = computeExecutionPlan(wf, depsByNode)
+
+  return {
+    workflow: wf,
+    plan,
+    triggerNodeId: "trigger",
+    triggerOutputs: {
+      body: null,
+      params: {},
+      query: {},
+      headers: {},
+      context: { requestId: "", timestamp: 0 },
+    },
+    services: {},
+    resolveNode: (u: string) =>
+      resolveCoreNode(u) ?? ({ "./throwing": throwing } as Record<string, ReturnType<typeof defineNode>>)[u] ?? null,
+  }
+}
+
+describe("runWorkflow async pause hooks", () => {
+  it("calls onBeforeNode before nodeDef.run, in topological order", async () => {
+    const calls: string[] = []
+    await runWorkflow({
+      ...buildTinyWorkflow(),
+      onBeforeNode: async (nodeId) => {
+        calls.push(`before:${nodeId}`)
+      },
+    })
+    // trigger short-circuit also fires the hook; echo runs nodeDef.run; response short-circuits
+    expect(calls).toEqual(["before:trigger", "before:echo", "before:response"])
+  })
+
+  it("calls onAfterNode after nodeDef.run, in topological order; not for @core/response", async () => {
+    const calls: string[] = []
+    await runWorkflow({
+      ...buildTinyWorkflow(),
+      onAfterNode: async (nodeId) => {
+        calls.push(`after:${nodeId}`)
+      },
+    })
+    // trigger short-circuit calls onAfterNode; response short-circuit does NOT
+    expect(calls).toEqual(["after:trigger", "after:echo"])
+  })
+
+  it("zero overhead when both hooks are undefined (regression guard)", async () => {
+    const result = await runWorkflow(buildTinyWorkflow())
+    expect(result.status).toBe(200)
+    expect(result.body).toBe("hello")
+  })
+
+  it("onBeforeNode runs AFTER Zod input validation (validation failure skips the hook)", async () => {
+    const calls: string[] = []
+    await expect(
+      runWorkflow({
+        ...buildWorkflowWithBadInput(),
+        onBeforeNode: async (nodeId) => {
+          calls.push(`before:${nodeId}`)
+        },
+      }),
+    ).rejects.toThrow(/input validation failed/)
+    expect(calls).not.toContain("before:failing")
+  })
+
+  it("onAfterNode is NOT called when nodeDef.run throws", async () => {
+    const calls: string[] = []
+    await expect(
+      runWorkflow({
+        ...buildWorkflowWithThrowingNode(),
+        onAfterNode: async (nodeId) => {
+          calls.push(`after:${nodeId}`)
+        },
+      }),
+    ).rejects.toThrow(/boom/)
+    expect(calls).not.toContain("after:throwing")
+  })
+
+  it("a hook rejection propagates as NodeRunError and halts the workflow", async () => {
+    const downstreamCalls: string[] = []
+    await expect(
+      runWorkflow({
+        ...buildTinyWorkflow(),
+        onBeforeNode: async (nodeId) => {
+          if (nodeId === "echo") throw new Error("aborted")
+        },
+        onAfterNode: async (nodeId) => {
+          downstreamCalls.push(nodeId)
+        },
+      }),
+    ).rejects.toThrow(/aborted/)
+    expect(downstreamCalls).not.toContain("echo")
+  })
+})

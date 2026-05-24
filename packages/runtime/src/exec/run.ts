@@ -22,6 +22,22 @@ export interface RunWorkflowOptions {
   /** Maps a node's `uses` string to its Node/Trigger object. */
   resolveNode: (uses: string) => AnyNodeOrTrigger | null
   lifecycle?: LifecycleEmitter
+  /**
+   * Optional async hook called immediately after Zod input validation, before
+   * the node's `run()` executes. Dev-only (the debugger uses this to pause).
+   * If undefined, the interpreter does not await anything here — zero overhead.
+   * If the returned promise rejects, the rejection is wrapped in a
+   * `NodeRunError` and the workflow halts per existing fail-fast semantics.
+   */
+  onBeforeNode?: (nodeId: string, input: Record<string, unknown>) => Promise<void>
+  /**
+   * Optional async hook called immediately after a node's `run()` returns,
+   * after the corresponding `after-node` lifecycle event has been emitted,
+   * before downstream nodes can consume the output. Not called when `run()`
+   * throws (use lifecycle `error` events for that). Not called for
+   * @core/response (which short-circuits without `outputs.set`).
+   */
+  onAfterNode?: (nodeId: string, output: Record<string, unknown>) => Promise<void>
 }
 
 /**
@@ -126,7 +142,21 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<WorkflowRun
       if (!execSet.has(nodeId)) continue
       if (nodeId === triggerNodeId) {
         lifecycle?.emit({ type: "before-node", nodeId, input: {} })
-        lifecycle?.emit({ type: "after-node", nodeId, output: triggerOutputs, durationMs: 0 })
+        if (opts.onBeforeNode) {
+          try {
+            await opts.onBeforeNode(nodeId, {})
+          } catch (err) {
+            throw new NodeRunError(nodeId, err)
+          }
+        }
+        lifecycle?.emit({ type: "after-node", nodeId, output: triggerOutputs as Record<string, unknown>, durationMs: 0 })
+        if (opts.onAfterNode) {
+          try {
+            await opts.onAfterNode(nodeId, triggerOutputs as Record<string, unknown>)
+          } catch (err) {
+            throw new NodeRunError(nodeId, err)
+          }
+        }
         continue
       }
       tasks.push(
@@ -252,6 +282,13 @@ async function runOneNode(
   // Special-case @core/response: collect status/body/headers and short-circuit.
   if (instance.uses === "@core/response") {
     lifecycle?.emit({ type: "before-node", nodeId, input })
+    if (opts.onBeforeNode) {
+      try {
+        await opts.onBeforeNode(nodeId, input)
+      } catch (err) {
+        throw new NodeRunError(nodeId, err)
+      }
+    }
     const response: WorkflowRunResult = {
       status: (input.status as number | undefined) ?? 200,
       body: input.body,
@@ -263,6 +300,7 @@ async function runOneNode(
       output: { sent: true },
       durationMs: 0,
     })
+    // onAfterNode is intentionally NOT called for @core/response — no outputs exposed downstream.
     return { kind: "response", value: response }
   }
 
@@ -288,6 +326,13 @@ async function runOneNode(
   }
 
   lifecycle?.emit({ type: "before-node", nodeId, input: validatedInput })
+  if (opts.onBeforeNode) {
+    try {
+      await opts.onBeforeNode(nodeId, validatedInput)
+    } catch (err) {
+      throw new NodeRunError(nodeId, err)
+    }
+  }
   const t0 = Date.now()
   let output: Record<string, unknown>
   try {
@@ -306,6 +351,13 @@ async function runOneNode(
     output,
     durationMs: Date.now() - t0,
   })
+  if (opts.onAfterNode) {
+    try {
+      await opts.onAfterNode(nodeId, output)
+    } catch (err) {
+      throw new NodeRunError(nodeId, err)
+    }
+  }
   outputs.set(nodeId, output)
   return null
 }
