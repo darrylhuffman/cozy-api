@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { RunTab } from "./run-tab"
 import {
   fetchWorkspaceSchemas,
   type JsonSchema,
@@ -29,7 +30,7 @@ export function InspectorPanel() {
         />
       </TabsContent>
       <TabsContent value="run" className="flex-1 overflow-auto p-3">
-        <PlaceholderCard title="Run" body="Request input, timeline, step controls during runs." />
+        <RunTab />
       </TabsContent>
     </Tabs>
   )
