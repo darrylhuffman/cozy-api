@@ -43,7 +43,9 @@ export function TriggerSelector() {
         triggerNodeId: t.nodeId,
         method: t.method,
         path: t.path,
+        bodyKind: "none",
         body: "",
+        formBody: [],
         query: [],
         headers: [],
       }))
@@ -79,7 +81,9 @@ export function TriggerSelector() {
             triggerNodeId: t.nodeId,
             method: t.method,
             path: t.path,
+            bodyKind: "none",
             body: "",
+            formBody: [],
             query: [],
             headers: [],
           }))

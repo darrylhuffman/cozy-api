@@ -20,6 +20,23 @@ describe("useDebugSessionStore", () => {
     expect(s.breakpoints).toEqual([])
   })
 
+  it("requestForm initial state includes bodyKind='none' and formBody=[]", () => {
+    const s = useDebugSessionStore.getState()
+    expect(s.requestForm.bodyKind).toBe("none")
+    expect(s.requestForm.formBody).toEqual([])
+  })
+
+  it("setRequestForm round-trips bodyKind and formBody", () => {
+    useDebugSessionStore.getState().setRequestForm((cur) => ({
+      ...cur,
+      bodyKind: "json",
+      formBody: [["k", "v"]],
+    }))
+    const s = useDebugSessionStore.getState()
+    expect(s.requestForm.bodyKind).toBe("json")
+    expect(s.requestForm.formBody).toEqual([["k", "v"]])
+  })
+
   it("applies a 'ready' message and marks connected", () => {
     useDebugSessionStore.getState().applyMessage({ type: "ready", sessionId: "s-1" })
     expect(useDebugSessionStore.getState().connected).toBe(true)

@@ -11,6 +11,7 @@ import {
 
 export type RunStatus = "idle" | "running" | "paused" | "completed" | "errored"
 export type NodeStatus = "running" | "completed" | "errored" | "paused"
+export type BodyKind = "none" | "json" | "xml" | "text" | "form"
 
 export interface TimelineEvent {
   offsetMs: number
@@ -59,7 +60,9 @@ interface DebugSessionState {
     triggerNodeId: string | null
     method: string
     path: string
-    body: string // raw JSON text (validated on Send)
+    bodyKind: BodyKind
+    body: string // raw JSON/XML/text content for the Monaco editor
+    formBody: Array<[string, string]>
     query: Array<[string, string]>
     headers: Array<[string, string]>
   }
@@ -86,7 +89,9 @@ const initialRequestForm: DebugSessionState["requestForm"] = {
   triggerNodeId: null,
   method: "GET",
   path: "/",
+  bodyKind: "none",
   body: "",
+  formBody: [],
   query: [],
   headers: [],
 }
