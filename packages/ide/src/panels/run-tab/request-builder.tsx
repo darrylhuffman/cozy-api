@@ -4,7 +4,10 @@ import { useDebugSessionStore } from "@/store/debug-session"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useTabsStore } from "@/store/tabs"
 import { useDebugTransport } from "@/hooks/use-debug-transport"
+import { BodyTypeTabs } from "./body-type-tabs"
+import { BodyEditor } from "./body-editor"
 import { KeyValueGrid } from "./key-value-grid"
+import { serializeBody } from "./serialize-body"
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const
 
@@ -13,7 +16,6 @@ export function RequestBuilder() {
   const setRequestForm = useDebugSessionStore((s) => s.setRequestForm)
 
   if (!form.triggerNodeId) {
-    // TriggerSelector renders the empty-state message; we just hide here.
     return null
   }
 
@@ -38,16 +40,8 @@ export function RequestBuilder() {
           onChange={(e) => setRequestForm((c) => ({ ...c, path: e.target.value }))}
         />
       </div>
-      <label className="flex flex-col gap-1">
-        <span className="text-muted-foreground">body (JSON)</span>
-        <textarea
-          className="h-24 rounded-md border bg-background p-2 font-mono"
-          value={form.body}
-          onChange={(e) => setRequestForm((c) => ({ ...c, body: e.target.value }))}
-          placeholder='e.g. { "email": "a@b.com" }'
-          data-testid="request-body"
-        />
-      </label>
+      <BodyTypeTabs />
+      <BodyEditor />
       <details className="text-muted-foreground">
         <summary>headers</summary>
         <KeyValueGrid
@@ -75,26 +69,22 @@ function SendButton() {
   const tabs = useTabsStore((s) => s.tabs)
   const workflowPath = tabs.find((t) => t.id === liveTabId)?.path ?? ""
   const { send } = useDebugTransport()
-  const [jsonError, setJsonError] = useState<string | null>(null)
+  const [bodyError, setBodyError] = useState<string | null>(null)
 
   const inFlight = status === "running" || status === "paused"
 
   const onClick = () => {
     if (!form.triggerNodeId || !workflowPath) return
-    let body: unknown = undefined
-    if (form.body.trim().length > 0) {
-      try {
-        body = JSON.parse(form.body)
-      } catch (e) {
-        setJsonError((e as Error).message)
-        return
-      }
+    const r = serializeBody(form)
+    if (r.error !== undefined) {
+      setBodyError(r.error)
+      return
     }
-    setJsonError(null)
+    setBodyError(null)
     const envelope: RequestEnvelope = {
       method: form.method,
       path: form.path,
-      ...(body !== undefined ? { body } : {}),
+      ...(r.body !== undefined ? { body: r.body } : {}),
       ...(form.query.length > 0
         ? { query: Object.fromEntries(form.query.filter(([k]) => k.length > 0)) }
         : {}),
@@ -121,7 +111,7 @@ function SendButton() {
       >
         Send
       </button>
-      {jsonError && <span className="text-red-700">{jsonError}</span>}
+      {bodyError && <span className="text-red-700">{bodyError}</span>}
     </div>
   )
 }
