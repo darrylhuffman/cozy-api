@@ -24,6 +24,11 @@ function discoverTriggers(workflow: WorkflowFile | null): Trigger[] {
   return triggers
 }
 
+function defaultBodyKindForMethod(method: string): "json" | "none" {
+  const upper = method.toUpperCase()
+  return upper === "POST" || upper === "PUT" || upper === "PATCH" ? "json" : "none"
+}
+
 export function TriggerSelector() {
   const workflow = useLiveWorkflowStore((s) => s.workflow)
   const selected = useDebugSessionStore((s) => s.requestForm.triggerNodeId)
@@ -34,20 +39,32 @@ export function TriggerSelector() {
   // Auto-select single trigger; clear selection when triggers list changes.
   useEffect(() => {
     if (triggers.length === 0 && selected !== null) {
-      setRequestForm((cur) => ({ ...cur, triggerNodeId: null }))
-      return
-    }
-    if (triggers.length === 1 && selected !== triggers[0]!.nodeId) {
-      const t = triggers[0]!
       setRequestForm(() => ({
-        triggerNodeId: t.nodeId,
-        method: t.method,
-        path: t.path,
+        triggerNodeId: null,
+        method: "GET",
+        path: "/",
         bodyKind: "none",
         body: "",
         formBody: [],
         query: [],
         headers: [],
+      }))
+      return
+    }
+    if (triggers.length === 1 && selected !== triggers[0]!.nodeId) {
+      const t = triggers[0]!
+      const bodyKind = defaultBodyKindForMethod(t.method)
+      const headers: Array<[string, string]> =
+        bodyKind === "none" ? [] : [["Content-Type", "application/json"]]
+      setRequestForm(() => ({
+        triggerNodeId: t.nodeId,
+        method: t.method,
+        path: t.path,
+        bodyKind,
+        body: "",
+        formBody: [],
+        query: [],
+        headers,
       }))
       return
     }
@@ -77,15 +94,18 @@ export function TriggerSelector() {
           const id = e.target.value
           const t = triggers.find((tr) => tr.nodeId === id)
           if (!t) return
+          const bodyKind = defaultBodyKindForMethod(t.method)
+          const headers: Array<[string, string]> =
+            bodyKind === "none" ? [] : [["Content-Type", "application/json"]]
           setRequestForm(() => ({
             triggerNodeId: t.nodeId,
             method: t.method,
             path: t.path,
-            bodyKind: "none",
+            bodyKind,
             body: "",
             formBody: [],
             query: [],
-            headers: [],
+            headers,
           }))
         }}
       >
