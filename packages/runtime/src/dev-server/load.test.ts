@@ -32,7 +32,7 @@ describe("loadWorkspace", () => {
     );
     const ws = await loadWorkspace(dir);
     expect(ws.workflows).toHaveLength(1);
-    expect(ws.workflows[0]?.relativePath).toBe("users/create.workflow");
+    expect(ws.workflows[0]?.relativePath).toBe("workflows/users/create.workflow");
     expect(ws.workflows[0]?.file.nodes.req?.uses).toBe("@core/http-request");
   });
 
@@ -49,5 +49,21 @@ describe("loadWorkspace", () => {
     expect(ws.workflows).toEqual([]);
     expect(ws.errors).toHaveLength(1);
     expect(ws.errors[0]?.message).toMatch(/JSON|Invalid/i);
+  });
+
+  it("relativePath is workspace-root-relative (includes 'workflows/' prefix) for nested dirs", async () => {
+    mkdirSync(join(dir, "workflows", "billing", "subscriptions"), { recursive: true });
+    writeFileSync(
+      join(dir, "workflows", "billing", "subscriptions", "cancel.workflow"),
+      JSON.stringify({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/cancel", method: "POST" } },
+          res: { uses: "@core/response", in: { body: "req.body" } },
+        },
+      }),
+    );
+    const ws = await loadWorkspace(dir);
+    expect(ws.workflows[0]?.relativePath).toBe("workflows/billing/subscriptions/cancel.workflow");
   });
 });

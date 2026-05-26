@@ -1,6 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { DebugSession } from "./debug-session.js"
 import type { Breakpoint, ServerMessage } from "./debug-protocol.js"
+import { loadWorkspace } from "./load.js"
 
 function makeMockClient() {
   const sent: ServerMessage[] = []
@@ -220,3 +224,51 @@ describe("DebugSession multi-active state", () => {
     expect(sent.some((m) => m.type === "resumed")).toBe(false)
   })
 })
+
+describe("DebugSession + loadWorkspace integration", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "lorien-ds-load-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("workflowPath set by IDE matches relativePath from loadWorkspace (after breakpoint fires)", async () => {
+    mkdirSync(join(dir, "workflows", "user"), { recursive: true });
+    writeFileSync(
+      join(dir, "workflows", "user", "create.workflow"),
+      JSON.stringify({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/users", method: "POST" } },
+          save: { uses: "./fake-save" },
+          res: { uses: "@core/response", in: { body: "save.x" } },
+        },
+      }),
+    );
+
+    const ws = await loadWorkspace(dir);
+    const wf = ws.workflows[0]!;
+
+    // The IDE stores breakpoints using workspace-root-relative paths.
+    const ideStyleWorkflowPath = "workflows/user/create.workflow";
+
+    // The fix is precisely that these two values match.
+    expect(wf.relativePath).toBe(ideStyleWorkflowPath);
+
+    // Belt-and-suspenders: confirm the lookup the runtime does actually finds
+    // the IDE-stored breakpoint. We use applyBreakpoints via the WS hello
+    // message (the public surface).
+    const session = new DebugSession();
+    const { ws: fakeWs } = makeMockClient();
+    session.connect(fakeWs);
+    await session.onMessage(fakeWs, {
+      type: "hello",
+      breakpoints: [
+        { workflowPath: ideStyleWorkflowPath, nodeId: "save", kind: "after" },
+      ],
+    });
+    expect(session.getBreakpoints(wf.relativePath)).toHaveLength(1);
+  });
+});
