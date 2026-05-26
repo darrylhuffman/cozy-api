@@ -19,7 +19,9 @@ import {
   isLoopbackOriginString,
   loadWorkspace,
   mountWorkflows,
+  type AnyNodeOrTrigger,
   type DebugIntegration,
+  type LoadedWorkflow,
   type Services,
 } from "@darrylondil/lorien-runtime"
 import { makeDebugIntegration } from "./debug-integration.js"
@@ -291,6 +293,28 @@ export function createIdeApp(workspaceRoot: string): Hono {
   return app
 }
 
+/**
+ * Assembles the Hono app for a workspace snapshot. Called once at startup and
+ * again on every workflow hot-reload. Returns a fresh `Hono` with IDE API
+ * routes + workflow handlers mounted; static SPA serving is added by the caller
+ * because it doesn't change across reloads.
+ */
+function buildAppForWorkspace(params: {
+  workspaceRoot: string
+  loadedWorkflows: LoadedWorkflow[]
+  loadedNodes: Record<string, AnyNodeOrTrigger>
+  loadedServices: Services
+  debug: DebugIntegration
+}): Hono {
+  const app = createIdeApp(params.workspaceRoot)
+  mountWorkflows(app, params.loadedWorkflows, {
+    nodes: params.loadedNodes,
+    services: params.loadedServices,
+    debug: params.debug,
+  })
+  return app
+}
+
 export async function runIde(opts: IdeOptions): Promise<{ port: number; root: string }> {
   const ideDistRoot = await resolveIdeDistRoot()
   const workspaceRoot = resolve(opts.root ?? process.cwd())
@@ -299,8 +323,6 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
   if (availablePort !== port) {
     console.log(`lorien IDE: port ${port} is busy; using ${availablePort}.`)
   }
-
-  const app = createIdeApp(workspaceRoot)
 
   // ── Register tsx so the IDE process can dynamic-import .ts node files ─────
   // The IDE is launched as plain `node ./dist/cli.js` — Node has no native .ts
@@ -367,17 +389,19 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
 
   const debug: DebugIntegration = makeDebugIntegration(debugSession)
 
-  // ── Mount workflow HTTP endpoints ─────────────────────────────────────────
+  // ── Build the Hono app for this workspace snapshot ────────────────────────
 
-  mountWorkflows(app, loadedWorkflows, {
-    nodes: loadedNodes,
-    services: loadedServices,
+  let currentApp: Hono = buildAppForWorkspace({
+    workspaceRoot,
+    loadedWorkflows,
+    loadedNodes,
+    loadedServices,
     debug,
   })
 
   // ── Static SPA ─────────────────────────────────────────────────────────────
 
-  app.use(
+  currentApp.use(
     "/*",
     serveStatic({
       root: ideDistRoot,
@@ -386,10 +410,12 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
   )
 
   // SPA fallback for client-side routes
-  app.get("*", serveStatic({ root: ideDistRoot, path: "index.html" }))
+  currentApp.get("*", serveStatic({ root: ideDistRoot, path: "index.html" }))
 
   return new Promise((resolveStarted) => {
-    const server = serve({ fetch: app.fetch, port: availablePort }, ({ port: actualPort }) => {
+    const dispatcher: typeof currentApp.fetch = (req, env, ctx) =>
+      currentApp.fetch(req, env, ctx)
+    const server = serve({ fetch: dispatcher, port: availablePort }, ({ port: actualPort }) => {
       const url = `http://localhost:${actualPort}`
       console.log(`lorien IDE running at ${url}`)
       console.log(`  workspace: ${workspaceRoot}`)
@@ -405,8 +431,8 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     // only use the subset of the http.Server API (the 'upgrade' event), so the cast
     // is safe in practice.
     const httpServer = server as unknown as HttpServer
-    attachAgentBroker({ app, server: httpServer, projectRoot: workspaceRoot })
-    attachDebugWebSocket({ app, server: httpServer, session: debugSession })
+    attachAgentBroker({ app: currentApp, server: httpServer, projectRoot: workspaceRoot })
+    attachDebugWebSocket({ app: currentApp, server: httpServer, session: debugSession })
   })
 }
 
