@@ -1,9 +1,11 @@
 import { Hono } from "hono"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { z } from "zod"
 import { defineNode } from "../define-node.js"
+import { LifecycleEmitter } from "../exec/lifecycle.js"
 import { parseWorkflow } from "../workflow/parse.js"
 import type { LoadedWorkflow } from "./load.js"
+import type { DebugIntegration } from "./server.js"
 import { mountWorkflows } from "./server.js"
 
 describe("mountWorkflows", () => {
@@ -71,5 +73,130 @@ describe("mountWorkflows", () => {
       body: JSON.stringify({ name: "ada" }),
     })
     expect(await postRes.json()).toEqual({ name: "ada" })
+  })
+})
+
+describe("mountWorkflows with debug integration", () => {
+  function makeEchoWorkflow(): LoadedWorkflow {
+    return {
+      absolutePath: "/fake/echo.workflow",
+      relativePath: "echo.workflow",
+      file: parseWorkflow({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/echo", method: "POST" } },
+          res: { uses: "@core/response", in: { body: "req.body.msg" }, values: { status: 200 } },
+        },
+      }),
+    }
+  }
+
+  function makeThrowingWorkflow(): LoadedWorkflow {
+    return {
+      absolutePath: "/fake/throw.workflow",
+      relativePath: "throw.workflow",
+      file: parseWorkflow({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/throw", method: "POST" } },
+          boom: { uses: "./throw-node", in: { msg: "req.body.msg" } },
+          res: { uses: "@core/response", in: { body: "boom.result" }, values: { status: 200 } },
+        },
+      }),
+    }
+  }
+
+  it("calls debug.newRunId, buildRun, onResult on success", async () => {
+    const wf = makeEchoWorkflow()
+
+    const newRunId = vi.fn(() => "test-run-42")
+    const lifecycle = new LifecycleEmitter()
+    const buildRun = vi.fn((_runId: string, _workflowPath: string) => ({ lifecycle }))
+    const onResult = vi.fn()
+    const onError = vi.fn()
+
+    const debug: DebugIntegration = { newRunId, buildRun, onResult, onError }
+
+    const app = new Hono()
+    mountWorkflows(app, [wf], { nodes: {}, services: {}, debug })
+
+    const res = await app.request("/echo", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ msg: "hello" }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toBe("hello")
+
+    expect(newRunId).toHaveBeenCalledOnce()
+    expect(buildRun).toHaveBeenCalledOnce()
+    expect(buildRun).toHaveBeenCalledWith("test-run-42", "echo.workflow")
+    expect(onResult).toHaveBeenCalledOnce()
+    expect(onResult.mock.calls[0][0]).toBe("test-run-42")
+    expect(onResult.mock.calls[0][1]).toMatchObject({ status: 200, body: "hello" })
+    expect(typeof onResult.mock.calls[0][2]).toBe("number")
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it("calls debug.onError when the workflow throws and returns HTTP 500", async () => {
+    const throwNode = defineNode({
+      inputs: z.object({ msg: z.string() }),
+      outputs: z.object({ result: z.string() }),
+      async run({ msg }) {
+        throw new Error(`boom: ${msg}`)
+      },
+    })
+
+    const wf = makeThrowingWorkflow()
+
+    const newRunId = vi.fn(() => "run-error-99")
+    const lifecycle = new LifecycleEmitter()
+    const buildRun = vi.fn(() => ({ lifecycle }))
+    const onResult = vi.fn()
+    const onError = vi.fn()
+
+    const debug: DebugIntegration = { newRunId, buildRun, onResult, onError }
+
+    const app = new Hono()
+    mountWorkflows(app, [wf], {
+      nodes: { "./throw-node": throwNode },
+      services: {},
+      debug,
+    })
+
+    const res = await app.request("/throw", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ msg: "kaboom" }),
+    })
+
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body).toMatchObject({ error: expect.stringContaining("boom: kaboom") })
+
+    expect(onError).toHaveBeenCalledOnce()
+    expect(onError.mock.calls[0][0]).toBe("run-error-99")
+    expect(onError.mock.calls[0][1]).toBeInstanceOf(Error)
+    expect(typeof onError.mock.calls[0][2]).toBe("number")
+    expect(onResult).not.toHaveBeenCalled()
+  })
+
+  it("works without debug integration (regression guard)", async () => {
+    const wf = makeEchoWorkflow()
+
+    const app = new Hono()
+    mountWorkflows(app, [wf], { nodes: {}, services: {} })
+
+    const res = await app.request("/echo", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ msg: "no debug" }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toBe("no debug")
   })
 })

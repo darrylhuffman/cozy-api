@@ -60,7 +60,6 @@ export { validateWorkflow } from "./workflow/validate.js";
 export { attachDebugWebSocket } from "./dev-server/debug-ws.js"
 export type { AttachDebugWebSocketOptions } from "./dev-server/debug-ws.js"
 export { DebugSession } from "./dev-server/debug-session.js"
-export type { DebugSessionDeps } from "./dev-server/debug-session.js"
 export type {
   Breakpoint,
   ClientMessage,
