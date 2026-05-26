@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useDebugSessionStore } from "./debug-session"
 import type { RequestEnvelope, ServerMessage } from "@darrylondil/lorien-runtime"
 
@@ -219,5 +219,25 @@ describe("debug-session store — run-started", () => {
     expect(s.runs[0]!.events).toHaveLength(1)
     // path stays from run-started, not overwritten by the lazy-create placeholder
     expect(s.runs[0]!.request.path).toBe("/x")
+  })
+
+  it("event arriving before run-started for a runId emits a console.warn and creates a placeholder record", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    useDebugSessionStore.getState().applyMessage({
+      type: "event",
+      runId: "r-orphan",
+      offsetMs: 0,
+      event: { type: "before-node", nodeId: "n1", input: {} },
+    })
+
+    const s = useDebugSessionStore.getState()
+    expect(s.runs).toHaveLength(1)
+    expect(s.runs[0]!.runId).toBe("r-orphan")
+    expect(s.runs[0]!.request).toEqual({ method: "?", path: "?" })
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn.mock.calls[0][0]).toMatch(/event arrived before run-started/i)
+
+    warn.mockRestore()
   })
 })

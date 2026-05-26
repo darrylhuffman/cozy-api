@@ -157,12 +157,17 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
         set((s) => {
           let runs = s.runs
           if (!runs.find((r) => r.runId === runId)) {
-            // Lazy-create record for runs we don't know about (e.g. external HTTP traffic)
+            // Defensive: run-started should always arrive before any event. If we land
+            // here, the server skipped it or the IDE bundle is stale. Warn loudly and
+            // create a placeholder so the timeline isn't lost.
+            console.warn(
+              `[debug-session] event arrived before run-started for runId=${runId}`,
+            )
             const record: RunRecord = {
               runId,
               workflowPath: "",
               triggerNodeId: "",
-              request: { method: "GET", path: "/" },
+              request: { method: "?", path: "?" },
               startedAt: Date.now(),
               events: [],
               logs: [],
