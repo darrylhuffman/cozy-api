@@ -57,8 +57,11 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
       }
       continue
     }
-    // Strip ".workflow" extension to get the base path
-    const basePath = wf.relativePath.replace(/\.workflow$/, "")
+    // Strip ".workflow" extension and the leading "workflows/" prefix (relativePath
+    // is workspace-root-relative; codegen output is rooted at <outDir>/workflows/).
+    const basePath = wf.relativePath
+      .replace(/^workflows\//, "")
+      .replace(/\.workflow$/, "")
     const { source } = emitWorkflow({ workflow: wf.file, relativePath: basePath })
 
     // Slugify directory segments for the output path: [id] -> _id_
