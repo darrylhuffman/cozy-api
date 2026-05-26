@@ -1609,7 +1609,7 @@ describe("WorkflowEditor", () => {
       expect(useDebugSessionStore.getState().breakpoints).toHaveLength(0)
     })
 
-    it("breakpoints effect sets hasNodeBreakpoint on the matching RFNode", async () => {
+    it("breakpoints effect sets nodeBreakpoint.before / .after on the matching RFNode", async () => {
       vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
       render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
       await waitFor(() => {
@@ -1627,7 +1627,10 @@ describe("WorkflowEditor", () => {
 
       await waitFor(() => {
         const saveNode = capturedNodes?.find((n) => n.id === "save")
-        expect(saveNode?.data.hasNodeBreakpoint).toBe(true)
+        expect((saveNode?.data as { nodeBreakpoint?: { before: boolean; after: boolean } }).nodeBreakpoint).toEqual({
+          before: true,
+          after: false,
+        })
       })
     })
   })

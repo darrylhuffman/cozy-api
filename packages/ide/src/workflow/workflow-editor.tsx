@@ -559,9 +559,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
         const bps = breakpoints.filter(
           (b) => b.workflowPath === path && b.nodeId === n.id,
         );
-        const hasNodeBreakpoint = bps.some(
-          (b) => b.kind === "before" || b.kind === "after",
-        );
+        const nodeBreakpoint = {
+          before: bps.some((b) => b.kind === "before"),
+          after: bps.some((b) => b.kind === "after"),
+        };
         const portBreakpoints = new Set(
           bps
             .filter((b) => b.kind.startsWith("port:"))
@@ -569,7 +570,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
         );
         return {
           ...n,
-          data: { ...n.data, hasNodeBreakpoint, portBreakpoints },
+          data: { ...n.data, nodeBreakpoint, portBreakpoints },
         };
       }),
     );

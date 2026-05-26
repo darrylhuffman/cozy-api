@@ -43,10 +43,10 @@ export interface WorkflowNodeData {
    */
   workflowPath?: string;
   /**
-   * When true, renders a red dot on the node header to indicate a node-level
-   * breakpoint ("before" or "after") is set for this node.
+   * Node-level breakpoints. Each side is rendered as a red dot on the
+   * corresponding edge of the node header. Both can be true.
    */
-  hasNodeBreakpoint?: boolean;
+  nodeBreakpoint?: { before: boolean; after: boolean };
   /**
    * Set of output port ids that have a port-level breakpoint set. A red dot is
    * rendered overlaid on the matching output port handle.
@@ -93,7 +93,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     onTogglePort,
     onInputValueChange,
     workflowPath,
-    hasNodeBreakpoint,
+    nodeBreakpoint,
     portBreakpoints,
   } = data as unknown as WorkflowNodeData;
 
@@ -173,11 +173,18 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         className="node-drag-handle relative border-b border-border bg-muted px-3 py-1.5 text-xs"
         style={headerBg ? { background: headerBg } : undefined}
       >
-        {hasNodeBreakpoint && (
+        {nodeBreakpoint?.before && (
           <span
-            data-testid="node-breakpoint-dot"
-            className="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-red-600"
-            aria-label="breakpoint"
+            data-testid="node-breakpoint-dot-before"
+            className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-red-600"
+            aria-label="before-breakpoint"
+          />
+        )}
+        {nodeBreakpoint?.after && (
+          <span
+            data-testid="node-breakpoint-dot-after"
+            className="absolute -right-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-red-600"
+            aria-label="after-breakpoint"
           />
         )}
         <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">

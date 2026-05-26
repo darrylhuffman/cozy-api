@@ -550,14 +550,34 @@ describe("WorkflowNode", () => {
     const baseData = () =>
       makeData("n1", { uses: "@core/http-request" }, { inputs: emptyInputRoot, outputs: [] })
 
-    it("renders a red dot on the header when data.hasNodeBreakpoint is true", () => {
-      const { container } = render(<WorkflowNode data={{ ...baseData(), hasNodeBreakpoint: true }} />)
-      expect(container.querySelector('[data-testid="node-breakpoint-dot"]')).toBeTruthy()
+    it("renders a left-side dot when nodeBreakpoint.before is true", () => {
+      const { container } = render(
+        <WorkflowNode data={{ ...baseData(), nodeBreakpoint: { before: true, after: false } }} />,
+      )
+      expect(container.querySelector('[data-testid="node-breakpoint-dot-before"]')).toBeTruthy()
+      expect(container.querySelector('[data-testid="node-breakpoint-dot-after"]')).toBeFalsy()
     })
 
-    it("does NOT render a breakpoint dot when data.hasNodeBreakpoint is falsy", () => {
+    it("renders a right-side dot when nodeBreakpoint.after is true", () => {
+      const { container } = render(
+        <WorkflowNode data={{ ...baseData(), nodeBreakpoint: { before: false, after: true } }} />,
+      )
+      expect(container.querySelector('[data-testid="node-breakpoint-dot-before"]')).toBeFalsy()
+      expect(container.querySelector('[data-testid="node-breakpoint-dot-after"]')).toBeTruthy()
+    })
+
+    it("renders both dots when both kinds are set", () => {
+      const { container } = render(
+        <WorkflowNode data={{ ...baseData(), nodeBreakpoint: { before: true, after: true } }} />,
+      )
+      expect(container.querySelector('[data-testid="node-breakpoint-dot-before"]')).toBeTruthy()
+      expect(container.querySelector('[data-testid="node-breakpoint-dot-after"]')).toBeTruthy()
+    })
+
+    it("does NOT render any breakpoint dot when nodeBreakpoint is absent", () => {
       const { container } = render(<WorkflowNode data={baseData()} />)
-      expect(container.querySelector('[data-testid="node-breakpoint-dot"]')).toBeFalsy()
+      expect(container.querySelector('[data-testid="node-breakpoint-dot-before"]')).toBeFalsy()
+      expect(container.querySelector('[data-testid="node-breakpoint-dot-after"]')).toBeFalsy()
     })
 
     it("renders a port breakpoint dot at the matching output port", () => {
