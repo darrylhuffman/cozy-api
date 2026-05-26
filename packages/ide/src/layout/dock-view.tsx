@@ -9,6 +9,7 @@ import {
 import { useCallback } from "react"
 import { AgentsPanel } from "@/panels/agents/agents-panel"
 import { CodeEditorPanel } from "@/panels/code-editor-panel"
+import { DebugPanel } from "@/panels/debug-panel"
 import { FilesPanel } from "@/panels/files-panel"
 import { InspectorPanel } from "@/panels/inspector-panel"
 import { WorkflowEditorPanel } from "@/panels/workflow-editor-panel"
@@ -22,6 +23,7 @@ const components = {
   code: (_props: IDockviewPanelProps) => <CodeEditorPanel />,
   inspector: (_props: IDockviewPanelProps) => <InspectorPanel />,
   agents: (_props: IDockviewPanelProps) => <AgentsPanel />,
+  debug: (_props: IDockviewPanelProps) => <DebugPanel />,
 }
 
 // Hide the per-tab X on the outer dockview group tabs — those panels

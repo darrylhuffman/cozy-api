@@ -2,9 +2,9 @@ import type { AddPanelOptions, DockviewApi } from "dockview-react"
 
 const STORAGE_KEY = "lorien-ide-layout"
 
-export type PaneId = "files" | "workflow" | "code" | "inspector" | "agents"
+export type PaneId = "files" | "workflow" | "code" | "inspector" | "agents" | "debug"
 
-export const PANE_IDS = ["files", "workflow", "code", "inspector", "agents"] as const
+export const PANE_IDS = ["files", "workflow", "code", "inspector", "agents", "debug"] as const
 
 export const PANE_TITLES: Record<PaneId, string> = {
   files: "Files",
@@ -12,6 +12,7 @@ export const PANE_TITLES: Record<PaneId, string> = {
   code: "Code",
   inspector: "Inspector",
   agents: "Agents",
+  debug: "Debug",
 }
 
 export interface SavedLayout {
@@ -89,6 +90,12 @@ export function buildDefaultLayout(api: DockviewApi): void {
     title: "Agents",
     position: { referencePanel: "inspector", direction: "within" },
   })
+  api.addPanel({
+    id: "debug",
+    component: "debug",
+    title: "Debug",
+    position: { referencePanel: "inspector", direction: "within" },
+  })
   // Inspector stays the default-visible tab in its group — dockview otherwise
   // activates the most recently added panel.
   api.getPanel("inspector")?.api.setActive()
@@ -134,6 +141,10 @@ export function reopenPanel(api: DockviewApi, id: PaneId): void {
       if (ref) options.position = { referencePanel: ref.id, direction: "right" }
       options.initialWidth = 400
     }
+  } else if (id === "debug") {
+    const ref = api.getPanel("inspector") ?? api.getPanel("code") ?? api.getPanel("workflow")
+    if (ref) options.position = { referencePanel: ref.id, direction: "within" }
+    options.initialWidth = 400
   } else {
     // workflow or code — prefer joining the sibling editor group
     const sibling: PaneId = id === "workflow" ? "code" : "workflow"
