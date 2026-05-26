@@ -68,7 +68,14 @@ function startServerWithDebug(): Promise<{
 
   const debug: DebugIntegration = {
     newRunId: () => `r-${Math.random().toString(36).slice(2, 10)}`,
-    buildRun: (runId, workflowPath, _triggerNodeId, _request) => {
+    buildRun: (runId, workflowPath, triggerNodeId, request) => {
+      session.broadcast({
+        type: "run-started",
+        runId,
+        workflowPath,
+        triggerNodeId,
+        request,
+      })
       const startedAt = Date.now()
       const lifecycle = new LifecycleEmitter()
       for (const t of [
@@ -269,6 +276,62 @@ describe("debugger HTTP-driven e2e", () => {
       ws.send(JSON.stringify({ type: "continue", runId: id }))
     }
     await Promise.all([p1, p2])
+    ws.close()
+    server.close()
+  })
+
+  it("broadcasts run-started before any event for the same runId, with the request envelope", async () => {
+    const { server, port } = await startServerWithDebug()
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/__lorien/debug/ws`, {
+      headers: { origin: "http://localhost:5173" },
+    })
+    const received: ServerMessage[] = []
+    await new Promise<void>((resolve, reject) => {
+      ws.on("open", () => resolve())
+      ws.on("error", reject)
+    })
+    ws.on("message", (raw) => {
+      received.push(JSON.parse(raw.toString()) as ServerMessage)
+    })
+
+    // No breakpoints — let the workflow run through.
+    ws.send(JSON.stringify({ type: "hello", breakpoints: [] }))
+    await new Promise((r) => setTimeout(r, 30))
+
+    const httpRes = await fetch(`http://127.0.0.1:${port}/echo?lang=en`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost:5173",
+      },
+      body: JSON.stringify({ msg: "wire-order" }),
+    })
+    expect(httpRes.status).toBe(200)
+
+    await new Promise((r) => setTimeout(r, 50))
+
+    const runStarted = received.find((m) => m.type === "run-started") as
+      | Extract<ServerMessage, { type: "run-started" }>
+      | undefined
+    expect(runStarted).toBeTruthy()
+    expect(runStarted!.workflowPath).toBe("workflows/echo.workflow")
+    expect(runStarted!.triggerNodeId).toBe("request")
+    expect(runStarted!.request).toMatchObject({
+      method: "POST",
+      path: "/echo",
+      query: { lang: "en" },
+      body: { msg: "wire-order" },
+    })
+
+    const runStartedIdx = received.findIndex((m) => m.type === "run-started")
+    const firstEventIdx = received.findIndex(
+      (m) =>
+        m.type === "event" &&
+        (m as Extract<ServerMessage, { type: "event" }>).runId === runStarted!.runId,
+    )
+    expect(firstEventIdx).toBeGreaterThan(-1)
+    expect(runStartedIdx).toBeLessThan(firstEventIdx)
+
     ws.close()
     server.close()
   })
