@@ -17,12 +17,12 @@ import {
   importNodes,
   installConsoleCapture,
   isLoopbackOriginString,
-  LifecycleEmitter,
   loadWorkspace,
   mountWorkflows,
   type DebugIntegration,
   type Services,
 } from "@darrylondil/lorien-runtime"
+import { makeDebugIntegration } from "./debug-integration.js"
 import chokidar from "chokidar"
 import type { Command } from "commander"
 import { Hono } from "hono"
@@ -365,73 +365,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     })
   })
 
-  const debug: DebugIntegration = {
-    newRunId: () => `r-${Math.random().toString(36).slice(2, 10)}`,
-    buildRun: (runId, workflowPath, _triggerNodeId, _request) => {
-      const startedAt = Date.now()
-      const lifecycle = new LifecycleEmitter()
-      for (const t of [
-        "before-node",
-        "after-node",
-        "edge-fired",
-        "error",
-        "complete",
-      ] as const) {
-        lifecycle.on(t, (ev) => {
-          const wireEvent =
-            ev.type === "error"
-              ? {
-                  type: "error" as const,
-                  nodeId: ev.nodeId,
-                  error: {
-                    message: ev.error.message,
-                    ...(ev.error.stack !== undefined ? { stack: ev.error.stack } : {}),
-                  },
-                }
-              : ev
-          debugSession.broadcast({
-            type: "event",
-            runId,
-            event: wireEvent as never,
-            offsetMs: Date.now() - startedAt,
-          })
-        })
-      }
-      const { onBeforeNode, onAfterNode } = debugSession.registerRun(
-        workflowPath,
-        runId,
-        startedAt,
-      )
-      return { lifecycle, onBeforeNode, onAfterNode }
-    },
-    onResult: (runId, result, totalMs) => {
-      debugSession.broadcast({
-        type: "run-complete",
-        runId,
-        status: result.status,
-        body: result.body,
-        totalMs,
-      })
-      debugSession.unregisterRun(runId)
-    },
-    onError: (runId, err, totalMs) => {
-      const message = err instanceof Error ? err.message : String(err)
-      const stack = err instanceof Error ? err.stack : undefined
-      const nodeId =
-        err && typeof err === "object" && "nodeId" in err
-          ? ((err as { nodeId: unknown }).nodeId as string | undefined)
-          : undefined
-      debugSession.broadcast({
-        type: "run-error",
-        runId,
-        ...(nodeId !== undefined ? { nodeId } : {}),
-        message,
-        ...(stack !== undefined ? { stack } : {}),
-      })
-      debugSession.unregisterRun(runId)
-      void totalMs
-    },
-  }
+  const debug: DebugIntegration = makeDebugIntegration(debugSession)
 
   // ── Mount workflow HTTP endpoints ─────────────────────────────────────────
 
