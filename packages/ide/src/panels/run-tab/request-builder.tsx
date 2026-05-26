@@ -10,8 +10,6 @@ import { BodyEditor } from "./body-editor"
 import { KeyValueGrid } from "./key-value-grid"
 import { serializeBody } from "./serialize-body"
 
-const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const
-
 export function RequestBuilder() {
   const form = useDebugSessionStore((s) => s.requestForm)
   const setRequestForm = useDebugSessionStore((s) => s.setRequestForm)
@@ -23,17 +21,12 @@ export function RequestBuilder() {
   return (
     <div className="flex flex-col gap-2 text-xs">
       <div className="flex items-center gap-2">
-        <select
-          className="rounded-md border bg-background px-2 py-1"
-          value={form.method}
-          onChange={(e) => setRequestForm((c) => ({ ...c, method: e.target.value }))}
+        <span
+          data-testid="request-method"
+          className="rounded-md border bg-muted/40 px-2 py-1 font-mono text-muted-foreground"
         >
-          {METHODS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
+          {form.method}
+        </span>
         <input
           type="text"
           className="flex-1 rounded-md border bg-background px-2 py-1 font-mono"
