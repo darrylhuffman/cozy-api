@@ -296,11 +296,11 @@ export function createIdeApp(workspaceRoot: string): Hono {
 /**
  * Assembles the Hono app for a workspace snapshot. Called once at startup and
  * again on every workflow hot-reload. Returns a fresh `Hono` with IDE API
- * routes + workflow handlers mounted; static SPA serving is added by the caller
- * because it doesn't change across reloads.
+ * routes + workflow handlers + static SPA serving mounted.
  */
 function buildAppForWorkspace(params: {
   workspaceRoot: string
+  ideDistRoot: string
   loadedWorkflows: LoadedWorkflow[]
   loadedNodes: Record<string, AnyNodeOrTrigger>
   loadedServices: Services
@@ -312,6 +312,16 @@ function buildAppForWorkspace(params: {
     services: params.loadedServices,
     debug: params.debug,
   })
+  // Static SPA — must be inside the build helper so it survives hot-reload.
+  app.use(
+    "/*",
+    serveStatic({
+      root: params.ideDistRoot,
+      rewriteRequestPath: (path) => (path === "/" ? "/index.html" : path),
+    }),
+  )
+  // SPA fallback for client-side routes
+  app.get("*", serveStatic({ root: params.ideDistRoot, path: "index.html" }))
   return app
 }
 
@@ -393,24 +403,67 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
 
   let currentApp: Hono = buildAppForWorkspace({
     workspaceRoot,
+    ideDistRoot,
     loadedWorkflows,
     loadedNodes,
     loadedServices,
     debug,
   })
 
-  // ── Static SPA ─────────────────────────────────────────────────────────────
+  // ── Hot-reload: watch <root>/workflows/**/*.workflow ──────────────────────
+  // On any change, reload the workspace and atomically swap currentApp so
+  // subsequent requests hit the fresh workflow. Paused runs are aborted
+  // (their pause-promise rejects with AbortError; the handler's catch block
+  // broadcasts run-error).
 
-  currentApp.use(
-    "/*",
-    serveStatic({
-      root: ideDistRoot,
-      rewriteRequestPath: (path) => (path === "/" ? "/index.html" : path),
-    }),
-  )
+  const debounce = <F extends (...args: never[]) => void>(fn: F, ms: number): F => {
+    let t: NodeJS.Timeout | null = null
+    return ((...args: never[]) => {
+      if (t) clearTimeout(t)
+      t = setTimeout(() => {
+        t = null
+        fn(...args)
+      }, ms)
+    }) as F
+  }
 
-  // SPA fallback for client-side routes
-  currentApp.get("*", serveStatic({ root: ideDistRoot, path: "index.html" }))
+  const reloadWorkspace = async (): Promise<void> => {
+    try {
+      const ws = await loadWorkspace(workspaceRoot)
+      if (ws.errors.length > 0) {
+        for (const e of ws.errors) console.error(`[lorien] ${e.path}: ${e.message}`)
+      }
+      debugSession.abortAllRuns()
+      currentApp = buildAppForWorkspace({
+        workspaceRoot,
+        ideDistRoot,
+        loadedWorkflows: ws.workflows,
+        loadedNodes,
+        loadedServices,
+        debug,
+      })
+      console.log(`lorien IDE: reloaded ${ws.workflows.length} workflow(s)`)
+    } catch (err) {
+      console.error(
+        `lorien IDE: reload failed — ${(err as Error).message}`,
+      )
+    }
+  }
+
+  const debouncedReload = debounce(reloadWorkspace, 100)
+
+  const workflowWatcher = chokidar.watch(join(workspaceRoot, "workflows"), {
+    ignoreInitial: true,
+    persistent: true,
+    usePolling: process.platform === "win32",
+    interval: 50,
+  })
+  workflowWatcher.on("all", (event, filePath) => {
+    if (typeof filePath === "string" && filePath.endsWith(".workflow")) {
+      debouncedReload()
+    }
+  })
+  const watcherReady = new Promise<void>((r) => workflowWatcher.once("ready", r))
 
   return new Promise((resolveStarted) => {
     const dispatcher: typeof currentApp.fetch = (req, env, ctx) =>
@@ -425,7 +478,9 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
           console.error(`Open ${url} manually.`)
         })
       }
-      resolveStarted({ port: actualPort, root: ideDistRoot })
+      // Wait for the workflow watcher to be ready before resolving, so that
+      // callers (e.g. tests) can safely write files and expect hot-reload to fire.
+      void watcherReady.then(() => resolveStarted({ port: actualPort, root: ideDistRoot }))
     })
     // @hono/node-server's serve() returns ServerType (HTTP1 | HTTP2); both brokers
     // only use the subset of the http.Server API (the 'upgrade' event), so the cast

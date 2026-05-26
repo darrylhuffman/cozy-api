@@ -309,3 +309,70 @@ describe("POST /api/workspace/folder", () => {
     expect(res.status).toBe(400)
   })
 })
+
+describe("ide command — workflow hot-reload", () => {
+  let dir: string
+  let portUsed: number
+  let stopServer: (() => Promise<void>) | null = null
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "lorien-ide-hr-"))
+    mkdirSync(join(dir, "workflows"), { recursive: true })
+  })
+
+  afterEach(async () => {
+    if (stopServer) {
+      await stopServer()
+      stopServer = null
+    }
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it("reloads the workspace when a .workflow file is rewritten", async () => {
+    // Initial workflow: GET /ping returns "v1".
+    writeFileSync(
+      join(dir, "workflows", "ping.workflow"),
+      JSON.stringify({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/ping", method: "GET" } },
+          res: { uses: "@core/response", values: { body: "v1" } },
+        },
+      }),
+    )
+
+    const { runIde } = await import("./ide.js")
+    // parseStartingPort rejects port: 0; use a randomized high port.
+    // findAvailablePort scans upward from this if it's busy, so collisions are tolerated.
+    const startPort = 40000 + Math.floor(Math.random() * 10000)
+    const { port } = await runIde({ root: dir, port: startPort, open: false })
+    portUsed = port
+    stopServer = async () => {
+      // No-op: runIde does not currently expose a server-shutdown handle.
+      // The server keeps listening until the vitest worker exits. Acceptable
+      // for now — see "Open follow-ups" at the bottom of this plan.
+    }
+
+    // Sanity: initial workflow responds with v1.
+    const r1 = await fetch(`http://127.0.0.1:${port}/ping`)
+    expect(await r1.text()).toBe('"v1"')
+
+    // Overwrite the workflow on disk — response body changes to "v2".
+    writeFileSync(
+      join(dir, "workflows", "ping.workflow"),
+      JSON.stringify({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/ping", method: "GET" } },
+          res: { uses: "@core/response", values: { body: "v2" } },
+        },
+      }),
+    )
+
+    // chokidar + 100ms debounce ⇒ wait long enough for the reload to complete.
+    await new Promise((r) => setTimeout(r, 400))
+
+    const r2 = await fetch(`http://127.0.0.1:${port}/ping`)
+    expect(await r2.text()).toBe('"v2"')
+  }, 8000)
+})
