@@ -115,4 +115,16 @@ describe("TriggerSelector default bodyKind", () => {
     rerender(<TriggerSelector />)
     expect(useDebugSessionStore.getState().requestForm.bodyKind).toBe("none")
   })
+
+  it("renders the picker even when there's only one trigger", () => {
+    setWorkflow({
+      lorien: 1,
+      nodes: {
+        req: { uses: "@core/http-request", values: { method: "POST", path: "/u" } },
+      },
+    } as unknown as WorkflowFile)
+    const { container } = render(<TriggerSelector />)
+    // shadcn Select renders a button trigger with role "combobox"
+    expect(container.querySelector('[role="combobox"]')).toBeTruthy()
+  })
 })

@@ -2,6 +2,13 @@ import { useEffect } from "react"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useDebugSessionStore } from "@/store/debug-session"
 import type { WorkflowFile } from "@/lib/api"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface Trigger {
   nodeId: string
@@ -26,17 +33,33 @@ function discoverTriggers(workflow: WorkflowFile | null): Trigger[] {
 
 function defaultBodyKindForMethod(method: string): "json" | "none" {
   const upper = method.toUpperCase()
-  return upper === "POST" || upper === "PUT" || upper === "PATCH" ? "json" : "none"
+  return upper === "POST" || upper === "PUT" || upper === "PATCH"
+    ? "json"
+    : "none"
+}
+
+function pickTrigger(t: Trigger) {
+  const bodyKind = defaultBodyKindForMethod(t.method)
+  const headers: Array<[string, string]> =
+    bodyKind === "none" ? [] : [["Content-Type", "application/json"]]
+  useDebugSessionStore.getState().setRequestForm(() => ({
+    triggerNodeId: t.nodeId,
+    method: t.method,
+    path: t.path,
+    bodyKind,
+    body: "",
+    formBody: [],
+    query: [],
+    headers,
+  }))
 }
 
 export function TriggerSelector() {
   const workflow = useLiveWorkflowStore((s) => s.workflow)
   const selected = useDebugSessionStore((s) => s.requestForm.triggerNodeId)
   const setRequestForm = useDebugSessionStore((s) => s.setRequestForm)
-
   const triggers = discoverTriggers(workflow)
 
-  // Auto-select single trigger; clear selection when triggers list changes.
   useEffect(() => {
     if (triggers.length === 0 && selected !== null) {
       setRequestForm(() => ({
@@ -51,25 +74,8 @@ export function TriggerSelector() {
       }))
       return
     }
-    if (triggers.length === 1 && selected !== triggers[0]!.nodeId) {
-      const t = triggers[0]!
-      const bodyKind = defaultBodyKindForMethod(t.method)
-      const headers: Array<[string, string]> =
-        bodyKind === "none" ? [] : [["Content-Type", "application/json"]]
-      setRequestForm(() => ({
-        triggerNodeId: t.nodeId,
-        method: t.method,
-        path: t.path,
-        bodyKind,
-        body: "",
-        formBody: [],
-        query: [],
-        headers,
-      }))
-      return
-    }
-    if (selected && !triggers.find((t) => t.nodeId === selected)) {
-      setRequestForm((cur) => ({ ...cur, triggerNodeId: null }))
+    if (triggers.length >= 1 && (selected === null || !triggers.find((t) => t.nodeId === selected))) {
+      pickTrigger(triggers[0]!)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triggers.length, triggers.map((t) => t.nodeId).join("|")])
@@ -81,40 +87,30 @@ export function TriggerSelector() {
       </div>
     )
   }
-  if (triggers.length === 1) {
-    return null
-  }
+
+  const current = triggers.find((t) => t.nodeId === selected) ?? triggers[0]!
+
   return (
-    <label className="flex items-center gap-2 text-xs">
+    <div className="flex items-center gap-2 text-xs">
       <span className="text-muted-foreground">Trigger:</span>
-      <select
-        className="rounded-md border bg-background px-2 py-1"
-        value={selected ?? ""}
-        onChange={(e) => {
-          const id = e.target.value
+      <Select
+        value={current.nodeId}
+        onValueChange={(id) => {
           const t = triggers.find((tr) => tr.nodeId === id)
-          if (!t) return
-          const bodyKind = defaultBodyKindForMethod(t.method)
-          const headers: Array<[string, string]> =
-            bodyKind === "none" ? [] : [["Content-Type", "application/json"]]
-          setRequestForm(() => ({
-            triggerNodeId: t.nodeId,
-            method: t.method,
-            path: t.path,
-            bodyKind,
-            body: "",
-            formBody: [],
-            query: [],
-            headers,
-          }))
+          if (t) pickTrigger(t)
         }}
       >
-        {triggers.map((t) => (
-          <option key={t.nodeId} value={t.nodeId}>
-            {t.method} {t.path}
-          </option>
-        ))}
-      </select>
-    </label>
+        <SelectTrigger className="h-7 min-w-[180px] text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {triggers.map((t) => (
+            <SelectItem key={t.nodeId} value={t.nodeId}>
+              <span className="font-mono">{t.method}</span> {t.path}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   )
 }
