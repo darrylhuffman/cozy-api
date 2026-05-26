@@ -302,6 +302,14 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
 
   const app = createIdeApp(workspaceRoot)
 
+  // ── Register tsx so the IDE process can dynamic-import .ts node files ─────
+  // The IDE is launched as plain `node ./dist/cli.js` — Node has no native .ts
+  // support at this version, so `await import("foo.ts")` throws
+  // `Unknown file extension`. tsx is already a workspace devDep for `tsx
+  // src/server.ts`, so we resolve it from the user's node_modules.
+
+  await registerTsxFromWorkspace(workspaceRoot)
+
   // ── Load workspace (workflows + nodes) for DebugSession ───────────────────
 
   const [ws, importResult] = await Promise.all([
@@ -309,6 +317,11 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     importNodes(workspaceRoot),
   ])
   const loadedWorkflows = ws.workflows
+  if (importResult.errors.length > 0) {
+    for (const e of importResult.errors) {
+      console.error(`[lorien] ${e.path}: ${e.message}`)
+    }
+  }
   const loadedNodes = { ...importResult.nodes }
 
   // ── Load services from lorien.config.ts (mirrors startLorienServer) ───────
@@ -579,4 +592,22 @@ async function openBrowser(url: string): Promise<void> {
     child.unref()
     setTimeout(() => resolveSpawn(), 100)
   })
+}
+
+async function registerTsxFromWorkspace(root: string): Promise<void> {
+  try {
+    const anchor = pathToFileURL(join(root, "package.json")).href
+    const req = createRequire(anchor)
+    const apiPath = req.resolve("tsx/esm/api")
+    const mod = (await import(pathToFileURL(apiPath).href)) as {
+      register?: () => unknown
+    }
+    if (typeof mod.register === "function") {
+      mod.register()
+    }
+  } catch {
+    console.warn(
+      "[lorien] tsx not found in workspace — .ts node files may fail to load. Install with `pnpm add -D tsx` (or your package manager's equivalent).",
+    )
+  }
 }
