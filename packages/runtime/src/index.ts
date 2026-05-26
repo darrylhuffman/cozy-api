@@ -65,7 +65,11 @@ export type {
   ClientMessage,
   ServerMessage,
   RequestEnvelope,
+  WireLifecycleEvent,
 } from "./dev-server/debug-protocol.js"
+export { installConsoleCapture, withRunContext } from "./dev-server/console-capture.js"
+export { isLoopbackOriginString } from "./dev-server/cors.js"
+export type { DebugIntegration } from "./dev-server/server.js"
 // Services
 export { createServiceResolver } from "./services/resolve.js"
 export type { ServiceResolver, ServicesConfig } from "./services/types.js"

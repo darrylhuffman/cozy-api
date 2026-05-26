@@ -15,7 +15,12 @@ import {
   createServiceResolver,
   DebugSession,
   importNodes,
+  installConsoleCapture,
+  isLoopbackOriginString,
+  LifecycleEmitter,
   loadWorkspace,
+  mountWorkflows,
+  type DebugIntegration,
   type Services,
 } from "@darrylondil/lorien-runtime"
 import chokidar from "chokidar"
@@ -75,20 +80,14 @@ export function registerIde(program: Command): void {
 export function createIdeApp(workspaceRoot: string): Hono {
   const app = new Hono()
 
-  // CORS for API routes — needed when Vite dev (5173) talks to this server (3737)
+  // CORS for all routes — loopback-only so the IDE Vite dev server (e.g. :5173)
+  // can call both /api/* and workflow endpoints without hitting CORS blocks.
   app.use(
-    "/api/*",
+    "*",
     cors({
-      origin: (origin) => {
-        if (!origin) return null
-        try {
-          const { hostname } = new URL(origin)
-          if (hostname === "localhost" || hostname === "127.0.0.1") return origin
-        } catch {
-          // invalid origin — deny
-        }
-        return null
-      },
+      origin: (origin) => (isLoopbackOriginString(origin) ? origin : null),
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowHeaders: ["content-type", "authorization"],
     }),
   )
 
@@ -337,13 +336,96 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     return resolved as Services
   })()
 
-  // ── DebugSession — points at the same workspace state as real HTTP traffic ─
+  // ── DebugSession + console capture + DebugIntegration ────────────────────
 
-  const debugSession = new DebugSession({
-    getWorkflow: (workflowPath) =>
-      loadedWorkflows.find((w) => w.relativePath === workflowPath) ?? null,
-    getServices: async (_ctx) => loadedServices,
-    resolveNode: (uses) => loadedNodes[uses] ?? null,
+  const debugSession = new DebugSession()
+
+  installConsoleCapture(({ runId, level, message }) => {
+    const startedAt = debugSession.getRunStartedAt(runId)
+    if (startedAt === null) return
+    debugSession.broadcast({
+      type: "log",
+      runId,
+      level,
+      message,
+      offsetMs: Date.now() - startedAt,
+    })
+  })
+
+  const debug: DebugIntegration = {
+    newRunId: () => `r-${Math.random().toString(36).slice(2, 10)}`,
+    buildRun: (runId, workflowPath) => {
+      const startedAt = Date.now()
+      const lifecycle = new LifecycleEmitter()
+      for (const t of [
+        "before-node",
+        "after-node",
+        "edge-fired",
+        "error",
+        "complete",
+      ] as const) {
+        lifecycle.on(t, (ev) => {
+          const wireEvent =
+            ev.type === "error"
+              ? {
+                  type: "error" as const,
+                  nodeId: ev.nodeId,
+                  error: {
+                    message: ev.error.message,
+                    ...(ev.error.stack !== undefined ? { stack: ev.error.stack } : {}),
+                  },
+                }
+              : ev
+          debugSession.broadcast({
+            type: "event",
+            runId,
+            event: wireEvent as never,
+            offsetMs: Date.now() - startedAt,
+          })
+        })
+      }
+      const { onBeforeNode, onAfterNode } = debugSession.registerRun(
+        workflowPath,
+        runId,
+        startedAt,
+      )
+      return { lifecycle, onBeforeNode, onAfterNode }
+    },
+    onResult: (runId, result, totalMs) => {
+      debugSession.broadcast({
+        type: "run-complete",
+        runId,
+        status: result.status,
+        body: result.body,
+        totalMs,
+      })
+      debugSession.unregisterRun(runId)
+    },
+    onError: (runId, err, totalMs) => {
+      const message = err instanceof Error ? err.message : String(err)
+      const stack = err instanceof Error ? err.stack : undefined
+      const nodeId =
+        err && typeof err === "object" && "nodeId" in err
+          ? ((err as { nodeId: unknown }).nodeId as string | undefined)
+          : undefined
+      debugSession.broadcast({
+        type: "run-error",
+        runId,
+        ...(nodeId !== undefined ? { nodeId } : {}),
+        message,
+        ...(stack !== undefined ? { stack } : {}),
+      })
+      debugSession.unregisterRun(runId)
+      void totalMs
+    },
+  }
+
+  // ── Mount workflow HTTP endpoints ─────────────────────────────────────────
+
+  mountWorkflows(app, loadedWorkflows, {
+    nodes: loadedNodes,
+    services: loadedServices,
+    debug,
   })
 
   // ── Static SPA ─────────────────────────────────────────────────────────────
