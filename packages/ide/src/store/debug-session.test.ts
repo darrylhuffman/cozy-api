@@ -153,6 +153,11 @@ describe("useDebugSessionStore (multi-active)", () => {
     useDebugSessionStore.getState().hydrateBreakpoints()
     expect(useDebugSessionStore.getState().breakpoints).toEqual([bp])
   })
+
+  it("getInitialState returns wsSender: null", () => {
+    const init = useDebugSessionStore.getState().getInitialState()
+    expect(init.wsSender).toBeNull()
+  })
 })
 
 describe("debug-session store — run-started", () => {
@@ -241,7 +246,7 @@ describe("debug-session store — run-started", () => {
     expect(s.runs[0]!.runId).toBe("r-orphan")
     expect(s.runs[0]!.request).toEqual({ method: "?", path: "?" })
     expect(warn).toHaveBeenCalledOnce()
-    expect(warn.mock.calls[0][0]).toMatch(/event arrived before run-started/i)
+    expect(warn.mock.calls[0]?.[0]).toMatch(/event arrived before run-started/i)
 
     warn.mockRestore()
   })

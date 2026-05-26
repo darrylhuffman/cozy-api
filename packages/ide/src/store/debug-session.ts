@@ -68,6 +68,7 @@ interface DebugSessionState {
     query: Array<[string, string]>
     headers: Array<[string, string]>
   }
+  wsSender: ((msg: ClientMessage) => void) | null
 
   // intents
   setConnected: (v: boolean) => void
@@ -92,7 +93,7 @@ interface DebugSessionState {
 
   getInitialState: () => Pick<
     DebugSessionState,
-    "connected" | "runs" | "selectedRunId" | "breakpoints" | "requestForm"
+    "connected" | "runs" | "selectedRunId" | "breakpoints" | "requestForm" | "wsSender"
   >
 }
 
@@ -113,9 +114,8 @@ const initialData = {
   selectedRunId: null as string | null,
   breakpoints: [] as Breakpoint[],
   requestForm: initialRequestForm,
+  wsSender: null as DebugSessionState["wsSender"],
 }
-
-let wsSender: ((msg: ClientMessage) => void) | null = null
 
 export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
   ...initialData,
@@ -123,9 +123,7 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
   getInitialState: () => ({ ...initialData }),
 
   setConnected: (v) => set({ connected: v }),
-  setWsSender: (send) => {
-    wsSender = send
-  },
+  setWsSender: (send) => set({ wsSender: send }),
 
   applyMessage: (msg) => {
     switch (msg.type) {
@@ -291,10 +289,10 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
   setRequestForm: (updater) =>
     set((s) => ({ requestForm: updater(s.requestForm) })),
 
-  sendContinue: (runId) => wsSender?.({ type: "continue", runId }),
-  sendStep: (runId) => wsSender?.({ type: "step", runId }),
-  sendStepOver: (runId) => wsSender?.({ type: "step-over", runId }),
-  sendStop: (runId) => wsSender?.({ type: "stop", runId }),
+  sendContinue: (runId) => get().wsSender?.({ type: "continue", runId }),
+  sendStep: (runId) => get().wsSender?.({ type: "step", runId }),
+  sendStepOver: (runId) => get().wsSender?.({ type: "step-over", runId }),
+  sendStop: (runId) => get().wsSender?.({ type: "stop", runId }),
 
   selectedRun: () => {
     const s = get()

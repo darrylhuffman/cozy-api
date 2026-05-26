@@ -69,7 +69,7 @@ export function makeDebugIntegration(debugSession: DebugSession): DebugIntegrati
       })
       debugSession.unregisterRun(runId)
     },
-    onError: (runId, err, totalMs) => {
+    onError: (runId, err, _totalMs) => {
       const message = err instanceof Error ? err.message : String(err)
       const stack = err instanceof Error ? err.stack : undefined
       const nodeId =
@@ -84,7 +84,6 @@ export function makeDebugIntegration(debugSession: DebugSession): DebugIntegrati
         ...(stack !== undefined ? { stack } : {}),
       })
       debugSession.unregisterRun(runId)
-      void totalMs
     },
   }
 }

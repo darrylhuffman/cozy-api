@@ -66,8 +66,11 @@ export function LogsView({ runId }: { runId: string | null }) {
         className="rounded-md border bg-background px-2 py-1 font-mono"
       />
       <div className="flex flex-col gap-1 font-mono text-[11px]">
-        {filtered.map((row, i) => (
-          <LogRow key={i} row={row} />
+        {filtered.map((row) => (
+          <LogRow
+            key={`${row.offsetMs}-${row.level}-${row.message.slice(0, 40)}`}
+            row={row}
+          />
         ))}
       </div>
     </div>
