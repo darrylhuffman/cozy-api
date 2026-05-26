@@ -1,22 +1,18 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { useDebugSessionStore } from "./debug-session"
-import type {
-  Breakpoint,
-  ServerMessage,
-} from "@darrylondil/lorien-runtime"
+import type { ServerMessage } from "@darrylondil/lorien-runtime"
 
-describe("useDebugSessionStore", () => {
+describe("useDebugSessionStore (multi-active)", () => {
   afterEach(() => {
-    useDebugSessionStore.setState(useDebugSessionStore.getInitialState())
+    useDebugSessionStore.setState(useDebugSessionStore.getState().getInitialState() as never)
     localStorage.clear()
   })
 
-  it("starts idle with no runs", () => {
+  it("starts with no connection, no runs, no breakpoints", () => {
     const s = useDebugSessionStore.getState()
-    expect(s.status).toBe("idle")
+    expect(s.connected).toBe(false)
     expect(s.runs).toEqual([])
     expect(s.selectedRunId).toBeNull()
-    expect(s.pausedFrame).toBeNull()
     expect(s.breakpoints).toEqual([])
   })
 
@@ -37,159 +33,102 @@ describe("useDebugSessionStore", () => {
     expect(s.requestForm.formBody).toEqual([["k", "v"]])
   })
 
-  it("applies a 'ready' message and marks connected", () => {
-    useDebugSessionStore.getState().applyMessage({ type: "ready", sessionId: "s-1" })
+  it("applyMessage(ready) sets connected", () => {
+    useDebugSessionStore.getState().applyMessage({ type: "ready", sessionId: "s1" } as ServerMessage)
     expect(useDebugSessionStore.getState().connected).toBe(true)
   })
 
-  it("event for unknown runId lazy-creates a run record from lastFire", () => {
-    const store = useDebugSessionStore.getState()
-    store.recordFire("workflows/a.workflow", "trig", { method: "GET", path: "/" })
-    store.applyMessage({
-      type: "event",
-      runId: "r-server-1",
-      offsetMs: 0,
-      event: { type: "before-node", nodeId: "trig", input: {} },
-    })
-    const runs = useDebugSessionStore.getState().runs
-    expect(runs[0]?.runId).toBe("r-server-1")
-    expect(runs[0]?.workflowPath).toBe("workflows/a.workflow")
-  })
-
-  it("event of type before-node sets node status to 'running' and status to 'running'", () => {
-    const store = useDebugSessionStore.getState()
-    store.recordFire("wf", "trig", { method: "GET", path: "/" })
-    store.applyMessage({
-      type: "event",
-      runId: "r1",
-      offsetMs: 0,
-      event: { type: "before-node", nodeId: "parseBody", input: {} },
-    })
-    const s = useDebugSessionStore.getState()
-    expect(s.status).toBe("running")
-    expect(s.nodeStatuses.get("parseBody")).toBe("running")
-  })
-
-  it("event of type after-node sets node status to 'completed'", () => {
-    const store = useDebugSessionStore.getState()
-    store.recordFire("wf", "trig", { method: "GET", path: "/" })
-    store.applyMessage({
-      type: "event",
-      runId: "r1",
-      offsetMs: 12,
-      event: { type: "after-node", nodeId: "parseBody", output: {}, durationMs: 12 },
-    })
-    expect(useDebugSessionStore.getState().nodeStatuses.get("parseBody")).toBe("completed")
-  })
-
-  it("event of type error sets node status to 'errored' and status to 'errored'", () => {
-    const store = useDebugSessionStore.getState()
-    store.recordFire("wf", "trig", { method: "GET", path: "/" })
-    store.applyMessage({
-      type: "event",
-      runId: "r1",
-      offsetMs: 0,
-      event: { type: "error", nodeId: "saveUser", error: new Error("boom") },
-    })
-    const s = useDebugSessionStore.getState()
-    expect(s.nodeStatuses.get("saveUser")).toBe("errored")
-    expect(s.status).toBe("errored")
-  })
-
-  it("paused message sets status='paused' and pausedFrame", () => {
+  it("event for unknown runId lazy-creates a run record", () => {
     useDebugSessionStore.getState().applyMessage({
-      type: "paused",
-      runId: "r1",
-      nodeId: "saveUser",
-      phase: "before",
-      payload: { x: 1 },
-    })
-    const s = useDebugSessionStore.getState()
-    expect(s.status).toBe("paused")
-    expect(s.pausedFrame).toEqual({
-      runId: "r1",
-      nodeId: "saveUser",
-      phase: "before",
-      payload: { x: 1 },
-    })
-    expect(s.nodeStatuses.get("saveUser")).toBe("paused")
-  })
-
-  it("resumed message clears pausedFrame, restores 'running'", () => {
-    const store = useDebugSessionStore.getState()
-    store.applyMessage({
-      type: "paused",
-      runId: "r1",
-      nodeId: "x",
-      phase: "before",
-      payload: null,
-    })
-    store.applyMessage({ type: "resumed", runId: "r1" })
-    const s = useDebugSessionStore.getState()
-    expect(s.pausedFrame).toBeNull()
-    expect(s.status).toBe("running")
-  })
-
-  it("run-complete sets status='completed' and snapshots the run outcome", () => {
-    const store = useDebugSessionStore.getState()
-    store.recordFire("workflows/echo.workflow", "request", {
-      method: "POST",
-      path: "/echo",
-      body: {},
-    })
-    // Trigger event to create the run record (lazy creation)
-    store.applyMessage({
       type: "event",
-      runId: "r1",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "n1", input: {} },
       offsetMs: 0,
-      event: { type: "before-node", nodeId: "request", input: {} },
-    })
-    store.applyMessage({
-      type: "run-complete",
-      runId: "r1",
-      status: 200,
-      body: { ok: true },
-      totalMs: 42,
-    })
-    const s = useDebugSessionStore.getState()
-    expect(s.status).toBe("completed")
-    expect(s.runs[0]?.runId).toBe("r1")
-    expect(s.runs[0]?.outcome).toEqual({
-      kind: "ok",
-      status: 200,
-      body: { ok: true },
-      totalMs: 42,
-    })
+    } as ServerMessage)
+    expect(useDebugSessionStore.getState().runs[0]?.runId).toBe("rA")
   })
 
-  it("retains at most the last 10 runs", () => {
-    const store = useDebugSessionStore.getState()
-    for (let i = 0; i < 12; i++) {
-      store.recordFire("wf", "trig", { method: "GET", path: "/" })
-      store.applyMessage({
-        type: "event",
-        runId: `r${i}`,
-        offsetMs: 0,
-        event: { type: "before-node", nodeId: "trig", input: {} },
-      })
-      store.applyMessage({
-        type: "run-complete",
-        runId: `r${i}`,
-        status: 200,
-        body: null,
-        totalMs: 1,
-      })
-    }
+  it("paused message sets the matching run's pausedFrame and outcome=paused", () => {
+    const s = useDebugSessionStore.getState()
+    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({ type: "paused", runId: "rA", nodeId: "x", phase: "before", payload: { foo: 1 } } as ServerMessage)
+    const r = useDebugSessionStore.getState().runs[0]!
+    expect(r.pausedFrame?.nodeId).toBe("x")
+    expect(r.outcome.kind).toBe("paused")
+  })
+
+  it("resumed clears pausedFrame on the matching run only", () => {
+    const s = useDebugSessionStore.getState()
+    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({ type: "event", runId: "rB", event: { type: "before-node", nodeId: "y", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({ type: "paused", runId: "rA", nodeId: "x", phase: "before", payload: null } as ServerMessage)
+    s.applyMessage({ type: "paused", runId: "rB", nodeId: "y", phase: "before", payload: null } as ServerMessage)
+    s.applyMessage({ type: "resumed", runId: "rA" } as ServerMessage)
     const runs = useDebugSessionStore.getState().runs
-    expect(runs.length).toBe(10)
-    expect(runs[0]?.runId).toBe("r11")
+    expect(runs.find((r) => r.runId === "rA")?.pausedFrame).toBeNull()
+    expect(runs.find((r) => r.runId === "rB")?.pausedFrame).not.toBeNull()
+  })
+
+  it("log appends to the matching run's logs", () => {
+    const s = useDebugSessionStore.getState()
+    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({ type: "log", runId: "rA", level: "info", message: "hello", offsetMs: 5 } as ServerMessage)
+    const r = useDebugSessionStore.getState().runs[0]!
+    expect(r.logs).toEqual([{ offsetMs: 5, level: "info", message: "hello" }])
+  })
+
+  it("run-complete sets outcome.ok", () => {
+    const s = useDebugSessionStore.getState()
+    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({ type: "run-complete", runId: "rA", status: 200, body: { ok: true }, totalMs: 42 } as ServerMessage)
+    const r = useDebugSessionStore.getState().runs[0]!
+    expect(r.outcome).toEqual({ kind: "ok", status: 200, body: { ok: true }, totalMs: 42 })
+  })
+
+  it("run-error sets outcome.errored with stack and nodeId", () => {
+    const s = useDebugSessionStore.getState()
+    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({ type: "run-error", runId: "rA", nodeId: "saveUser", message: "boom", stack: "Error: boom\n  at ..." } as ServerMessage)
+    const r = useDebugSessionStore.getState().runs[0]!
+    expect(r.outcome.kind).toBe("errored")
+    if (r.outcome.kind === "errored") {
+      expect(r.outcome.message).toBe("boom")
+      expect(r.outcome.nodeId).toBe("saveUser")
+      expect(r.outcome.stack).toMatch(/Error: boom/)
+    }
+  })
+
+  it("selectedRun returns the focused run or null", () => {
+    const s = useDebugSessionStore.getState()
+    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.selectRun("rA")
+    expect(useDebugSessionStore.getState().selectedRun()?.runId).toBe("rA")
+  })
+
+  it("nodeStatusesFor reflects the run's events + pause", () => {
+    const s = useDebugSessionStore.getState()
+    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({ type: "event", runId: "rA", event: { type: "after-node", nodeId: "x", output: {}, durationMs: 1 }, offsetMs: 1 } as ServerMessage)
+    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "y", input: {} }, offsetMs: 2 } as ServerMessage)
+    s.applyMessage({ type: "paused", runId: "rA", nodeId: "y", phase: "before", payload: null } as ServerMessage)
+    const statuses = useDebugSessionStore.getState().nodeStatusesFor("rA")
+    expect(statuses.get("x")).toBe("completed")
+    expect(statuses.get("y")).toBe("paused")
+  })
+
+  it("retains at most 20 runs", () => {
+    const s = useDebugSessionStore.getState()
+    for (let i = 0; i < 22; i++) {
+      s.applyMessage({ type: "event", runId: `r${i}`, event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+    }
+    expect(useDebugSessionStore.getState().runs.length).toBe(20)
   })
 
   it("toggleBreakpoint adds and removes; mirrors to localStorage", () => {
-    const bp: Breakpoint = {
+    const bp = {
       workflowPath: "workflows/a.workflow",
       nodeId: "n1",
-      kind: "before",
+      kind: "before" as const,
     }
     useDebugSessionStore.getState().toggleBreakpoint(bp)
     expect(useDebugSessionStore.getState().breakpoints).toContainEqual(bp)
@@ -200,10 +139,10 @@ describe("useDebugSessionStore", () => {
   })
 
   it("hydrateBreakpoints loads from localStorage", () => {
-    const bp: Breakpoint = {
+    const bp = {
       workflowPath: "workflows/a.workflow",
       nodeId: "n1",
-      kind: "before",
+      kind: "before" as const,
     }
     localStorage.setItem("lorien-debug-breakpoints", JSON.stringify([bp]))
     useDebugSessionStore.getState().hydrateBreakpoints()

@@ -92,6 +92,14 @@ export function useDebugTransport(): {
       }
     }
 
+    // Install the send callback in the store so step actions (sendContinue etc.) can use it
+    useDebugSessionStore.getState().setWsSender((msg) => {
+      const cur = singleton?.ws
+      if (cur?.readyState === WebSocket.OPEN) {
+        cur.send(JSON.stringify(msg))
+      }
+    })
+
     return () => {
       const s = singleton
       if (!s) return

@@ -1,26 +1,34 @@
 import { create } from "zustand"
 import type {
   Breakpoint,
+  ClientMessage,
   RequestEnvelope,
   ServerMessage,
+  WireLifecycleEvent,
 } from "@darrylondil/lorien-runtime"
 import {
   loadBreakpoints,
   saveBreakpoints,
 } from "./debug-breakpoints-storage"
 
-export type RunStatus = "idle" | "running" | "paused" | "completed" | "errored"
 export type NodeStatus = "running" | "completed" | "errored" | "paused"
 export type BodyKind = "none" | "json" | "xml" | "text" | "form"
 
 export interface TimelineEvent {
   offsetMs: number
-  event:
-    | { type: "before-node"; nodeId: string; input: Record<string, unknown> }
-    | { type: "after-node"; nodeId: string; output: Record<string, unknown>; durationMs: number }
-    | { type: "edge-fired"; from: string; to: string; value: unknown }
-    | { type: "error"; nodeId: string; error: Error }
-    | { type: "complete"; totalMs: number }
+  event: WireLifecycleEvent
+}
+
+export interface LogEntry {
+  offsetMs: number
+  level: "log" | "info" | "warn" | "error"
+  message: string
+}
+
+export interface PausedFrame {
+  nodeId: string
+  phase: "before" | "after"
+  payload: unknown
 }
 
 export interface RunRecord {
@@ -30,38 +38,32 @@ export interface RunRecord {
   request: RequestEnvelope
   startedAt: number
   events: TimelineEvent[]
+  logs: LogEntry[]
+  pausedFrame: PausedFrame | null
   outcome:
-    | { kind: "ok"; status: number; body: unknown; totalMs: number }
-    | { kind: "err"; nodeId?: string; message: string }
     | { kind: "running" }
-}
-
-export interface PausedFrame {
-  runId: string
-  nodeId: string
-  phase: "before" | "after"
-  payload: unknown
+    | { kind: "paused" }
+    | { kind: "ok"; status: number; body: unknown; totalMs: number }
+    | {
+        kind: "errored"
+        nodeId?: string
+        message: string
+        stack?: string
+        totalMs?: number
+      }
 }
 
 interface DebugSessionState {
   connected: boolean
-  status: RunStatus
-  runs: RunRecord[] // most-recent first; cap at 10
+  runs: RunRecord[]
   selectedRunId: string | null
-  pausedFrame: PausedFrame | null
-  nodeStatuses: Map<string, NodeStatus>
   breakpoints: Breakpoint[]
-  lastFire: {
-    workflowPath: string
-    triggerNodeId: string
-    request: RequestEnvelope
-  } | null
   requestForm: {
     triggerNodeId: string | null
     method: string
     path: string
     bodyKind: BodyKind
-    body: string // raw JSON/XML/text content for the Monaco editor
+    body: string
     formBody: Array<[string, string]>
     query: Array<[string, string]>
     headers: Array<[string, string]>
@@ -69,11 +71,7 @@ interface DebugSessionState {
 
   // intents
   setConnected: (v: boolean) => void
-  recordFire: (
-    workflowPath: string,
-    triggerNodeId: string,
-    request: RequestEnvelope,
-  ) => void
+  setWsSender: (send: (msg: ClientMessage) => void) => void
   applyMessage: (msg: ServerMessage) => void
   selectRun: (runId: string) => void
   toggleBreakpoint: (bp: Breakpoint) => void
@@ -82,7 +80,20 @@ interface DebugSessionState {
   setRequestForm: (
     updater: (cur: DebugSessionState["requestForm"]) => DebugSessionState["requestForm"],
   ) => void
-  getInitialState: () => Omit<DebugSessionState, keyof typeof actions>
+
+  sendContinue: (runId: string) => void
+  sendStep: (runId: string) => void
+  sendStepOver: (runId: string) => void
+  sendStop: (runId: string) => void
+
+  // selectors
+  selectedRun: () => RunRecord | null
+  nodeStatusesFor: (runId: string | null) => Map<string, NodeStatus>
+
+  getInitialState: () => Pick<
+    DebugSessionState,
+    "connected" | "runs" | "selectedRunId" | "breakpoints" | "requestForm"
+  >
 }
 
 const initialRequestForm: DebugSessionState["requestForm"] = {
@@ -96,36 +107,25 @@ const initialRequestForm: DebugSessionState["requestForm"] = {
   headers: [],
 }
 
-// Snapshot of pure data fields for reset — no functions
 const initialData = {
   connected: false,
-  status: "idle" as RunStatus,
   runs: [] as RunRecord[],
   selectedRunId: null as string | null,
-  pausedFrame: null as PausedFrame | null,
-  nodeStatuses: new Map<string, NodeStatus>(),
   breakpoints: [] as Breakpoint[],
-  lastFire: null as DebugSessionState["lastFire"],
   requestForm: initialRequestForm,
 }
 
-// Placeholder — the real actions object is built inside `create`; used only for typing above.
-const actions = {} as Record<string, unknown>
+let wsSender: ((msg: ClientMessage) => void) | null = null
 
 export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
   ...initialData,
 
-  getInitialState: () => ({ ...initialData, nodeStatuses: new Map() }),
+  getInitialState: () => ({ ...initialData }),
 
   setConnected: (v) => set({ connected: v }),
-
-  recordFire: (workflowPath, triggerNodeId, request) =>
-    set({
-      lastFire: { workflowPath, triggerNodeId, request },
-      status: "running",
-      nodeStatuses: new Map(),
-      pausedFrame: null,
-    }),
+  setWsSender: (send) => {
+    wsSender = send
+  },
 
   applyMessage: (msg) => {
     switch (msg.type) {
@@ -135,77 +135,75 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
       case "event": {
         const { runId, event, offsetMs } = msg
         set((s) => {
-          // Lazy-create a run record if the runId is new
           let runs = s.runs
           if (!runs.find((r) => r.runId === runId)) {
-            const lf = s.lastFire
+            // Lazy-create record for runs we don't know about (e.g. external HTTP traffic)
             const record: RunRecord = {
               runId,
-              workflowPath: lf?.workflowPath ?? "",
-              triggerNodeId: lf?.triggerNodeId ?? "",
-              request: lf?.request ?? { method: "GET", path: "/" },
+              workflowPath: "",
+              triggerNodeId: "",
+              request: { method: "GET", path: "/" },
               startedAt: Date.now(),
               events: [],
+              logs: [],
+              pausedFrame: null,
               outcome: { kind: "running" },
             }
-            runs = [record, ...s.runs].slice(0, 10)
+            runs = [record, ...s.runs].slice(0, 20)
           }
           runs = runs.map((r) =>
             r.runId === runId
-              ? { ...r, events: [...r.events, { offsetMs, event } as TimelineEvent] }
+              ? { ...r, events: [...r.events, { offsetMs, event }] }
               : r,
           )
-          const nodeStatuses = new Map(s.nodeStatuses)
-          let status = s.status
-          if (event.type === "before-node") {
-            nodeStatuses.set(event.nodeId, "running")
-            if (status === "idle") status = "running"
-          } else if (event.type === "after-node") {
-            nodeStatuses.set(event.nodeId, "completed")
-          } else if (event.type === "error") {
-            nodeStatuses.set(event.nodeId, "errored")
-            status = "errored"
-          }
-          return { runs, nodeStatuses, status, selectedRunId: s.selectedRunId ?? runId }
+          return { runs, selectedRunId: s.selectedRunId ?? runId }
         })
         return
       }
-      case "paused": {
-        set((s) => {
-          const nodeStatuses = new Map(s.nodeStatuses)
-          nodeStatuses.set(msg.nodeId, "paused")
-          return {
-            status: "paused",
-            pausedFrame: {
-              runId: msg.runId,
-              nodeId: msg.nodeId,
-              phase: msg.phase,
-              payload: msg.payload,
-            },
-            nodeStatuses,
-          }
-        })
-        return
-      }
-      case "resumed":
-        set((s) => {
-          const nodeStatuses = new Map(s.nodeStatuses)
-          if (s.pausedFrame) {
-            nodeStatuses.set(
-              s.pausedFrame.nodeId,
-              s.pausedFrame.phase === "before" ? "running" : "completed",
-            )
-          }
-          return { status: "running", pausedFrame: null, nodeStatuses }
-        })
-        return
-      case "run-complete":
+      case "log": {
+        const { runId, level, message, offsetMs } = msg
         set((s) => ({
-          status: "completed",
+          runs: s.runs.map((r) =>
+            r.runId === runId
+              ? { ...r, logs: [...r.logs, { offsetMs, level, message }] }
+              : r,
+          ),
+        }))
+        return
+      }
+      case "paused":
+        set((s) => ({
           runs: s.runs.map((r) =>
             r.runId === msg.runId
               ? {
                   ...r,
+                  pausedFrame: {
+                    nodeId: msg.nodeId,
+                    phase: msg.phase,
+                    payload: msg.payload,
+                  },
+                  outcome: { kind: "paused" },
+                }
+              : r,
+          ),
+        }))
+        return
+      case "resumed":
+        set((s) => ({
+          runs: s.runs.map((r) =>
+            r.runId === msg.runId
+              ? { ...r, pausedFrame: null, outcome: { kind: "running" } }
+              : r,
+          ),
+        }))
+        return
+      case "run-complete":
+        set((s) => ({
+          runs: s.runs.map((r) =>
+            r.runId === msg.runId
+              ? {
+                  ...r,
+                  pausedFrame: null,
                   outcome: {
                     kind: "ok",
                     status: msg.status,
@@ -219,15 +217,16 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
         return
       case "run-error":
         set((s) => ({
-          status: "errored",
           runs: s.runs.map((r) =>
             r.runId === msg.runId
               ? {
                   ...r,
+                  pausedFrame: null,
                   outcome: {
-                    kind: "err",
+                    kind: "errored",
                     ...(msg.nodeId !== undefined ? { nodeId: msg.nodeId } : {}),
                     message: msg.message,
+                    ...(msg.stack !== undefined ? { stack: msg.stack } : {}),
                   },
                 }
               : r,
@@ -266,4 +265,29 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
 
   setRequestForm: (updater) =>
     set((s) => ({ requestForm: updater(s.requestForm) })),
+
+  sendContinue: (runId) => wsSender?.({ type: "continue", runId }),
+  sendStep: (runId) => wsSender?.({ type: "step", runId }),
+  sendStepOver: (runId) => wsSender?.({ type: "step-over", runId }),
+  sendStop: (runId) => wsSender?.({ type: "stop", runId }),
+
+  selectedRun: () => {
+    const s = get()
+    return s.runs.find((r) => r.runId === s.selectedRunId) ?? null
+  },
+
+  nodeStatusesFor: (runId) => {
+    if (!runId) return new Map<string, NodeStatus>()
+    const s = get()
+    const run = s.runs.find((r) => r.runId === runId)
+    if (!run) return new Map<string, NodeStatus>()
+    const statuses = new Map<string, NodeStatus>()
+    for (const e of run.events) {
+      if (e.event.type === "before-node") statuses.set(e.event.nodeId, "running")
+      else if (e.event.type === "after-node") statuses.set(e.event.nodeId, "completed")
+      else if (e.event.type === "error") statuses.set(e.event.nodeId, "errored")
+    }
+    if (run.pausedFrame) statuses.set(run.pausedFrame.nodeId, "paused")
+    return statuses
+  },
 }))
