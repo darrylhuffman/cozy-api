@@ -12,7 +12,11 @@ export interface Breakpoint {
   kind: "before" | "after" | `port:${string}`
 }
 
-/** Used by the IDE to record what was fired; no longer appears on the wire. */
+/**
+ * Captured per HTTP request that triggers a workflow. Appears on the wire in
+ * the `run-started` server message; also used IDE-side for the request-history
+ * table (independent of the wire message — they cover different surfaces).
+ */
 export interface RequestEnvelope {
   method: string
   path: string
@@ -82,6 +86,13 @@ export type ServerMessage =
       level: "log" | "info" | "warn" | "error"
       message: string
       offsetMs: number
+    }
+  | {
+      type: "run-started"
+      runId: string
+      workflowPath: string
+      triggerNodeId: string
+      request: RequestEnvelope
     }
   | { type: "ack"; for: ClientMessage["type"] }
 
