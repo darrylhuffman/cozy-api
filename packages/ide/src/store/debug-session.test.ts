@@ -3,7 +3,12 @@ import { useDebugSessionStore } from "./debug-session"
 import type { RequestEnvelope, ServerMessage } from "@darrylondil/lorien-runtime"
 
 describe("useDebugSessionStore (multi-active)", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+  })
+
   afterEach(() => {
+    vi.restoreAllMocks()
     useDebugSessionStore.setState(useDebugSessionStore.getState().getInitialState() as never)
     localStorage.clear()
   })
