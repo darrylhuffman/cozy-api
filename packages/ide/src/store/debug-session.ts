@@ -132,6 +132,26 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
       case "ready":
         set({ connected: true })
         return
+      case "run-started": {
+        const { runId, workflowPath, triggerNodeId, request } = msg
+        set((s) => {
+          if (s.runs.find((r) => r.runId === runId)) return s
+          const record: RunRecord = {
+            runId,
+            workflowPath,
+            triggerNodeId,
+            request,
+            startedAt: Date.now(),
+            events: [],
+            logs: [],
+            pausedFrame: null,
+            outcome: { kind: "running" },
+          }
+          const runs = [record, ...s.runs].slice(0, 20)
+          return { runs, selectedRunId: s.selectedRunId ?? runId }
+        })
+        return
+      }
       case "event": {
         const { runId, event, offsetMs } = msg
         set((s) => {

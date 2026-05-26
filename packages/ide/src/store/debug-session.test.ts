@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { useDebugSessionStore } from "./debug-session"
-import type { ServerMessage } from "@darrylondil/lorien-runtime"
+import type { RequestEnvelope, ServerMessage } from "@darrylondil/lorien-runtime"
 
 describe("useDebugSessionStore (multi-active)", () => {
   afterEach(() => {
@@ -147,5 +147,55 @@ describe("useDebugSessionStore (multi-active)", () => {
     localStorage.setItem("lorien-debug-breakpoints", JSON.stringify([bp]))
     useDebugSessionStore.getState().hydrateBreakpoints()
     expect(useDebugSessionStore.getState().breakpoints).toEqual([bp])
+  })
+})
+
+describe("debug-session store — run-started", () => {
+  beforeEach(() => {
+    useDebugSessionStore.setState(useDebugSessionStore.getState().getInitialState())
+  })
+
+  it("creates a RunRecord with the real envelope and sets selectedRunId if null", () => {
+    const request: RequestEnvelope = {
+      method: "POST",
+      path: "/users",
+      query: { lang: "en" },
+      headers: { "x-test": "1" },
+      body: { email: "a@b.com" },
+    }
+
+    useDebugSessionStore.getState().applyMessage({
+      type: "run-started",
+      runId: "r-1",
+      workflowPath: "workflows/users/create.workflow",
+      triggerNodeId: "Request",
+      request,
+    })
+
+    const s = useDebugSessionStore.getState()
+    expect(s.runs).toHaveLength(1)
+    const r = s.runs[0]!
+    expect(r.runId).toBe("r-1")
+    expect(r.workflowPath).toBe("workflows/users/create.workflow")
+    expect(r.triggerNodeId).toBe("Request")
+    expect(r.request).toEqual(request)
+    expect(r.outcome).toEqual({ kind: "running" })
+    expect(r.events).toEqual([])
+    expect(r.logs).toEqual([])
+    expect(s.selectedRunId).toBe("r-1")
+  })
+
+  it("is idempotent — duplicate run-started for same runId does not duplicate the record", () => {
+    const request: RequestEnvelope = { method: "GET", path: "/health" }
+    const msg = {
+      type: "run-started" as const,
+      runId: "r-dup",
+      workflowPath: "wf",
+      triggerNodeId: "T",
+      request,
+    }
+    useDebugSessionStore.getState().applyMessage(msg)
+    useDebugSessionStore.getState().applyMessage(msg)
+    expect(useDebugSessionStore.getState().runs).toHaveLength(1)
   })
 })
