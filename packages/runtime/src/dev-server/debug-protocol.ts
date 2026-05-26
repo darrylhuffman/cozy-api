@@ -12,7 +12,7 @@ export interface Breakpoint {
   kind: "before" | "after" | `port:${string}`
 }
 
-/** Synthesized request envelope for a debug-initiated workflow run. */
+/** Used by the IDE to record what was fired; no longer appears on the wire. */
 export interface RequestEnvelope {
   method: string
   path: string
@@ -21,24 +21,39 @@ export interface RequestEnvelope {
   body?: unknown
 }
 
+/** Wire-friendly version of LifecycleEvent: Error is serialized to {message, stack?}. */
+export type WireLifecycleEvent =
+  | { type: "before-node"; nodeId: string; input: Record<string, unknown> }
+  | {
+      type: "after-node"
+      nodeId: string
+      output: Record<string, unknown>
+      durationMs: number
+    }
+  | { type: "edge-fired"; from: string; to: string; value: unknown }
+  | {
+      type: "error"
+      nodeId: string
+      error: { message: string; stack?: string }
+    }
+  | { type: "complete"; totalMs: number }
+
 export type ClientMessage =
   | { type: "hello"; breakpoints: Breakpoint[] }
   | { type: "set-breakpoints"; breakpoints: Breakpoint[] }
-  | {
-      type: "fire"
-      workflowPath: string
-      triggerNodeId: string
-      request: RequestEnvelope
-    }
-  | { type: "continue" }
-  | { type: "step" }
-  | { type: "step-over" }
-  | { type: "replay" }
-  | { type: "stop" }
+  | { type: "continue"; runId: string }
+  | { type: "step"; runId: string }
+  | { type: "step-over"; runId: string }
+  | { type: "stop"; runId: string }
 
 export type ServerMessage =
   | { type: "ready"; sessionId: string }
-  | { type: "event"; runId: string; event: LifecycleEvent; offsetMs: number }
+  | {
+      type: "event"
+      runId: string
+      event: WireLifecycleEvent
+      offsetMs: number
+    }
   | {
       type: "paused"
       runId: string
@@ -54,5 +69,20 @@ export type ServerMessage =
       body: unknown
       totalMs: number
     }
-  | { type: "run-error"; runId: string; nodeId?: string; message: string }
+  | {
+      type: "run-error"
+      runId: string
+      nodeId?: string
+      message: string
+      stack?: string
+    }
+  | {
+      type: "log"
+      runId: string
+      level: "log" | "info" | "warn" | "error"
+      message: string
+      offsetMs: number
+    }
   | { type: "ack"; for: ClientMessage["type"] }
+
+export type { LifecycleEvent }
