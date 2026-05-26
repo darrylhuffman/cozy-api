@@ -1,15 +1,15 @@
 import { useState } from "react"
 import { useDebugSessionStore, type RunRecord } from "@/store/debug-session"
 
-export function Timeline() {
-  const runs = useDebugSessionStore((s) => s.runs)
-  const selectedRunId = useDebugSessionStore((s) => s.selectedRunId)
-  const run = runs.find((r) => r.runId === selectedRunId) ?? runs[0] ?? null
+export function Timeline({ runId }: { runId: string | null }) {
+  const run = useDebugSessionStore((s) =>
+    runId ? s.runs.find((r) => r.runId === runId) ?? null : null,
+  )
 
   if (!run) {
     return (
       <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-        No runs yet. Click <strong>Send</strong> to fire a debug run.
+        No run selected.
       </div>
     )
   }
@@ -26,7 +26,7 @@ export function Timeline() {
           +{run.outcome.totalMs}ms ● complete {run.outcome.status}
         </div>
       )}
-      {run.outcome.kind === "err" && (
+      {run.outcome.kind === "errored" && (
         <div className="text-red-700">✕ {run.outcome.message}</div>
       )}
     </div>

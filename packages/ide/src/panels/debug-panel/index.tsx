@@ -1,5 +1,6 @@
 import { useDebugTransport } from "@/hooks/use-debug-transport"
 import { RunsList } from "./runs-list"
+import { SelectedRunView } from "./selected-run-view"
 
 export function DebugPanel() {
   useDebugTransport()
@@ -9,7 +10,7 @@ export function DebugPanel() {
         Debug
       </div>
       <RunsList />
-      {/* SelectedRunView lands in Task 13 — placeholder for now */}
+      <SelectedRunView />
     </div>
   )
 }
