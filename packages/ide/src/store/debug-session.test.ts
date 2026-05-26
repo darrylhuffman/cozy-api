@@ -198,4 +198,26 @@ describe("debug-session store — run-started", () => {
     useDebugSessionStore.getState().applyMessage(msg)
     expect(useDebugSessionStore.getState().runs).toHaveLength(1)
   })
+
+  it("events after run-started append to the existing record (no second placeholder)", () => {
+    useDebugSessionStore.getState().applyMessage({
+      type: "run-started",
+      runId: "r-2",
+      workflowPath: "wf",
+      triggerNodeId: "T",
+      request: { method: "POST", path: "/x" },
+    })
+    useDebugSessionStore.getState().applyMessage({
+      type: "event",
+      runId: "r-2",
+      offsetMs: 5,
+      event: { type: "before-node", nodeId: "n1", input: {} },
+    })
+
+    const s = useDebugSessionStore.getState()
+    expect(s.runs).toHaveLength(1)
+    expect(s.runs[0]!.events).toHaveLength(1)
+    // path stays from run-started, not overwritten by the lazy-create placeholder
+    expect(s.runs[0]!.request.path).toBe("/x")
+  })
 })
