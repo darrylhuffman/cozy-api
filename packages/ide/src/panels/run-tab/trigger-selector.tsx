@@ -1,7 +1,11 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useDebugSessionStore } from "@/store/debug-session"
-import type { WorkflowFile } from "@/lib/api"
+import {
+  fetchWorkspaceSchemas,
+  type NodeSchemas,
+  type WorkflowFile,
+} from "@/lib/api"
 import {
   Select,
   SelectContent,
@@ -9,6 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { discoverTriggerConsumers } from "./discover-trigger-consumers"
+import { sampleFromSchema } from "./sample-from-schema"
 
 interface Trigger {
   nodeId: string
@@ -38,28 +44,82 @@ function defaultBodyKindForMethod(method: string): "json" | "none" {
     : "none"
 }
 
-function pickTrigger(t: Trigger) {
-  const bodyKind = defaultBodyKindForMethod(t.method)
-  const headers: Array<[string, string]> =
-    bodyKind === "none" ? [] : [["Content-Type", "application/json"]]
-  useDebugSessionStore.getState().setRequestForm(() => ({
-    triggerNodeId: t.nodeId,
-    method: t.method,
-    path: t.path,
-    bodyKind,
-    body: "",
-    formBody: [],
-    query: [],
-    headers,
-  }))
+function pickTrigger(
+  t: Trigger,
+  workflow: WorkflowFile | null,
+  schemas: Record<string, NodeSchemas>,
+) {
+  const consumed = workflow
+    ? discoverTriggerConsumers(workflow, t.nodeId, schemas)
+    : { body: null, query: null, headers: null }
+
+  // Body
+  const hasBodyShape = consumed.body !== null
+  const bodyKind: "none" | "json" =
+    hasBodyShape ? "json" : defaultBodyKindForMethod(t.method)
+  const sampleBody = hasBodyShape ? sampleFromSchema(consumed.body) : null
+  const bodyText =
+    sampleBody !== null ? JSON.stringify(sampleBody, null, 2) : ""
+
+  // Query rows
+  const queryRows: Array<[string, string]> =
+    consumed.query?.type === "object" && consumed.query.properties
+      ? Object.keys(consumed.query.properties).map((k) => [k, ""])
+      : []
+
+  // Header rows + auto-set Content-Type when body has shape
+  const headerRows: Array<[string, string]> = []
+  if (consumed.headers?.type === "object" && consumed.headers.properties) {
+    for (const k of Object.keys(consumed.headers.properties)) {
+      headerRows.push([k, ""])
+    }
+  }
+  if (
+    bodyKind === "json" &&
+    !headerRows.some(([k]) => k.toLowerCase() === "content-type")
+  ) {
+    headerRows.push(["Content-Type", "application/json"])
+  }
+
+  useDebugSessionStore.getState().setRequestForm((cur) => {
+    const bodyEmpty = cur.body.trim().length === 0
+    const queryEmpty = cur.query.length === 0
+    const headersEmpty = cur.headers.length === 0
+    return {
+      triggerNodeId: t.nodeId,
+      method: t.method,
+      path: t.path,
+      bodyKind,
+      body: bodyEmpty ? bodyText : cur.body,
+      formBody: [],
+      query: queryEmpty ? queryRows : cur.query,
+      headers: headersEmpty ? headerRows : cur.headers,
+    }
+  })
 }
 
 export function TriggerSelector() {
   const workflow = useLiveWorkflowStore((s) => s.workflow)
   const selected = useDebugSessionStore((s) => s.requestForm.triggerNodeId)
   const setRequestForm = useDebugSessionStore((s) => s.setRequestForm)
+  const [schemas, setSchemas] = useState<Record<string, NodeSchemas>>({})
+
   const triggers = discoverTriggers(workflow)
 
+  // Fetch schemas once on mount; cache locally
+  useEffect(() => {
+    let alive = true
+    fetchWorkspaceSchemas()
+      .then((s) => {
+        if (alive) setSchemas(s)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Auto-select / form-reset effect
   useEffect(() => {
     if (triggers.length === 0 && selected !== null) {
       setRequestForm(() => ({
@@ -74,11 +134,24 @@ export function TriggerSelector() {
       }))
       return
     }
-    if (triggers.length >= 1 && (selected === null || !triggers.find((t) => t.nodeId === selected))) {
-      pickTrigger(triggers[0]!)
+    if (
+      triggers.length >= 1 &&
+      (selected === null || !triggers.find((t) => t.nodeId === selected))
+    ) {
+      pickTrigger(triggers[0]!, workflow, schemas)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triggers.length, triggers.map((t) => t.nodeId).join("|")])
+
+  // Late-arrival effect: when schemas finish loading after a trigger is
+  // already selected, re-run pickTrigger so pre-fill can kick in. The
+  // empty-check inside pickTrigger guards against clobbering user edits.
+  useEffect(() => {
+    if (!workflow || !selected || Object.keys(schemas).length === 0) return
+    const t = triggers.find((tr) => tr.nodeId === selected)
+    if (t) pickTrigger(t, workflow, schemas)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schemas])
 
   if (triggers.length === 0) {
     return (
@@ -97,7 +170,7 @@ export function TriggerSelector() {
         value={current.nodeId}
         onValueChange={(id) => {
           const t = triggers.find((tr) => tr.nodeId === id)
-          if (t) pickTrigger(t)
+          if (t) pickTrigger(t, workflow, schemas)
         }}
       >
         <SelectTrigger className="h-7 min-w-[180px] text-xs">
