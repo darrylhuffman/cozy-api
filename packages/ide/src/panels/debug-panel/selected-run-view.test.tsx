@@ -30,6 +30,6 @@ describe("SelectedRunView", () => {
     s.selectRun("rA")
     render(<SelectedRunView />)
     fireEvent.click(screen.getByText("Logs"))
-    expect(screen.getByText(/Logs view/i)).toBeInTheDocument()
+    expect(screen.getByText(/no logs/i)).toBeInTheDocument()
   })
 })

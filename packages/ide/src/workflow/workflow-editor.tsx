@@ -45,7 +45,7 @@ import { PathEdge, type PathMapping } from "./path-edge";
 import { WorkflowNode, ROOT_HANDLE_ID } from "./workflow-node";
 import { useSelectionStore } from "@/store/selection";
 import { useLiveWorkflowStore } from "@/store/live-workflow";
-import { useDebugSessionStore } from "@/store/debug-session";
+import { useDebugSessionStore, type NodeStatus } from "@/store/debug-session";
 import { openCodeFile } from "@/lib/open-code-file";
 
 interface Props {
@@ -94,11 +94,28 @@ export function WorkflowEditor({ path, tabId }: Props) {
   const theme = useThemeStore((s) => s.theme);
   const setDirty = useTabsStore((s) => s.setDirty);
   const setSelected = useSelectionStore((s) => s.setSelected);
-  const nodeStatuses = useDebugSessionStore((s) => s.nodeStatuses);
+  const selectedRunId = useDebugSessionStore((s) => s.selectedRunId);
+  const selectedRunEvents = useDebugSessionStore((s) => {
+    const run = s.runs.find((r) => r.runId === s.selectedRunId)
+    return run?.events ?? null
+  });
+  const selectedRunPausedFrame = useDebugSessionStore((s) => {
+    const run = s.runs.find((r) => r.runId === s.selectedRunId)
+    return run?.pausedFrame ?? null
+  });
+  const nodeStatuses = useMemo<Map<string, NodeStatus>>(() => {
+    if (!selectedRunEvents) return new Map()
+    const statuses = new Map<string, NodeStatus>()
+    for (const e of selectedRunEvents) {
+      if (e.event.type === "before-node") statuses.set(e.event.nodeId, "running")
+      else if (e.event.type === "after-node") statuses.set(e.event.nodeId, "completed")
+      else if (e.event.type === "error") statuses.set(e.event.nodeId, "errored")
+    }
+    if (selectedRunPausedFrame) statuses.set(selectedRunPausedFrame.nodeId, "paused")
+    return statuses
+  }, [selectedRunEvents, selectedRunPausedFrame]);
   const breakpoints = useDebugSessionStore((s) => s.breakpoints);
   const toggleBreakpoint = useDebugSessionStore((s) => s.toggleBreakpoint);
-  const runs = useDebugSessionStore((s) => s.runs);
-  const selectedRunId = useDebugSessionStore((s) => s.selectedRunId);
 
   // Set of "sourceNodeId||sourceHandle" keys for edges currently flashing
   const [flashingEdges, setFlashingEdges] = useState<Set<string>>(() => new Set());
@@ -560,7 +577,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
 
   // Subscribe to edge-fired events from the currently-selected run and briefly
   // flash the matching React Flow edge (300ms animated highlight).
-  const currentRun = runs.find((r) => r.runId === selectedRunId) ?? runs[0];
+  const currentRun = useDebugSessionStore((s) => s.selectedRun());
   useEffect(() => {
     if (!currentRun) return;
     const evts = currentRun.events;
