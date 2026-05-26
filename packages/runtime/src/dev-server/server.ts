@@ -6,6 +6,7 @@ import { computeExecutionPlan } from "../exec/topology.js"
 import type { AnyNodeOrTrigger, Services } from "../types.js"
 import { validateWorkflow } from "../workflow/validate.js"
 import { withRunContext } from "./console-capture.js"
+import type { RequestEnvelope } from "./debug-protocol.js"
 import type { LoadedWorkflow } from "./load.js"
 import { buildTriggerSlice, extractParams } from "./trigger-slice.js"
 
@@ -14,6 +15,8 @@ export interface DebugIntegration {
   buildRun: (
     runId: string,
     workflowPath: string,
+    triggerNodeId: string,
+    request: RequestEnvelope,
   ) => {
     lifecycle: LifecycleEmitter
     onBeforeNode?: (nodeId: string, input: Record<string, unknown>) => Promise<void>
@@ -83,7 +86,15 @@ export function mountWorkflows(
           headers[k] = v
         })
 
-        const run = opts.debug?.buildRun(runId, wf.relativePath)
+        const request: RequestEnvelope = {
+          method: c.req.method,
+          path: url.pathname,
+          ...(Object.keys(query).length > 0 ? { query } : {}),
+          ...(Object.keys(headers).length > 0 ? { headers } : {}),
+          ...(body !== null ? { body } : {}),
+        }
+
+        const run = opts.debug?.buildRun(runId, wf.relativePath, nodeId, request)
 
         try {
           const result = await withRunContext(runId, () =>

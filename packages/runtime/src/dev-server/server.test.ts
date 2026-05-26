@@ -132,7 +132,12 @@ describe("mountWorkflows with debug integration", () => {
 
     expect(newRunId).toHaveBeenCalledOnce()
     expect(buildRun).toHaveBeenCalledOnce()
-    expect(buildRun).toHaveBeenCalledWith("test-run-42", "echo.workflow")
+    expect(buildRun).toHaveBeenCalledWith(
+      "test-run-42",
+      "echo.workflow",
+      "req",
+      expect.objectContaining({ method: "POST", path: "/echo", body: { msg: "hello" } }),
+    )
     expect(onResult).toHaveBeenCalledOnce()
     expect(onResult.mock.calls[0][0]).toBe("test-run-42")
     expect(onResult.mock.calls[0][1]).toMatchObject({ status: 200, body: "hello" })
@@ -181,6 +186,40 @@ describe("mountWorkflows with debug integration", () => {
     expect(onError.mock.calls[0][1]).toBeInstanceOf(Error)
     expect(typeof onError.mock.calls[0][2]).toBe("number")
     expect(onResult).not.toHaveBeenCalled()
+  })
+
+  it("buildRun receives triggerNodeId and the full request envelope", async () => {
+    const wf = makeEchoWorkflow()
+
+    const newRunId = vi.fn(() => "test-run-77")
+    const lifecycle = new LifecycleEmitter()
+    const buildRun = vi.fn(() => ({ lifecycle }))
+    const onResult = vi.fn()
+    const onError = vi.fn()
+
+    const debug: DebugIntegration = { newRunId, buildRun, onResult, onError }
+    const app = new Hono()
+    mountWorkflows(app, [wf], { nodes: {}, services: {}, debug })
+
+    const res = await app.request("/echo?lang=en", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-test": "hi" },
+      body: JSON.stringify({ msg: "hello" }),
+    })
+    expect(res.status).toBe(200)
+
+    expect(buildRun).toHaveBeenCalledOnce()
+    const [runId, workflowPath, triggerNodeId, request] = buildRun.mock.calls[0]
+    expect(runId).toBe("test-run-77")
+    expect(workflowPath).toBe("echo.workflow")
+    expect(triggerNodeId).toBe("req")
+    expect(request).toMatchObject({
+      method: "POST",
+      path: "/echo",
+      query: { lang: "en" },
+      headers: expect.objectContaining({ "x-test": "hi" }),
+      body: { msg: "hello" },
+    })
   })
 
   it("works without debug integration (regression guard)", async () => {

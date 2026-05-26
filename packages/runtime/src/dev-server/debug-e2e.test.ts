@@ -68,7 +68,7 @@ function startServerWithDebug(): Promise<{
 
   const debug: DebugIntegration = {
     newRunId: () => `r-${Math.random().toString(36).slice(2, 10)}`,
-    buildRun: (runId, workflowPath) => {
+    buildRun: (runId, workflowPath, _triggerNodeId, _request) => {
       const startedAt = Date.now()
       const lifecycle = new LifecycleEmitter()
       for (const t of [
