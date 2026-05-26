@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream"
 import type { Hono } from "hono"
 import { cors } from "hono/cors"
 import { WebSocketServer, type WebSocket } from "ws"
+import { isLoopbackOriginString } from "../dev-server/cors.js"
 import { AvailabilityProbe } from "./availability.js"
 import {
   spawnClaude,
@@ -26,26 +27,6 @@ export interface MountAgentBrokerOptions {
   projectRoot: string
   /** Inject a custom probe in tests; defaults to the real one. */
   availability?: AvailabilityProbe
-}
-
-/**
- * Origin guard for CORS + WS upgrade: only loopback origins are allowed.
- * Same posture as the WS upgrade check below. The IDE Vite dev server typically
- * runs on a different localhost port (e.g. 5173) than the broker (e.g. 3000),
- * so cross-origin browser fetches need explicit CORS — but only from loopback.
- */
-function isLoopbackOriginString(origin: string | undefined | null): boolean {
-  if (!origin) return false
-  try {
-    const u = new URL(origin)
-    return (
-      u.hostname === "localhost" ||
-      u.hostname === "127.0.0.1" ||
-      u.hostname === "[::1]"
-    )
-  } catch {
-    return false
-  }
 }
 
 export function mountAgentBroker(
