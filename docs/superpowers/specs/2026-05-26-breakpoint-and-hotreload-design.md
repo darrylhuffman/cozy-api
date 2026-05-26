@@ -347,9 +347,12 @@ Errors do NOT abort the swap — the new app is mounted using whatever workflows
 
 ---
 
-## 7. Open implementation notes (for the plan stage)
+## 7. Confirmed pre-implementation facts (no longer open)
 
-- Whether `chokidar.watch` should also depend on the existing watcher in `ide.ts` (for SSE tree updates) or be a sibling watcher. Sibling is simpler — they have different responsibilities. Implementation choice; spec doesn't constrain.
-- `debounce` utility — neither lodash nor underscore is in the build package; write a 6-line inline debounce or grep for an existing one.
-- `attachDebugWebSocket` must be verified during implementation to actually be Hono-app-independent. If it isn't, that's a small re-wiring; not a blocker.
-- The `AbortError` class — check if `packages/runtime/src/dev-server/debug-session.ts` already exports/defines one (it's referenced in `unregisterRun`). Reuse rather than redefine.
+- **`AbortError`:** defined locally as `class AbortError extends Error { override name = "AbortError" }` at `packages/runtime/src/dev-server/debug-session.ts:27-29`. Not exported. Already referenced in `disconnect`, `unregisterRun`, `stopRun`. The new `abortAllRuns` reuses it directly — no changes to the class.
+- **`attachDebugWebSocket` is Hono-app-independent.** Defined at `packages/runtime/src/dev-server/debug-ws.ts`. It accepts `{ app, server, session }` but the `app` parameter is unused inside the implementation — the WSS is bound to the HTTP server's `"upgrade"` event directly, and message dispatch only calls `session` methods. After return, no closure holds a reference to `app`. **Conclusion:** call `attachDebugWebSocket` once at startup; do NOT re-call it on hot-reload. Already-connected WS clients survive the `currentApp` swap.
+
+## 8. Open implementation notes (for the plan stage)
+
+- Whether `chokidar.watch` should be a sibling of the existing tree-SSE watcher in `ide.ts`, or share one watcher with multiple handlers. Sibling is simpler — they have different responsibilities. Implementation choice; spec doesn't constrain.
+- `debounce` utility — neither lodash nor underscore is in the build package; write a 6-line inline debounce.
