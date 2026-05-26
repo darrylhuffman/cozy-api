@@ -153,6 +153,26 @@ export class DebugSession {
     this.runs.delete(runId)
   }
 
+  /**
+   * Used by the IDE command's hot-reload pipeline: when a `.workflow` file
+   * changes, all current runs are invalidated. Reject any paused pause-promise
+   * with AbortError so the handler's catch block can broadcast run-error via
+   * the normal `opts.debug?.onError` path; then remove the run from the map.
+   *
+   * Does NOT broadcast run-error itself — that's the handler's responsibility
+   * and would otherwise double up.
+   */
+  abortAllRuns(): void {
+    for (const runId of [...this.runs.keys()]) {
+      const state = this.runs.get(runId)
+      if (state?.pause) {
+        state.pause.reject(new AbortError("run aborted: workflow reloaded"))
+        state.pause = null
+      }
+      this.runs.delete(runId)
+    }
+  }
+
   async onMessage(ws: WebSocket, msg: ClientMessage): Promise<void> {
     switch (msg.type) {
       case "hello":

@@ -272,3 +272,61 @@ describe("DebugSession + loadWorkspace integration", () => {
     expect(session.getBreakpoints(wf.relativePath)).toHaveLength(1);
   });
 });
+
+describe("DebugSession.abortAllRuns", () => {
+  it("rejects the pause promise for each paused run with an AbortError and clears the runs map", async () => {
+    const s = new DebugSession();
+
+    // Register two runs and seed an active pause on each via the test seam.
+    s.registerRun("wf", "rA", Date.now());
+    s.registerRun("wf", "rB", Date.now());
+
+    const rejections: unknown[] = [];
+    const pauseA = new Promise<void>((resolve, reject) => {
+      s._setActivePauseForTest("rA", {
+        resolve,
+        reject: (err: unknown) => {
+          rejections.push(err);
+          reject(err);
+        },
+        frame: { runId: "rA", nodeId: "n1", phase: "before" },
+      });
+    });
+    const pauseB = new Promise<void>((resolve, reject) => {
+      s._setActivePauseForTest("rB", {
+        resolve,
+        reject: (err: unknown) => {
+          rejections.push(err);
+          reject(err);
+        },
+        frame: { runId: "rB", nodeId: "n1", phase: "before" },
+      });
+    });
+
+    s.abortAllRuns();
+
+    // Both pauses rejected; both runs removed.
+    expect(rejections).toHaveLength(2);
+    for (const err of rejections) {
+      expect((err as Error).name).toBe("AbortError");
+      expect((err as Error).message).toMatch(/workflow reloaded/i);
+    }
+    await expect(pauseA).rejects.toThrow();
+    await expect(pauseB).rejects.toThrow();
+    expect(s.getRunStartedAt("rA")).toBeNull();
+    expect(s.getRunStartedAt("rB")).toBeNull();
+  });
+
+  it("is safe to call when there are no runs", () => {
+    const s = new DebugSession();
+    expect(() => s.abortAllRuns()).not.toThrow();
+  });
+
+  it("removes runs that are not paused too (in-flight without active pause)", () => {
+    const s = new DebugSession();
+    s.registerRun("wf", "r1", Date.now());
+    // No active pause seeded.
+    s.abortAllRuns();
+    expect(s.getRunStartedAt("r1")).toBeNull();
+  });
+});
