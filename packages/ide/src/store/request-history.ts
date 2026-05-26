@@ -50,7 +50,7 @@ export const useRequestHistoryStore = create<State>((set) => ({
   addEntry: (e) => {
     const id = makeId()
     set((s) => ({
-      entries: [{ ...e, id, outcome: { kind: "in-flight" } }, ...s.entries].slice(0, 20),
+      entries: [{ ...e, id, outcome: { kind: "in-flight" } as const }, ...s.entries].slice(0, 20),
     }))
     return id
   },
