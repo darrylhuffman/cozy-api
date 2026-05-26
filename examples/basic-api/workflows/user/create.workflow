@@ -23,9 +23,6 @@
       "values": {
         "status": 200
       }
-    },
-    "save-user": {
-      "uses": "./nodes/user/save-user"
     }
   },
   "view": {
@@ -40,10 +37,6 @@
     "Response": {
       "x": 662,
       "y": 42
-    },
-    "save-user": {
-      "x": 347,
-      "y": 287
     }
   }
 }
