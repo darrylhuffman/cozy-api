@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
-const MOD = IS_MAC ? "⌘" : "Ctrl"
+export const MOD = IS_MAC ? "⌘" : "Ctrl"
 
 export const SHORTCUTS: Array<[keys: string, action: string]> = [
   [`${MOD}+S`, "Save"],

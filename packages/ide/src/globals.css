@@ -39,77 +39,94 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-ai: var(--ai);
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
+  --radius: 0.5rem;
+  --background: #f3f5f8;
+  --foreground: #161a21;
+  --card: #ffffff;
+  --card-foreground: #161a21;
+  --popover: #ffffff;
+  --popover-foreground: #161a21;
+  --primary: #8a5f0a;
+  --primary-foreground: #ffffff;
+  --secondary: #eceff4;
+  --secondary-foreground: #161a21;
+  --muted: #eceff4;
+  --muted-foreground: #5e6878;
+  --accent: #e4e8ee;
+  --accent-foreground: #161a21;
+  --destructive: #c0392b;
+  --destructive-foreground: #ffffff;
+  --border: #dfe3ea;
+  --input: #cdd3dd;
+  --ring: #8a5f0a;
+  --success: #1d7a45;
+  --warning: #b4530f;
+  --info: #1e5fc9;
+  --ai: #6b46d6;
+  --canvas-dot: #d6dbe3;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.21 0.006 285.885);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.705 0.015 286.067);
-  --radius: 0.5rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #161a21;
+  --sidebar-primary: #8a5f0a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eceff4;
+  --sidebar-accent-foreground: #161a21;
+  --sidebar-border: #dfe3ea;
+  --sidebar-ring: #8a5f0a;
 }
 
+/* Dark: cool blue-grey neutrals, gold accent. */
 .dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.92 0.004 286.32);
-  --primary-foreground: oklch(0.21 0.006 285.885);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.552 0.016 285.938);
+  --background: #0e1116;
+  --foreground: #e8ecf2;
+  --card: #14181f;
+  --card-foreground: #e8ecf2;
+  --popover: #1a1f27;
+  --popover-foreground: #e8ecf2;
+  --primary: #e3b95e;
+  --primary-foreground: #1b1406;
+  --secondary: #222833;
+  --secondary-foreground: #e8ecf2;
+  --muted: #1a1f27;
+  --muted-foreground: #8a94a3;
+  --accent: #222833;
+  --accent-foreground: #e8ecf2;
+  --destructive: #f4776a;
+  --destructive-foreground: #1b0a08;
+  --border: #232a34;
+  --input: #313946;
+  --ring: #e3b95e;
+  --success: #63cb8d;
+  --warning: #f7944a;
+  --info: #74adff;
+  --ai: #bba2ff;
+  --canvas-dot: #242b36;
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.552 0.016 285.938);
+  --sidebar: #14181f;
+  --sidebar-foreground: #e8ecf2;
+  --sidebar-primary: #e3b95e;
+  --sidebar-primary-foreground: #1b1406;
+  --sidebar-accent: #222833;
+  --sidebar-accent-foreground: #e8ecf2;
+  --sidebar-border: #232a34;
+  --sidebar-ring: #e3b95e;
 }
 
 @layer base {
@@ -132,48 +149,68 @@ body,
   color: var(--foreground);
 }
 
-/* Make dockview chrome follow shadcn zinc tokens.
- * Tab strip and inactive tabs sit flat on --background (base surface);
- * the active visible tab lifts to --muted (surface 100) so it reads as raised. */
+/* Dockview chrome: side panels sit on --card, the editor on --background.
+ * Group tab strips read as small section headers; the active tab gets the
+ * gold underline. */
 .dockview-theme-dark,
 .dockview-theme-light {
-  --dv-group-view-background-color: var(--background);
-  --dv-tabs-and-actions-container-background-color: var(--background);
-  --dv-activegroup-visiblepanel-tab-background-color: var(--muted);
+  --dv-group-view-background-color: var(--card);
+  --dv-tabs-and-actions-container-background-color: var(--card);
+  --dv-tabs-and-actions-container-height: 30px;
+  --dv-tabs-and-actions-container-font-size: 11px;
+  --dv-activegroup-visiblepanel-tab-background-color: var(--card);
   --dv-activegroup-visiblepanel-tab-color: var(--foreground);
-  --dv-activegroup-hiddenpanel-tab-background-color: var(--background);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--card);
   --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--background);
-  --dv-inactivegroup-visiblepanel-tab-color: var(--muted-foreground);
-  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--background);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--card);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--card);
   --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
-  --dv-tab-divider-color: var(--border);
+  --dv-tab-divider-color: transparent;
   --dv-separator-border: var(--border);
-  --dv-tabs-container-scrollbar-color: var(--muted-foreground);
+  --dv-tabs-container-scrollbar-color: transparent;
   --dv-paneview-active-outline-color: var(--ring);
+  --dv-active-sash-color: var(--ring);
+  --dv-drag-over-background-color: color-mix(in srgb, var(--primary) 12%, transparent);
+  --dv-drag-over-border-color: var(--primary);
+}
+
+.dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--border);
+}
+.dv-tab {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.dv-tab.dv-active-tab {
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+.dv-groupview {
+  border-color: var(--border);
 }
 
 @keyframes lorien-pulse-blue {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgb(59 130 246 / 0.4);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--info) 40%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 4px rgb(59 130 246 / 0);
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--info) 0%, transparent);
   }
 }
 
 .lorien-running {
   animation: lorien-pulse-blue 1.2s ease-in-out infinite;
-  border-color: rgb(59 130 246);
+  border-color: var(--info);
 }
 .lorien-completed {
-  border-color: rgb(34 197 94);
+  border-color: var(--success);
 }
 .lorien-errored {
-  border-color: rgb(239 68 68);
+  border-color: var(--destructive);
 }
 .lorien-paused {
-  border-color: rgb(234 179 8);
+  border-color: var(--primary);
   border-width: 2px;
 }

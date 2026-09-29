@@ -71,7 +71,7 @@ function BannerShell({
       className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs"
       data-testid="status-banner"
     >
-      <div className={variant === "error" ? "text-red-700" : ""}>{label}</div>
+      <div className={variant === "error" ? "text-destructive" : ""}>{label}</div>
       {children && <div className="flex gap-1">{children}</div>}
     </div>
   )
@@ -91,7 +91,7 @@ function ControlButton({
       type="button"
       className={
         variant === "danger"
-          ? "rounded-md border bg-background px-2 py-1 text-red-700 hover:bg-accent"
+          ? "rounded-md border bg-background px-2 py-1 text-destructive hover:bg-accent"
           : "rounded-md border bg-background px-2 py-1 hover:bg-accent"
       }
       onClick={onClick}

@@ -1,5 +1,6 @@
 import "dockview-react/dist/styles/dockview.css"
 import {
+  type DockviewApi,
   DockviewDefaultTab,
   DockviewReact,
   type DockviewReadyEvent,
@@ -7,28 +8,35 @@ import {
   type IDockviewPanelProps,
 } from "dockview-react"
 import { useCallback } from "react"
-import { AgentsPanel } from "@/panels/agents/agents-panel"
-import { CodeEditorPanel } from "@/panels/code-editor-panel"
 import { DebugPanel } from "@/panels/debug-panel"
+import { EditorPanel } from "@/panels/editor-panel"
 import { FilesPanel } from "@/panels/files-panel"
 import { InspectorPanel } from "@/panels/inspector-panel"
-import { WorkflowEditorPanel } from "@/panels/workflow-editor-panel"
 import { useDockviewApi } from "@/store/dockview-api"
 import { useThemeStore } from "@/store/theme"
 import { buildDefaultLayout, loadSavedLayout, saveLayout } from "./default-layout"
 
 const components = {
   files: (_props: IDockviewPanelProps) => <FilesPanel />,
-  workflow: (_props: IDockviewPanelProps) => <WorkflowEditorPanel />,
-  code: (_props: IDockviewPanelProps) => <CodeEditorPanel />,
+  editor: (_props: IDockviewPanelProps) => <EditorPanel />,
   inspector: (_props: IDockviewPanelProps) => <InspectorPanel />,
-  agents: (_props: IDockviewPanelProps) => <AgentsPanel />,
   debug: (_props: IDockviewPanelProps) => <DebugPanel />,
 }
 
+/**
+ * The editor has its own file tab strip, so its dockview header is hidden
+ * while it sits alone in its group. If another pane is dragged in, the header
+ * comes back so both stay reachable.
+ */
+function syncEditorHeader(api: DockviewApi): void {
+  const group = api.getPanel("editor")?.group
+  if (!group) return
+  group.header.hidden = group.panels.length === 1
+}
+
 // Hide the per-tab X on the outer dockview group tabs — those panels
-// (Files / Workflow / Code / Inspector) are always-on and re-organizable,
-// not closeable. Sub-tabs inside Workflow/Code panels keep their own close UX.
+// (Explorer / Editor / Inspector / Debug) are always-on and re-organizable,
+// not closeable. File tabs inside the editor keep their own close UX.
 function NoCloseTab(props: IDockviewPanelHeaderProps) {
   return <DockviewDefaultTab {...props} hideClose />
 }
@@ -54,7 +62,9 @@ export function DockView() {
         buildDefaultLayout(api)
       }
 
+      syncEditorHeader(api)
       api.onDidLayoutChange(() => {
+        syncEditorHeader(api)
         saveLayout(api)
       })
     },

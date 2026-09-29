@@ -41,11 +41,12 @@ export function RunsList() {
 
 function StatusBadge({ run }: { run: RunRecord }) {
   const out = run.outcome
-  if (out.kind === "running") return <span className="text-blue-500">▶</span>
+  if (out.kind === "running") return <span className="text-info">▶</span>
   if (out.kind === "paused" && run.pausedFrame)
-    return <span className="text-yellow-600 font-mono text-[10px]">⏸ {run.pausedFrame.nodeId}</span>
+    return <span className="text-primary font-mono text-[10px]">⏸ {run.pausedFrame.nodeId}</span>
   if (out.kind === "ok")
-    return <span className="text-green-600 font-mono text-[10px]">✓ {out.status}</span>
-  if (out.kind === "errored") return <span className="text-red-600 font-mono text-[10px]">✕</span>
+    return <span className="text-success font-mono text-[10px]">✓ {out.status}</span>
+  if (out.kind === "errored")
+    return <span className="text-destructive font-mono text-[10px]">✕</span>
   return null
 }

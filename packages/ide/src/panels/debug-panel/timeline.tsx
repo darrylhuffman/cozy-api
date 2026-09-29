@@ -23,12 +23,12 @@ export function Timeline({ runId }: { runId: string | null }) {
         <TimelineRow key={i} row={row} />
       ))}
       {run.outcome.kind === "ok" && (
-        <div className="text-green-700">
+        <div className="text-success">
           +{run.outcome.totalMs}ms ● complete {run.outcome.status}
         </div>
       )}
       {run.outcome.kind === "errored" && (
-        <div className="text-red-700">✕ {run.outcome.message}</div>
+        <div className="text-destructive">✕ {run.outcome.message}</div>
       )}
     </div>
   )
@@ -90,7 +90,7 @@ function TimelineRow({ row }: { row: FoldedRow }) {
   const arrow = open ? "▾" : "▸"
   const tone =
     row.kind === "error"
-      ? "text-red-700"
+      ? "text-destructive"
       : row.kind === "before"
         ? "text-foreground"
         : "text-muted-foreground"

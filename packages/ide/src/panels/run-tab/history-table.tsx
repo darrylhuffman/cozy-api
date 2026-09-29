@@ -49,7 +49,7 @@ function HistoryRow({ entry }: { entry: RequestHistoryEntry }) {
             <div className="text-muted-foreground">In flight…</div>
           )}
           {entry.outcome.kind === "network-error" && (
-            <div className="text-red-700">Network error: {entry.outcome.message}</div>
+            <div className="text-destructive">Network error: {entry.outcome.message}</div>
           )}
           {(entry.outcome.kind === "ok" || entry.outcome.kind === "error") && (
             <ResponseView outcome={entry.outcome} />
@@ -69,17 +69,18 @@ function StatusIndicator({ outcome }: { outcome: RequestHistoryEntry["outcome"] 
       />
     )
   if (outcome.kind === "ok")
-    return (
-      <span data-testid="status-ok" className="inline-block h-2 w-2 rounded-full bg-green-500" />
-    )
+    return <span data-testid="status-ok" className="inline-block h-2 w-2 rounded-full bg-success" />
   if (outcome.kind === "error")
     return (
-      <span data-testid="status-error" className="inline-block h-2 w-2 rounded-full bg-red-500" />
+      <span
+        data-testid="status-error"
+        className="inline-block h-2 w-2 rounded-full bg-destructive"
+      />
     )
   return (
     <span
       data-testid="status-network-error"
-      className="inline-block h-2 w-2 rounded-full bg-gray-400"
+      className="inline-block h-2 w-2 rounded-full bg-muted-foreground"
     />
   )
 }

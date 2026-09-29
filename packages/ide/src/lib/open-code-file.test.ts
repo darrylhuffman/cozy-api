@@ -36,10 +36,10 @@ describe("openCodeFile", () => {
     expect(useTabsStore.getState().activeCodeId).toBe("nodes/users/save-user.ts")
   })
 
-  it("focuses the 'code' dockview panel", () => {
+  it("focuses the editor dockview panel", () => {
     openCodeFile("nodes/users/save-user.ts")
 
-    expect(mockGetPanel).toHaveBeenCalledWith("code")
+    expect(mockGetPanel).toHaveBeenCalledWith("editor")
     expect(mockSetActive).toHaveBeenCalledOnce()
   })
 

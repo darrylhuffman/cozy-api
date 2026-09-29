@@ -78,7 +78,7 @@ export function ToolUseBash({ command, exitCode }: ToolUseBashProps): React.Reac
       <Terminal className="h-3 w-3" />
       <code className="flex-1 truncate font-mono text-foreground">{command}</code>
       {exitCode !== undefined && (
-        <span className={exitCode === 0 ? "text-emerald-600" : "text-destructive"}>
+        <span className={exitCode === 0 ? "text-success" : "text-destructive"}>
           exit {exitCode}
         </span>
       )}

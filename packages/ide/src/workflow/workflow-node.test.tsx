@@ -898,7 +898,7 @@ describe("WorkflowNode", () => {
       expect(badge.textContent).toBe("2")
       expect(badge.getAttribute("aria-label")).toContain("Missing required input email")
       expect(badge.getAttribute("title")).toContain("user.id is not an output")
-      expect(screen.getByTestId("node-card").className).toContain("border-red-500")
+      expect(screen.getByTestId("node-card").className).toContain("border-destructive")
     })
 
     it("uses the warning style when the node only has warnings", () => {
@@ -907,7 +907,7 @@ describe("WorkflowNode", () => {
       expect(screen.getByTestId("node-issue-badge").getAttribute("aria-label")).toBe(
         "1 problem: Unused",
       )
-      expect(screen.getByTestId("node-card").className).toContain("border-amber-500")
+      expect(screen.getByTestId("node-card").className).toContain("border-warning")
     })
   })
 

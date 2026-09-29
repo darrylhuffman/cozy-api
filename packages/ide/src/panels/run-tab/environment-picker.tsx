@@ -56,7 +56,7 @@ export function EnvironmentPicker() {
         {names.length === 0 ? "Add" : "Edit"}
       </button>
       {error && (
-        <span className="truncate text-red-700 dark:text-red-400" title={error}>
+        <span className="truncate text-destructive" title={error}>
           {error}
         </span>
       )}

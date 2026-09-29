@@ -62,7 +62,7 @@ export function TestsTab() {
       {runError && (
         <div
           role="alert"
-          className="whitespace-pre-wrap rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-red-700 dark:text-red-400"
+          className="whitespace-pre-wrap rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive"
         >
           {runError}
         </div>

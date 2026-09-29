@@ -112,8 +112,8 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
             className={cn(
               "rounded px-1.5 text-[10px] font-medium",
               passed === ran.length
-                ? "bg-green-500/15 text-green-700 dark:text-green-400"
-                : "bg-red-500/15 text-red-700 dark:text-red-400",
+                ? "bg-success/15 text-success"
+                : "bg-destructive/15 text-destructive",
             )}
           >
             {passed}/{ran.length} passed
@@ -152,7 +152,7 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
               }),
             )
           }
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-violet-600 hover:bg-accent dark:text-violet-400"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-ai hover:bg-accent"
         >
           <Sparkles className="h-3 w-3" />
           Write with AI
@@ -161,7 +161,7 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
       {entry?.error && (
         <div
           role="alert"
-          className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-red-700 dark:text-red-400"
+          className="rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive"
         >
           {entry.error}
         </div>
@@ -191,8 +191,8 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
                   !r
                     ? "border border-muted-foreground/50"
                     : r.passed
-                      ? "bg-green-500"
-                      : "bg-red-500",
+                      ? "bg-success"
+                      : "bg-destructive",
                 )}
               />
               <button

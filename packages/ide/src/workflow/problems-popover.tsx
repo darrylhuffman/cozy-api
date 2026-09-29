@@ -42,7 +42,7 @@ export function ProblemsPopover({
             errors > 0
               ? "text-destructive"
               : warnings > 0
-                ? "text-amber-600 dark:text-amber-400"
+                ? "text-warning"
                 : "text-muted-foreground",
           )}
         >
@@ -78,7 +78,7 @@ export function ProblemsPopover({
                   {d.severity === "error" ? (
                     <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
                   ) : (
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
                   )}
                   <span className="min-w-0">
                     {d.nodeId && <span className="mr-1 font-mono font-medium">{d.nodeId}</span>}
@@ -96,7 +96,7 @@ export function ProblemsPopover({
               setOpen(false)
               onAskAi()
             }}
-            className="mt-1 flex w-full items-center gap-1.5 rounded border-t px-2 py-1.5 text-left text-xs text-violet-600 hover:bg-accent dark:text-violet-400"
+            className="mt-1 flex w-full items-center gap-1.5 rounded border-t px-2 py-1.5 text-left text-xs text-ai hover:bg-accent"
           >
             <Sparkles className="h-3.5 w-3.5" /> Fix these with AI
           </button>

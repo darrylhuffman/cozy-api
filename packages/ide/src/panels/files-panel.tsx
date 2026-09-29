@@ -2,10 +2,12 @@ import {
   ChevronDown,
   ChevronRight,
   FileCode,
-  FileText,
   Folder,
   FolderOpen,
+  FolderPlus,
+  Plus,
   WifiOff,
+  Workflow,
 } from "lucide-react"
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -14,6 +16,7 @@ import { fetchWorkspaceTree } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
 import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
+import { useCommands } from "@/store/commands"
 import { useDockviewApi } from "@/store/dockview-api"
 import { useTabsStore } from "@/store/tabs"
 import { NewFolderDialog } from "@/workflow/new-folder-dialog"
@@ -99,10 +102,39 @@ export function FilesPanel() {
 
   const itemTree = menu.tree === "workflows" ? workflows : nodes
 
+  // Opens a create dialog aimed at a tree's root folder (header buttons, File menu).
+  const openRootDialog = (tree: TreeKind, kind: Exclude<DialogKind, "none">) => {
+    const root = tree === "workflows" ? workflows : nodes
+    setMenu((m) => ({ ...m, open: false, tree, folder: root.name || tree }))
+    setDialog(kind)
+  }
+  const openRootDialogRef = useRef(openRootDialog)
+  openRootDialogRef.current = openRootDialog
+
+  const ready = loadState === "ready"
+  useEffect(
+    () =>
+      useCommands.getState().register({
+        "file.newWorkflow": {
+          run: () => openRootDialogRef.current("workflows", "new-workflow"),
+          enabled: ready,
+        },
+        "file.newNode": {
+          run: () => openRootDialogRef.current("nodes", "new-node"),
+          enabled: ready,
+        },
+        "file.newFolder": {
+          run: () => openRootDialogRef.current("workflows", "new-folder"),
+          enabled: ready,
+        },
+      }),
+    [ready],
+  )
+
   return (
     <div className="flex h-full flex-col">
       {loadState === "fallback" && (
-        <div className="flex items-center gap-1.5 border-b bg-amber-500/10 px-2 py-1 text-[10px] text-amber-600 dark:text-amber-400">
+        <div className="flex items-center gap-1.5 border-b bg-warning/10 px-2 py-1 text-[10px] text-warning">
           <WifiOff className="h-3 w-3 shrink-0" />
           <span>Backend not available — showing demo data</span>
         </div>
@@ -123,6 +155,10 @@ export function FilesPanel() {
                 tree={workflows}
                 onContextMenu={openMenu}
                 autoExpand={loadState === "ready"}
+                {...(ready && {
+                  onNewItem: () => openRootDialog("workflows", "new-workflow"),
+                  onNewFolder: () => openRootDialog("workflows", "new-folder"),
+                })}
               />
               <Section
                 title="NODES"
@@ -130,6 +166,10 @@ export function FilesPanel() {
                 tree={nodes}
                 onContextMenu={openMenu}
                 autoExpand={loadState === "ready"}
+                {...(ready && {
+                  onNewItem: () => openRootDialog("nodes", "new-node"),
+                  onNewFolder: () => openRootDialog("nodes", "new-folder"),
+                })}
               />
             </>
           )}
@@ -158,7 +198,7 @@ export function FilesPanel() {
           // refreshTree() is triggered by SSE add event; also open the new file
           const title = path.split("/").pop() ?? path
           useTabsStore.getState().openTab({ id: path, title, kind: "workflow", path })
-          useDockviewApi.getState().api?.getPanel("workflow")?.api.setActive()
+          useDockviewApi.getState().api?.getPanel("editor")?.api.setActive()
         }}
         defaultFolder={menu.folder}
         workflowsTree={workflows}
@@ -184,12 +224,16 @@ function Section({
   tree,
   onContextMenu,
   autoExpand = false,
+  onNewItem,
+  onNewFolder,
 }: {
   title: string
   treeKind: TreeKind
   tree: FileNode
   onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
   autoExpand?: boolean
+  onNewItem?: () => void
+  onNewFolder?: () => void
 }) {
   const rootPath = tree.type === "folder" ? tree.name : treeKind
   // Render children of the root folder directly (the section header IS the root label).
@@ -199,8 +243,21 @@ function Section({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: right-click anywhere in the section opens its menu; entries are buttons
     <div className="mb-3" onContextMenu={(e) => onContextMenu(e, treeKind, rootPath)}>
-      <div className="px-1 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {title}
+      <div className="group/section flex h-7 items-center gap-1 px-1 text-[11px] font-semibold tracking-wider text-muted-foreground">
+        <span className="flex-1">{title}</span>
+        {onNewItem && (
+          <SectionAction
+            label={treeKind === "workflows" ? "New workflow" : "New node"}
+            onClick={onNewItem}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </SectionAction>
+        )}
+        {onNewFolder && (
+          <SectionAction label={`New folder in ${treeKind}`} onClick={onNewFolder}>
+            <FolderPlus className="h-3.5 w-3.5" />
+          </SectionAction>
+        )}
       </div>
       {children.map((child) => (
         <TreeNode
@@ -214,6 +271,28 @@ function Section({
         />
       ))}
     </div>
+  )
+}
+
+function SectionAction({
+  label,
+  onClick,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 group-hover/section:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100"
+    >
+      {children}
+    </button>
   )
 }
 
@@ -279,12 +358,20 @@ function Folder_({
         onClick={() => setOpen((o) => !o)}
         onContextMenu={(e) => onContextMenu(e, treeKind, path)}
         className={cn(
-          "flex w-full items-center gap-1 rounded-sm px-1 py-0.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+          "flex h-[26px] w-full items-center gap-1.5 rounded-md px-1 text-left text-[13px] text-foreground/85 hover:bg-accent hover:text-accent-foreground",
         )}
-        style={{ paddingLeft: depth * 8 + 4 }}
+        style={{ paddingLeft: depth * 12 + 4 }}
       >
-        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        {open ? <FolderOpen className="h-3.5 w-3.5" /> : <Folder className="h-3.5 w-3.5" />}
+        {open ? (
+          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        )}
+        {open ? (
+          <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+        ) : (
+          <Folder className="h-3.5 w-3.5 text-muted-foreground" />
+        )}
         <span className="truncate">{node.name}</span>
       </button>
       {open && (
@@ -320,13 +407,11 @@ function Leaf({
   onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
 }) {
   const openTab = useTabsStore((s) => s.openTab)
-  const activeWorkflowId = useTabsStore((s) => s.activeWorkflowId)
-  const activeCodeId = useTabsStore((s) => s.activeCodeId)
-  const nodeTabId = node.kind === "node" ? (node.path ?? node.id) : node.id
-  const isActive =
-    node.kind === "workflow" ? activeWorkflowId === node.id : activeCodeId === nodeTabId
+  const activeId = useTabsStore((s) => s.activeId)
+  const tabId = node.kind === "node" ? (node.path ?? node.id) : node.id
+  const isActive = activeId === tabId
 
-  const Icon = node.kind === "workflow" ? FileText : FileCode
+  const Icon = node.kind === "workflow" ? Workflow : FileCode
 
   return (
     <button
@@ -362,18 +447,21 @@ function Leaf({
 
         const api = useDockviewApi.getState().api
         if (api) {
-          const panelId = node.kind === "workflow" ? "workflow" : "code"
-          const panel = api.getPanel(panelId)
-          if (panel) panel.api.setActive()
+          api.getPanel("editor")?.api.setActive()
         }
       }}
       className={cn(
-        "flex w-full items-center gap-1.5 rounded-sm px-1 py-0.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
-        isActive && "bg-accent text-accent-foreground",
+        "flex h-[26px] w-full items-center gap-2 rounded-md px-1 text-left text-[13px] text-foreground/85 hover:bg-accent hover:text-accent-foreground",
+        isActive && "bg-primary/12 font-medium text-foreground hover:bg-primary/15",
       )}
-      style={{ paddingLeft: depth * 8 + 16 }}
+      style={{ paddingLeft: depth * 12 + 16 }}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <Icon
+        className={cn(
+          "h-3.5 w-3.5 shrink-0",
+          node.kind === "workflow" ? "text-primary" : "text-info",
+        )}
+      />
       <span className="truncate">{node.name}</span>
     </button>
   )

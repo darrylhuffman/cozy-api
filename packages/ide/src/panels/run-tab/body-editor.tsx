@@ -41,7 +41,7 @@ export function BodyEditor() {
         options={{
           minimap: { enabled: false },
           fontSize: 13,
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+          fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
           scrollBeyondLastLine: false,
           automaticLayout: true,
           tabSize: 2,

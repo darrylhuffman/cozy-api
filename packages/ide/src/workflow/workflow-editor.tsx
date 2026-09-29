@@ -26,6 +26,7 @@ import { EditorNotice } from "@/components/editor-notice"
 import { fetchWorkflowFile, saveFile, type WorkflowFile } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
 import { openCodeFile } from "@/lib/open-code-file"
+import { useCommands } from "@/store/commands"
 import { confirmAction } from "@/store/confirm"
 import { type NodeStatus, useDebugSessionStore } from "@/store/debug-session"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
@@ -68,6 +69,12 @@ interface Props {
   path: string
   /** Tab ID so we can update dirty state in the store. */
   tabId: string
+  /**
+   * False while a code tab covers the editor: it stays mounted (so the
+   * Inspector keeps its workflow and the viewport survives) but leaves the
+   * keyboard and the menus to the code editor.
+   */
+  visible?: boolean
 }
 
 // Cast to NodeTypes to avoid the strict generic constraint mismatch.
@@ -109,7 +116,7 @@ export function WorkflowEditor(props: Props) {
   )
 }
 
-function WorkflowEditorInner({ path, tabId }: Props) {
+function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
   const draft = useWorkflowDrafts((s) => s.drafts[tabId])
   const ownDraft = draft && draft.path === path ? draft : undefined
   const workflow = ownDraft?.workflow ?? null
@@ -945,6 +952,7 @@ function WorkflowEditorInner({ path, tabId }: Props) {
   // Ctrl/Cmd+Y redo. Only one workflow editor is mounted at a time. Keys
   // typed inside the code editor or a text field keep their native meaning.
   useEffect(() => {
+    if (!visible) return
     const handler = (e: KeyboardEvent) => {
       const target = e.target instanceof Element ? e.target : null
       if (target?.closest(".monaco-editor")) return
@@ -982,7 +990,27 @@ function WorkflowEditorInner({ path, tabId }: Props) {
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [save, undo, redo, duplicate, fitView])
+  }, [visible, save, undo, redo, duplicate, fitView])
+
+  // The title-bar menus and status bar reach the canvas through these.
+  useEffect(() => {
+    if (!visible) return
+    return useCommands.getState().register({
+      "file.save": { run: () => void save() },
+      "edit.undo": { run: undo, enabled: canUndo },
+      "edit.redo": { run: redo, enabled: canRedo },
+      "edit.duplicate": {
+        run: () => {
+          if (selectedNodeId) duplicate(selectedNodeId)
+        },
+        enabled: Boolean(selectedNodeId),
+      },
+      "canvas.addNode": { run: () => setPaletteOpen(true) },
+      "canvas.fitView": { run: () => void fitView({ padding: 0.2, duration: 250 }) },
+      "canvas.tidy": { run: tidy },
+      "help.shortcuts": { run: () => setShortcutsOpen(true) },
+    })
+  }, [visible, save, undo, redo, canUndo, canRedo, duplicate, selectedNodeId, fitView, tidy])
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -1255,10 +1283,15 @@ function WorkflowEditorInner({ path, tabId }: Props) {
             nodesConnectable={true}
             proOptions={{ hideAttribution: true }}
           >
-            <Background gap={20} size={1} />
+            <Background gap={20} size={1.2} color="var(--canvas-dot)" />
             <Controls showFitView={false} />
             {!isEmpty && (
-              <MiniMap pannable zoomable className="!bg-card" maskColor="rgb(0 0 0 / 0.08)" />
+              <MiniMap
+                pannable
+                zoomable
+                className="!rounded-lg !border !border-border !bg-card"
+                maskColor="color-mix(in srgb, var(--background) 55%, transparent)"
+              />
             )}
           </ReactFlow>
         </div>
