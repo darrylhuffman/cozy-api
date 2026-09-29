@@ -1,0 +1,7 @@
+{
+  "lorien": 1,
+  "default": "local",
+  "environments": {
+    "local": { "userPrefix": "dev" }
+  }
+}

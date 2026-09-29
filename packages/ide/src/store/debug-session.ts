@@ -53,7 +53,7 @@ export interface RunRecord {
       }
 }
 
-interface DebugSessionState {
+export interface DebugSessionState {
   connected: boolean
   runs: RunRecord[]
   selectedRunId: string | null

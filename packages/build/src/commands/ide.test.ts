@@ -100,6 +100,31 @@ describe("PUT /api/workspace/file", () => {
     const json = (await res.json()) as { error: string }
     expect(json.error).toMatch(/\.workflow.*\.ts|\.ts.*\.workflow/)
   })
+  it.each([
+    "workflows/users/create.requests.json",
+    "lorien.environments.json",
+    "lorien.environments.local.json",
+  ])("allows writing saved requests and environments: %s", async (path) => {
+    const app = await makeApp()
+    mkdirSync(join(dir, "workflows/users"), { recursive: true })
+    const res = await app.request("/api/workspace/file", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, content: "{}\n" }),
+    })
+    expect(res.status).toBe(200)
+    expect(readFileSync(join(dir, path), "utf-8")).toBe("{}\n")
+  })
+
+  it("still rejects other JSON files", async () => {
+    const app = await makeApp()
+    const res = await app.request("/api/workspace/file", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "tsconfig.json", content: "{}" }),
+    })
+    expect(res.status).toBe(400)
+  })
 })
 
 describe("PUT /api/workspace/file?create=true", () => {

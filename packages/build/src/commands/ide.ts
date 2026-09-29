@@ -63,6 +63,25 @@ export interface IdeOptions {
 
 export const DEFAULT_IDE_PORT = 8188
 
+const WRITABLE_FILES_MESSAGE =
+  "Only .workflow, .ts, .requests.json and lorien.environments(.local).json files may be written"
+
+/**
+ * The IDE may only write files it owns: workflows, node sources, saved request
+ * collections and the environments files. Keeps a stray PUT from clobbering
+ * package.json or lockfiles.
+ */
+export function isWritableWorkspaceFile(abs: string): boolean {
+  const name = basename(abs)
+  return (
+    abs.endsWith(".workflow") ||
+    abs.endsWith(".ts") ||
+    abs.endsWith(".requests.json") ||
+    name === "lorien.environments.json" ||
+    name === "lorien.environments.local.json"
+  )
+}
+
 export function registerIde(program: Command): void {
   program
     .command("ide")
@@ -155,8 +174,8 @@ export function createIdeApp(workspaceRoot: string): Hono {
       if (!abs.startsWith(workspaceRoot + sep) && abs !== workspaceRoot) {
         return c.json({ error: "Path traversal denied" }, 403)
       }
-      if (!abs.endsWith(".workflow") && !abs.endsWith(".ts")) {
-        return c.json({ error: "Only .workflow and .ts files may be written" }, 400)
+      if (!isWritableWorkspaceFile(abs)) {
+        return c.json({ error: WRITABLE_FILES_MESSAGE }, 400)
       }
       // 409 if the file already exists
       try {
@@ -187,9 +206,8 @@ export function createIdeApp(workspaceRoot: string): Hono {
     if (!abs.startsWith(workspaceRoot + sep) && abs !== workspaceRoot) {
       return c.json({ error: "Path traversal denied" }, 403)
     }
-    // Only allow writes to .workflow JSON and .ts files (whitelist)
-    if (!abs.endsWith(".workflow") && !abs.endsWith(".ts")) {
-      return c.json({ error: "Only .workflow and .ts files may be written" }, 400)
+    if (!isWritableWorkspaceFile(abs)) {
+      return c.json({ error: WRITABLE_FILES_MESSAGE }, 400)
     }
     try {
       await writeFile(abs, body.content, "utf-8")
@@ -609,7 +627,7 @@ async function openBrowser(url: string): Promise<void> {
   })
 }
 
-async function registerTsxFromWorkspace(root: string): Promise<void> {
+export async function registerTsxFromWorkspace(root: string): Promise<void> {
   try {
     const anchor = pathToFileURL(join(root, "package.json")).href
     const req = createRequire(anchor)

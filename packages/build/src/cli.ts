@@ -6,6 +6,7 @@ import { registerDev } from "./commands/dev.js"
 import { registerIde } from "./commands/ide.js"
 import { registerImportOpenapi } from "./commands/import-openapi.js"
 import { registerInit } from "./commands/init.js"
+import { registerTest } from "./commands/test.js"
 
 const VERSION = "0.0.0"
 
@@ -21,6 +22,7 @@ function createProgram(): Command {
   registerIde(program)
   registerInit(program)
   registerImportOpenapi(program)
+  registerTest(program)
 
   return program
 }

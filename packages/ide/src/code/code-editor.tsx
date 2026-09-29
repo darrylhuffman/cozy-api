@@ -142,7 +142,7 @@ export function CodeEditor({ path, tabId }: Props) {
     <div className="relative h-full w-full">
       <Editor
         height="100%"
-        defaultLanguage="typescript"
+        defaultLanguage={languageFor(path)}
         path={path}
         value={content}
         theme={theme === "dark" ? "vs-dark" : "vs"}
@@ -198,4 +198,10 @@ export function CodeEditor({ path, tabId }: Props) {
       )}
     </div>
   )
+}
+
+function languageFor(path: string): string {
+  if (path.endsWith(".json") || path.endsWith(".workflow")) return "json"
+  if (path.endsWith(".md")) return "markdown"
+  return "typescript"
 }

@@ -28,7 +28,7 @@ describe("RequestBuilder method UI", () => {
       query: [],
       headers: [],
     }))
-    const { container } = render(<RequestBuilder />)
+    const { container } = render(<RequestBuilder workflowPath="workflows/users/create.workflow" />)
     expect(container.querySelector("select")).toBeNull()
   })
 
@@ -43,7 +43,7 @@ describe("RequestBuilder method UI", () => {
       query: [],
       headers: [],
     }))
-    render(<RequestBuilder />)
+    render(<RequestBuilder workflowPath="workflows/users/create.workflow" />)
     const badge = screen.getByTestId("request-method")
     expect(badge.textContent).toBe("POST")
     expect(badge.tagName.toLowerCase()).toBe("span")
