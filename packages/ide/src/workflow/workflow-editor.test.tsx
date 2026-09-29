@@ -20,6 +20,8 @@ let capturedOnPaneClick: (() => void) | null = null
 let capturedOnNodeContextMenu:
   | ((event: { preventDefault: () => void; clientX: number; clientY: number }, node: { id: string }) => void)
   | null = null
+// Simulated pan offset applied by the mocked screenToFlowPosition.
+let flowOffset = { x: 0, y: 0 }
 // Capture what edges/edgeTypes the editor passed to React Flow
 interface CapturedMapping {
   source: string
@@ -104,6 +106,14 @@ vi.mock("@xyflow/react", () => ({
       </div>
     )
   },
+  ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  // Viewport transform stand-in: flow = screen - flowOffset (a "panned" canvas).
+  useReactFlow: () => ({
+    screenToFlowPosition: (p: { x: number; y: number }) => ({
+      x: p.x - flowOffset.x,
+      y: p.y - flowOffset.y,
+    }),
+  }),
   Background: () => <div data-testid="rf-background" />,
   Controls: () => <div data-testid="rf-controls" />,
   Handle: () => null,
@@ -188,12 +198,14 @@ vi.mock("@/lib/events", () => ({
   subscribeToFileEvents: vi.fn(() => () => {}),
 }))
 
-import { fetchWorkflowFile, fetchWorkspaceSchemas, saveFile } from "@/lib/api"
+import { ApiError, fetchWorkflowFile, fetchWorkspaceSchemas, saveFile } from "@/lib/api"
+import { type FileEvent, subscribeToFileEvents } from "@/lib/events"
 import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useDebugSessionStore } from "@/store/debug-session"
+import { useWorkflowDrafts } from "@/store/workflow-drafts"
 import { defaultPathForWorkflow, WorkflowEditor } from "./workflow-editor.js"
 
 const sampleWorkflow: WorkflowFile = {
@@ -235,9 +247,11 @@ const createWorkflow: WorkflowFile = {
 
 function resetStore() {
   useTabsStore.setState({ tabs: [], activeWorkflowId: null, activeCodeId: null })
+  useWorkflowDrafts.setState({ drafts: {} })
 }
 
 beforeEach(() => {
+  flowOffset = { x: 0, y: 0 }
   capturedOnNodesChange = null
   capturedOnConnect = null
   capturedOnNodesDelete = null
@@ -736,10 +750,11 @@ describe("WorkflowEditor", () => {
 
       expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
 
+      // Re-point save.email (currently request.body.email) at a new source.
       act(() => {
         capturedOnConnect?.({
           source: "request",
-          sourceHandle: "body.email",
+          sourceHandle: "body.contactEmail",
           target: "save",
           targetHandle: "email",
         })
@@ -1632,6 +1647,307 @@ describe("WorkflowEditor", () => {
           after: false,
         })
       })
+    })
+  })
+
+  describe("editing reliability", () => {
+    const PATH = "workflows/users/create.workflow"
+
+    /** Emit a file event to every listener the editor registered. */
+    function emitFileEvent(event: FileEvent) {
+      for (const call of vi.mocked(subscribeToFileEvents).mock.calls) {
+        call[0](event)
+      }
+    }
+
+    function dragTo(id: string, x: number, y: number) {
+      act(() => {
+        capturedOnNodesChange?.([{ type: "position", id, dragging: false, position: { x, y } }])
+      })
+    }
+
+    function positionOf(id: string) {
+      return (capturedNodes?.find((n) => n.id === id) as { position?: { x: number; y: number } })
+        ?.position
+    }
+
+    async function renderLoaded() {
+      const utils = render(<WorkflowEditor path={PATH} tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+      return utils
+    }
+
+    it("keeps unsaved edits when the editor unmounts and remounts (tab switch)", async () => {
+      const first = await renderLoaded()
+      dragTo("parseBody", 999, 888)
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(true)
+      first.unmount()
+
+      vi.mocked(fetchWorkflowFile).mockClear()
+      render(<WorkflowEditor path={PATH} tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+      // Resumed from the draft, not re-read from disk.
+      expect(vi.mocked(fetchWorkflowFile)).not.toHaveBeenCalled()
+      expect(positionOf("parseBody")).toEqual({ x: 999, y: 888 })
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(true)
+      expect(screen.getByText(/unsaved changes/i)).toBeInTheDocument()
+    })
+
+    it("keeps a dragged position when a later edit rebuilds the nodes", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      await renderLoaded()
+      dragTo("save", 700, 300)
+      const onInputValueChange = capturedNodes?.find((n) => n.id === "response")?.data
+        .onInputValueChange as (port: string, v: unknown) => void
+      act(() => onInputValueChange("status", 202))
+      await waitFor(() => {
+        const response = capturedNodes?.find((n) => n.id === "response")
+        expect((response?.data.instance as { values?: { status?: number } }).values?.status).toBe(202)
+      })
+      expect(positionOf("save")).toEqual({ x: 700, y: 300 })
+    })
+
+    it("Ctrl+Z undoes a drag and Ctrl+Shift+Z / Ctrl+Y redo it", async () => {
+      await renderLoaded()
+      const original = positionOf("parseBody")
+      dragTo("parseBody", 500, 500)
+      await waitFor(() => expect(positionOf("parseBody")).toEqual({ x: 500, y: 500 }))
+
+      act(() => {
+        fireEvent.keyDown(window, { key: "z", ctrlKey: true })
+      })
+      await waitFor(() => expect(positionOf("parseBody")).toEqual(original))
+      // Back at the loaded state: clean again.
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
+
+      act(() => {
+        fireEvent.keyDown(window, { key: "z", ctrlKey: true, shiftKey: true })
+      })
+      await waitFor(() => expect(positionOf("parseBody")).toEqual({ x: 500, y: 500 }))
+
+      act(() => {
+        fireEvent.keyDown(window, { key: "z", ctrlKey: true })
+      })
+      await waitFor(() => expect(positionOf("parseBody")).toEqual(original))
+      act(() => {
+        fireEvent.keyDown(window, { key: "y", ctrlKey: true })
+      })
+      await waitFor(() => expect(positionOf("parseBody")).toEqual({ x: 500, y: 500 }))
+    })
+
+    it("undo restores a deleted node, via the toolbar button", async () => {
+      await renderLoaded()
+      act(() => {
+        capturedOnNodesDelete?.([{ id: "save" }])
+      })
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("2")
+      })
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }))
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+      expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled()
+      expect(screen.getByRole("button", { name: "Redo" })).toBeEnabled()
+    })
+
+    it("leaves Ctrl+Z alone while typing in a text field", async () => {
+      await renderLoaded()
+      dragTo("parseBody", 500, 500)
+      const input = document.createElement("input")
+      document.body.appendChild(input)
+      act(() => {
+        fireEvent.keyDown(input, { key: "z", ctrlKey: true })
+      })
+      expect(positionOf("parseBody")).toEqual({ x: 500, y: 500 })
+      input.remove()
+    })
+
+    it("typing into one literal field is a single undo step", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      await renderLoaded()
+      const change = () =>
+        capturedNodes?.find((n) => n.id === "response")?.data.onInputValueChange as (
+          port: string,
+          v: unknown,
+        ) => void
+      act(() => change()("status", 2))
+      act(() => change()("status", 20))
+      act(() => change()("status", 204))
+      await waitFor(() => {
+        const response = capturedNodes?.find((n) => n.id === "response")
+        expect((response?.data.instance as { values?: { status?: number } }).values?.status).toBe(204)
+      })
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }))
+      await waitFor(() => {
+        const response = capturedNodes?.find((n) => n.id === "response")
+        expect((response?.data.instance as { values?: { status?: number } }).values?.status).toBe(201)
+      })
+    })
+
+    it("shows the server's reason when a save fails, and Retry saves again", async () => {
+      vi.mocked(saveFile).mockRejectedValueOnce(new ApiError("Path traversal denied", 403))
+      await renderLoaded()
+      dragTo("parseBody", 10, 10)
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => expect(screen.getByText("Save failed")).toBeInTheDocument())
+      expect(screen.getByText("Path traversal denied")).toBeInTheDocument()
+      // Still dirty: nothing was written.
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(true)
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+      })
+      await waitFor(() => expect(vi.mocked(saveFile)).toHaveBeenCalledTimes(2))
+      await waitFor(() => {
+        expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
+      })
+      expect(screen.queryByText("Save failed")).not.toBeInTheDocument()
+    })
+
+    it("Ctrl+S typed inside the code editor does not save the workflow", async () => {
+      await renderLoaded()
+      const monaco = document.createElement("div")
+      monaco.className = "monaco-editor"
+      const textarea = document.createElement("textarea")
+      monaco.appendChild(textarea)
+      document.body.appendChild(monaco)
+      await act(async () => {
+        fireEvent.keyDown(textarea, { key: "s", ctrlKey: true })
+      })
+      expect(vi.mocked(saveFile)).not.toHaveBeenCalled()
+      monaco.remove()
+    })
+
+    it("offers Retry after a load error", async () => {
+      vi.mocked(fetchWorkflowFile).mockRejectedValueOnce(
+        new ApiError("workflows/users/create.workflow is not valid JSON: Unexpected token", 422),
+      )
+      render(<WorkflowEditor path={PATH} tabId="test-tab" />)
+      await waitFor(() => expect(screen.getByText(/not valid JSON/)).toBeInTheDocument())
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+    })
+
+    it("reloads a clean tab when its file changes on disk", async () => {
+      await renderLoaded()
+      vi.mocked(fetchWorkflowFile).mockResolvedValue({
+        ...sampleWorkflow,
+        nodes: { ...sampleWorkflow.nodes, extra: { uses: "./extra" } },
+      })
+      act(() => emitFileEvent({ type: "change", path: PATH }))
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("4")
+      })
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
+      expect(screen.queryByText(/changed on disk/i)).not.toBeInTheDocument()
+    })
+
+    it("keeps local edits and asks when a dirty tab's file changes on disk", async () => {
+      await renderLoaded()
+      dragTo("parseBody", 321, 123)
+      vi.mocked(fetchWorkflowFile).mockResolvedValue({
+        ...sampleWorkflow,
+        nodes: { ...sampleWorkflow.nodes, extra: { uses: "./extra" } },
+      })
+      act(() => emitFileEvent({ type: "change", path: PATH }))
+      await waitFor(() => {
+        expect(screen.getByText(/changed on disk/i)).toBeInTheDocument()
+      })
+      // Local state untouched.
+      expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      expect(positionOf("parseBody")).toEqual({ x: 321, y: 123 })
+
+      fireEvent.click(screen.getByRole("button", { name: "Reload from disk" }))
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("4")
+      })
+      expect(screen.queryByText(/changed on disk/i)).not.toBeInTheDocument()
+    })
+
+    it("'Keep my changes' dismisses the conflict and leaves the tab dirty", async () => {
+      await renderLoaded()
+      dragTo("parseBody", 321, 123)
+      vi.mocked(fetchWorkflowFile).mockResolvedValue({ ...sampleWorkflow, view: {} })
+      act(() => emitFileEvent({ type: "change", path: PATH }))
+      await waitFor(() => expect(screen.getByText(/changed on disk/i)).toBeInTheDocument())
+      fireEvent.click(screen.getByRole("button", { name: "Keep my changes" }))
+      await waitFor(() => expect(screen.queryByText(/changed on disk/i)).not.toBeInTheDocument())
+      expect(positionOf("parseBody")).toEqual({ x: 321, y: 123 })
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(true)
+    })
+
+    it("ignores the change event echoed back by its own save", async () => {
+      await renderLoaded()
+      dragTo("parseBody", 50, 60)
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      })
+      await waitFor(() => expect(vi.mocked(saveFile)).toHaveBeenCalledOnce())
+      const written = JSON.parse(vi.mocked(saveFile).mock.calls[0]![1]) as WorkflowFile
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(written)
+      act(() => emitFileEvent({ type: "change", path: PATH }))
+      await waitFor(() => expect(vi.mocked(fetchWorkflowFile)).toHaveBeenCalledTimes(2))
+      // Undo still walks back through the pre-save edit.
+      expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled()
+      expect(screen.queryByText(/changed on disk/i)).not.toBeInTheDocument()
+    })
+
+    it("warns when the file is deleted on disk", async () => {
+      await renderLoaded()
+      act(() => emitFileEvent({ type: "unlink", path: PATH }))
+      await waitFor(() => {
+        expect(screen.getByText(/deleted on disk/i)).toBeInTheDocument()
+      })
+    })
+
+    it("reports unavailable schemas with a Retry, and refetches when a node file changes", async () => {
+      vi.mocked(fetchWorkspaceSchemas).mockRejectedValueOnce(new ApiError("introspection crashed", 500))
+      await renderLoaded()
+      await waitFor(() => expect(screen.getByText(/node schemas unavailable/i)).toBeInTheDocument())
+      expect(screen.getByText(/introspection crashed/)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+      await waitFor(() => {
+        expect(screen.queryByText(/node schemas unavailable/i)).not.toBeInTheDocument()
+      })
+
+      const calls = vi.mocked(fetchWorkspaceSchemas).mock.calls.length
+      act(() => emitFileEvent({ type: "change", path: "nodes/users/save-user.ts" }))
+      await waitFor(
+        () => expect(vi.mocked(fetchWorkspaceSchemas).mock.calls.length).toBe(calls + 1),
+        { timeout: 2000 },
+      )
+    })
+
+    it("drops a node at the cursor in flow coordinates when the canvas is panned", async () => {
+      await renderLoaded()
+      flowOffset = { x: 100, y: 40 }
+      const canvas = screen.getByTestId("react-flow").parentElement!
+      const dataTransfer = {
+        types: ["application/lorien-node"],
+        getData: vi.fn().mockReturnValue("./nodes/users/save-user"),
+        dropEffect: "",
+      }
+      // jsdom has no DragEvent, so build a MouseEvent (which carries clientX/Y)
+      // under the "drop" type and attach the dataTransfer by hand.
+      const drop = new MouseEvent("drop", { bubbles: true, cancelable: true, clientX: 250, clientY: 150 })
+      Object.defineProperty(drop, "dataTransfer", { value: dataTransfer })
+      act(() => {
+        canvas.dispatchEvent(drop)
+      })
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("4")
+      })
+      const added = capturedNodes?.find((n) => !["parseBody", "validate", "save"].includes(n.id))
+      expect((added as { position?: unknown })?.position).toEqual({ x: 150, y: 110 })
     })
   })
 })

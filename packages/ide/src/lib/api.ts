@@ -15,22 +15,70 @@ export interface WorkspaceFile {
   content: string
 }
 
+/**
+ * Error thrown by every workspace API helper. `message` is the human-readable
+ * reason (the server's `{ error }` body when it sent one), `status` is the HTTP
+ * status, or 0 when the request never reached the server.
+ */
+export class ApiError extends Error {
+  readonly status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = "ApiError"
+    this.status = status
+  }
+}
+
+/**
+ * Reads a failed response's `{ error }` body when present so callers can show
+ * the server's reason instead of a bare status code.
+ */
+async function errorFromResponse(res: Response, what: string): Promise<ApiError> {
+  let reason: string | undefined
+  try {
+    const body = (await res.json()) as { error?: unknown }
+    if (typeof body?.error === "string" && body.error.length > 0) reason = body.error
+  } catch {
+    // Non-JSON body — fall through to the generic message.
+  }
+  return new ApiError(reason ?? `${what} failed (HTTP ${res.status})`, res.status)
+}
+
+/** fetch() wrapper that turns network failures into an ApiError with status 0. */
+async function request(
+  input: string,
+  init: RequestInit | undefined,
+  what: string,
+): Promise<Response> {
+  try {
+    return await fetch(input, init)
+  } catch (e) {
+    throw new ApiError(
+      `${what} failed: could not reach the lorien IDE server (${(e as Error).message})`,
+      0,
+    )
+  }
+}
+
+async function getJson<T>(url: string, what: string): Promise<T> {
+  const res = await request(url, undefined, what)
+  if (!res.ok) throw await errorFromResponse(res, what)
+  return res.json() as Promise<T>
+}
+
 export async function fetchWorkspaceInfo(): Promise<WorkspaceInfo> {
-  const res = await fetch("/api/workspace/info")
-  if (!res.ok) throw new Error(`/api/workspace/info returned ${res.status}`)
-  return res.json() as Promise<WorkspaceInfo>
+  return getJson<WorkspaceInfo>("/api/workspace/info", "Loading workspace info")
 }
 
 export async function fetchWorkspaceTree(): Promise<WorkspaceTree> {
-  const res = await fetch("/api/workspace/tree")
-  if (!res.ok) throw new Error(`/api/workspace/tree returned ${res.status}`)
-  return res.json() as Promise<WorkspaceTree>
+  return getJson<WorkspaceTree>("/api/workspace/tree", "Loading the file tree")
 }
 
 export async function fetchFile(path: string): Promise<WorkspaceFile> {
-  const res = await fetch(`/api/workspace/file?path=${encodeURIComponent(path)}`)
-  if (!res.ok) throw new Error(`/api/workspace/file returned ${res.status}`)
-  return res.json() as Promise<WorkspaceFile>
+  return getJson<WorkspaceFile>(
+    `/api/workspace/file?path=${encodeURIComponent(path)}`,
+    `Loading ${path}`,
+  )
 }
 
 // ── Workflow types (minimal — avoids pulling in the heavy runtime/zod dep) ────
@@ -62,7 +110,37 @@ export interface NodeInstance {
 
 export async function fetchWorkflowFile(path: string): Promise<WorkflowFile> {
   const { content } = await fetchFile(path)
-  return JSON.parse(content) as WorkflowFile
+  return parseWorkflowContent(path, content)
+}
+
+/**
+ * Parses and shape-checks `.workflow` text. Throws a readable error naming the
+ * file (and the JSON parser's reason) instead of a bare SyntaxError.
+ */
+export function parseWorkflowContent(path: string, content: string): WorkflowFile {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(content)
+  } catch (e) {
+    throw new ApiError(`${path} is not valid JSON: ${(e as Error).message}`, 422)
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new ApiError(`${path} must contain a JSON object`, 422)
+  }
+  const nodes = (parsed as { nodes?: unknown }).nodes
+  if (typeof nodes !== "object" || nodes === null || Array.isArray(nodes)) {
+    throw new ApiError(`${path} is missing its "nodes" object`, 422)
+  }
+  for (const [id, node] of Object.entries(nodes as Record<string, unknown>)) {
+    if (
+      typeof node !== "object" ||
+      node === null ||
+      typeof (node as { uses?: unknown }).uses !== "string"
+    ) {
+      throw new ApiError(`${path}: node "${id}" is missing a "uses" string`, 422)
+    }
+  }
+  return parsed as WorkflowFile
 }
 
 export interface SaveResult {
@@ -71,17 +149,17 @@ export interface SaveResult {
 }
 
 export async function saveFile(path: string, content: string): Promise<SaveResult> {
-  const res = await fetch("/api/workspace/file", {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ path, content }),
-  })
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as {
-      error?: string
-    }
-    throw new Error(err.error ?? `Save failed: ${res.status}`)
-  }
+  const what = `Saving ${path}`
+  const res = await request(
+    "/api/workspace/file",
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, content }),
+    },
+    what,
+  )
+  if (!res.ok) throw await errorFromResponse(res, what)
   return res.json() as Promise<SaveResult>
 }
 
@@ -115,9 +193,10 @@ export interface NodeSchemas {
 }
 
 export async function fetchWorkspaceSchemas(): Promise<Record<string, NodeSchemas>> {
-  const res = await fetch("/api/workspace/schemas")
-  if (!res.ok) throw new Error(`/api/workspace/schemas returned ${res.status}`)
-  const { schemas } = (await res.json()) as { schemas: Record<string, NodeSchemas> }
+  const { schemas } = await getJson<{ schemas: Record<string, NodeSchemas> }>(
+    "/api/workspace/schemas",
+    "Loading node schemas",
+  )
   return schemas
 }
 
@@ -126,29 +205,31 @@ export async function fetchWorkspaceSchemas(): Promise<Record<string, NodeSchema
  * exists (backend returns 409) or if the request fails for any other reason.
  */
 export async function createWorkspaceFile(path: string, content: string): Promise<void> {
-  const res = await fetch(`/api/workspace/file?path=${encodeURIComponent(path)}&create=true`, {
-    method: "PUT",
-    body: content,
-  })
-  if (res.status === 409) throw new Error("File already exists")
-  if (!res.ok) throw new Error(`PUT failed: ${res.status}`)
+  const what = `Creating ${path}`
+  const res = await request(
+    `/api/workspace/file?path=${encodeURIComponent(path)}&create=true`,
+    { method: "PUT", body: content },
+    what,
+  )
+  if (res.status === 409) throw new ApiError("File already exists", 409)
+  if (!res.ok) throw await errorFromResponse(res, what)
 }
 
 /**
  * Creates an empty folder at `path` (mkdir -p semantics). Idempotent.
  */
 export async function createWorkspaceFolder(path: string): Promise<void> {
-  const res = await fetch("/api/workspace/folder", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ path }),
-  })
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as {
-      error?: string
-    }
-    throw new Error(err.error ?? `Create folder failed: ${res.status}`)
-  }
+  const what = `Creating folder ${path}`
+  const res = await request(
+    "/api/workspace/folder",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path }),
+    },
+    what,
+  )
+  if (!res.ok) throw await errorFromResponse(res, what)
 }
 
 // ── Agent broker base URLs ────────────────────────────────────────────────────
@@ -161,20 +242,39 @@ export async function createWorkspaceFolder(path: string): Promise<void> {
  * `VITE_LORIEN_API_URL` to point at the runtime when they differ.
  */
 
-const DEFAULT_BASE = "http://localhost:3000"
+const DEFAULT_DEV_BASE = "http://localhost:3000"
 
 export function restBase(): string {
-  const viteUrl =
-    (import.meta as ImportMeta & { env?: Record<string, string> }).env
-      ?.VITE_LORIEN_API_URL
+  const env = (import.meta as ImportMeta & { env?: Record<string, string | boolean | undefined> })
+    .env
+  const viteUrl = typeof env?.VITE_LORIEN_API_URL === "string" ? env.VITE_LORIEN_API_URL : undefined
   // In test environments, vi.stubEnv sets process.env but not import.meta.env
   // (Vite inlines VITE_* at transform time). Fall back to process.env for testability.
   // Accessed via globalThis so the IDE's browser-only tsconfig (no node types)
   // doesn't see a bare `process` reference.
-  const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } })
-    .process
-  const procUrl = proc?.env?.VITE_LORIEN_API_URL
-  return viteUrl ?? procUrl ?? DEFAULT_BASE
+  const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
+  return resolveRestBase({
+    configuredUrl: viteUrl ?? proc?.env?.VITE_LORIEN_API_URL,
+    devServer: env?.DEV !== false,
+    pageOrigin: (globalThis as { location?: { origin?: string } }).location?.origin,
+  })
+}
+
+/**
+ * Picks the backend base URL. An explicit `VITE_LORIEN_API_URL` always wins.
+ * A production bundle is served by `lorien ide`, which hosts the workflows,
+ * the debugger socket and the agent broker on its own origin — so it talks to
+ * its own origin. Only the Vite dev server reaches across to a separately
+ * running backend.
+ */
+export function resolveRestBase(opts: {
+  configuredUrl?: string | undefined
+  devServer: boolean
+  pageOrigin?: string | undefined
+}): string {
+  if (opts.configuredUrl) return opts.configuredUrl
+  if (!opts.devServer && opts.pageOrigin) return opts.pageOrigin
+  return DEFAULT_DEV_BASE
 }
 
 export function wsUrl(): string {

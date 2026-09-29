@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTabsStore, useWorkflowTabs } from "@/store/tabs";
+import { useWorkflowDrafts } from "@/store/workflow-drafts";
 import { WorkflowEditor } from "@/workflow/workflow-editor";
 
 export function WorkflowEditorPanel() {
@@ -28,6 +29,7 @@ export function WorkflowEditorPanel() {
       if (!confirmed) return;
     }
     closeTab(tabId);
+    useWorkflowDrafts.getState().drop(tabId);
   }
 
   return (
@@ -78,7 +80,9 @@ export function WorkflowEditorPanel() {
       {/* Content area */}
       <div className="flex-1 overflow-auto">
         {active?.path ? (
-          <WorkflowEditor path={active.path} tabId={active.id} />
+          // Keyed per tab: each tab gets fresh canvas state (expansion,
+          // viewport) while its edits persist in the drafts store.
+          <WorkflowEditor key={active.id} path={active.path} tabId={active.id} />
         ) : active ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
             <h2 className="text-xl font-semibold">{active.title}</h2>

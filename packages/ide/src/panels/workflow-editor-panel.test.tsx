@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useTabsStore } from "@/store/tabs"
+import { useWorkflowDrafts } from "@/store/workflow-drafts"
 import { WorkflowEditorPanel } from "./workflow-editor-panel.js"
 
 // Stub WorkflowEditor so tests don't trigger real fetch calls
@@ -109,5 +110,35 @@ describe("WorkflowEditorPanel", () => {
     // Click x tab
     fireEvent.click(screen.getByRole("button", { name: "x.workflow" }))
     expect(useTabsStore.getState().activeWorkflowId).toBe("x")
+  })
+
+  it("closing a tab discards its in-memory draft", () => {
+    useTabsStore.getState().openTab({
+      id: "x",
+      title: "x.workflow",
+      kind: "workflow",
+      path: "workflows/x.workflow",
+    })
+    useWorkflowDrafts.getState().load("x", "workflows/x.workflow", { lorien: 1, nodes: {} })
+    render(<WorkflowEditorPanel />)
+    fireEvent.click(screen.getByRole("button", { name: /close x.workflow/i }))
+    expect(useWorkflowDrafts.getState().drafts.x).toBeUndefined()
+  })
+
+  it("mounts a fresh editor per tab (keyed by tab id)", () => {
+    for (const id of ["a", "b"]) {
+      useTabsStore.getState().openTab({
+        id,
+        title: `${id}.workflow`,
+        kind: "workflow",
+        path: `workflows/${id}.workflow`,
+      })
+    }
+    render(<WorkflowEditorPanel />)
+    const first = screen.getByTestId("workflow-editor")
+    fireEvent.click(screen.getByText("a.workflow"))
+    const second = screen.getByTestId("workflow-editor")
+    expect(second.textContent).toBe("workflows/a.workflow")
+    expect(second).not.toBe(first)
   })
 })

@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { CodeEditor } from "@/code/code-editor";
 import { cn } from "@/lib/utils";
+import { useCodeDrafts } from "@/store/code-drafts";
 import { useCodeTabs, useTabsStore } from "@/store/tabs";
 
 export function CodeEditorPanel() {
@@ -28,6 +29,7 @@ export function CodeEditorPanel() {
       if (!confirmed) return;
     }
     closeTab(tabId);
+    useCodeDrafts.getState().drop(tabId);
   }
 
   return (
@@ -76,7 +78,7 @@ export function CodeEditorPanel() {
       </div>
       <div className="flex-1 overflow-hidden">
         {active?.path ? (
-          <CodeEditor path={active.path} tabId={active.id} />
+          <CodeEditor key={active.id} path={active.path} tabId={active.id} />
         ) : active ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
             <h2 className="text-xl font-semibold">{active.title}</h2>

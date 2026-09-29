@@ -10,7 +10,9 @@ import {
   type NodeChange,
   type NodeTypes,
   ReactFlow,
+  ReactFlowProvider,
   type Node as RFNode,
+  useReactFlow,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent, MouseEvent as ReactMouseEvent } from "react";
@@ -22,6 +24,13 @@ import {
   saveFile,
   type WorkflowFile,
 } from "@/lib/api";
+import {
+  type ApplyOptions,
+  isDraftDirty,
+  serializeWorkflow,
+  useWorkflowDrafts,
+} from "@/store/workflow-drafts";
+import { EditorNotice } from "@/components/editor-notice";
 import { subscribeToFileEvents } from "@/lib/events";
 import { useTabsStore } from "@/store/tabs";
 import { useThemeStore } from "@/store/theme";
@@ -45,6 +54,7 @@ import { PathEdge, type PathMapping } from "./path-edge";
 import { WorkflowNode, ROOT_HANDLE_ID } from "./workflow-node";
 import { useSelectionStore } from "@/store/selection";
 import { useLiveWorkflowStore } from "@/store/live-workflow";
+import type { Breakpoint } from "@darrylondil/lorien-runtime";
 import { useDebugSessionStore, type NodeStatus } from "@/store/debug-session";
 import { openCodeFile } from "@/lib/open-code-file";
 
@@ -81,13 +91,36 @@ interface WorkflowNodeDataLike {
   [key: string]: unknown;
 }
 
-export function WorkflowEditor({ path, tabId }: Props) {
-  const [workflow, setWorkflow] = useState<WorkflowFile | null>(null);
+/**
+ * The canvas for one workflow tab. Editing state (the workflow, undo history,
+ * dirty flag) lives in `useWorkflowDrafts` keyed by tab, so unmounting the
+ * editor — switching tabs, re-docking the panel — never loses edits.
+ */
+export function WorkflowEditor(props: Props) {
+  return (
+    <ReactFlowProvider>
+      <WorkflowEditorInner {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function WorkflowEditorInner({ path, tabId }: Props) {
+  const draft = useWorkflowDrafts((s) => s.drafts[tabId]);
+  const ownDraft = draft && draft.path === path ? draft : undefined;
+  const workflow = ownDraft?.workflow ?? null;
+  const dirty = isDraftDirty(ownDraft);
+  const diskConflict = ownDraft?.diskConflict ?? null;
+  const canUndo = (ownDraft?.past.length ?? 0) > 0;
+  const canRedo = (ownDraft?.future.length ?? 0) > 0;
   const [error, setError] = useState<string | null>(null);
   const [nodes, setNodes] = useState<RFNode[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [dirty, setLocalDirty] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [schemas, setSchemas] = useState<Record<string, NodeSchemas>>({});
+  const [schemasError, setSchemasError] = useState<string | null>(null);
+  const [externalError, setExternalError] = useState<string | null>(null);
+  const [deletedOnDisk, setDeletedOnDisk] = useState(false);
+  const { screenToFlowPosition } = useReactFlow();
   const [expansion, setExpansion] = useState<Map<string, NodeExpansion>>(
     () => new Map(),
   );
@@ -116,6 +149,13 @@ export function WorkflowEditor({ path, tabId }: Props) {
   }, [selectedRunEvents, selectedRunPausedFrame]);
   const breakpoints = useDebugSessionStore((s) => s.breakpoints);
   const toggleBreakpoint = useDebugSessionStore((s) => s.toggleBreakpoint);
+  // Refs so the node-init effect can stamp the current run status and
+  // breakpoints onto rebuilt nodes without depending on them (which would
+  // rebuild the whole graph on every debug event).
+  const nodeStatusesRef = useRef(nodeStatuses);
+  nodeStatusesRef.current = nodeStatuses;
+  const breakpointsRef = useRef(breakpoints);
+  breakpointsRef.current = breakpoints;
 
   // Set of "sourceNodeId||sourceHandle" keys for edges currently flashing
   const [flashingEdges, setFlashingEdges] = useState<Set<string>>(() => new Set());
@@ -169,24 +209,42 @@ export function WorkflowEditor({ path, tabId }: Props) {
     nodeId: string | null;
   }>({ open: false, x: 0, y: 0, nodeId: null });
 
-  const markDirty = useCallback(
-    (value: boolean) => {
-      setLocalDirty(value);
-      dirtyRef.current = value;
-      setDirty(tabId, value);
-    },
-    [tabId, setDirty],
-  );
+  // Mirror the draft's dirty flag into the tab strip and the Ctrl+S / file
+  // event handlers.
+  dirtyRef.current = dirty;
+  useEffect(() => {
+    setDirty(tabId, dirty);
+  }, [tabId, dirty, setDirty]);
 
-  /** Single point that writes a new workflow state everywhere it needs to live. */
+  // Keep the ref + inspector's live copy in step with the draft (covers
+  // edits, undo/redo, saves and external reloads alike).
+  useEffect(() => {
+    workflowRef.current = workflow;
+    if (workflow) useLiveWorkflowStore.getState().setLiveWorkflow(tabId, workflow);
+  }, [tabId, workflow]);
+
+  /** Single point that records an edit. Every edit is one undo step. */
   const applyWorkflow = useCallback(
-    (next: WorkflowFile) => {
+    (next: WorkflowFile, opts?: ApplyOptions) => {
       workflowRef.current = next;
-      setWorkflow(next);
-      useLiveWorkflowStore.getState().setLiveWorkflow(tabId, next);
+      useWorkflowDrafts.getState().apply(tabId, next, opts);
     },
     [tabId],
   );
+
+  const undo = useCallback(() => {
+    const store = useWorkflowDrafts.getState();
+    if (store.undo(tabId)) {
+      workflowRef.current = useWorkflowDrafts.getState().drafts[tabId]?.workflow ?? null;
+    }
+  }, [tabId]);
+
+  const redo = useCallback(() => {
+    const store = useWorkflowDrafts.getState();
+    if (store.redo(tabId)) {
+      workflowRef.current = useWorkflowDrafts.getState().drafts[tabId]?.workflow ?? null;
+    }
+  }, [tabId]);
 
   const addNodeAt = useCallback(
     (uses: string, x: number, y: number) => {
@@ -199,9 +257,8 @@ export function WorkflowEditor({ path, tabId }: Props) {
       // displays "GET" + "/users" without writing anything into the workflow
       // file. The user can override by typing — that writes to `values:`.
       applyWorkflow(next);
-      markDirty(true);
     },
-    [applyWorkflow, markDirty],
+    [applyWorkflow],
   );
 
   const onNodesDelete = useCallback(
@@ -213,14 +270,13 @@ export function WorkflowEditor({ path, tabId }: Props) {
         next = deleteNode(next, n.id);
       }
       applyWorkflow(next);
-      markDirty(true);
       // Clear selection if the deleted node was selected
       const selected = useSelectionStore.getState().selectedNodeId;
       if (selected && deleted.some((n) => n.id === selected)) {
         useSelectionStore.getState().setSelected(null);
       }
     },
-    [applyWorkflow, markDirty],
+    [applyWorkflow],
   );
 
   const onEdgesDelete = useCallback(
@@ -235,9 +291,8 @@ export function WorkflowEditor({ path, tabId }: Props) {
       if (allMappings.length === 0) return;
       const next = removeMappings(wf, allMappings);
       applyWorkflow(next);
-      markDirty(true);
     },
-    [applyWorkflow, markDirty],
+    [applyWorkflow],
   );
 
   // Track whether a reconnect completed successfully to distinguish "drop on
@@ -272,12 +327,12 @@ export function WorkflowEditor({ path, tabId }: Props) {
   const onPaneContextMenu = useCallback(
     (event: ReactMouseEvent | MouseEvent) => {
       event.preventDefault();
-      const bounds = reactFlowRef.current?.getBoundingClientRect();
-      const flowX = bounds ? event.clientX - bounds.left : event.clientX;
-      const flowY = bounds ? event.clientY - bounds.top : event.clientY;
-      setMenu({ open: true, x: event.clientX, y: event.clientY, flowX, flowY });
+      // Convert through the viewport so the node lands under the cursor even
+      // after the canvas has been panned or zoomed.
+      const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      setMenu({ open: true, x: event.clientX, y: event.clientY, flowX: flow.x, flowY: flow.y });
     },
-    [],
+    [screenToFlowPosition],
   );
 
   const onNodeContextMenu = useCallback(
@@ -294,8 +349,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
     if (!id || !wf) return;
     const next = resetNodeConnections(wf, id);
     applyWorkflow(next);
-    markDirty(true);
-  }, [nodeMenu.nodeId, applyWorkflow, markDirty]);
+  }, [nodeMenu.nodeId, applyWorkflow]);
 
   const handleDeleteFromMenu = useCallback(() => {
     const id = nodeMenu.nodeId;
@@ -339,25 +393,34 @@ export function WorkflowEditor({ path, tabId }: Props) {
       const uses = e.dataTransfer.getData("application/lorien-node");
       if (!uses) return;
       e.preventDefault();
-      const bounds = reactFlowRef.current?.getBoundingClientRect();
-      const x = bounds ? e.clientX - bounds.left : e.clientX;
-      const y = bounds ? e.clientY - bounds.top : e.clientY;
-      addNodeAt(uses, x, y);
+      const flow = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      addNodeAt(uses, flow.x, flow.y);
     },
-    [addNodeAt],
+    [addNodeAt, screenToFlowPosition],
   );
 
-  const doFetch = useCallback(() => {
+  /** Flow coordinates of the visible canvas centre — where palette picks land. */
+  const viewportCenter = useCallback((): { x: number; y: number } => {
+    const bounds = reactFlowRef.current?.getBoundingClientRect();
+    if (!bounds || bounds.width === 0) return { x: 100, y: 100 };
+    const c = screenToFlowPosition({
+      x: bounds.left + bounds.width / 2,
+      y: bounds.top + bounds.height / 2,
+    });
+    // Offset by half a node card so the card, not its corner, is centred.
+    return { x: c.x - 120, y: c.y - 40 };
+  }, [screenToFlowPosition]);
+
+  /** (Re)load the file from disk into this tab's draft, dropping local edits. */
+  const loadFromDisk = useCallback(() => {
     let alive = true;
     setError(null);
-    setWorkflow(null);
-    setNodes([]);
-    markDirty(false);
     fetchWorkflowFile(path)
       .then((wf) => {
-        if (alive) {
-          applyWorkflow(wf);
-        }
+        if (!alive) return;
+        useWorkflowDrafts.getState().load(tabId, path, wf);
+        setDeletedOnDisk(false);
+        setExternalError(null);
       })
       .catch((e: Error) => {
         if (alive) setError(e.message);
@@ -365,27 +428,40 @@ export function WorkflowEditor({ path, tabId }: Props) {
     return () => {
       alive = false;
     };
-  }, [path, markDirty, applyWorkflow]);
+  }, [path, tabId]);
 
+  // Only hit the disk when this tab has no draft yet — a remount (tab switch)
+  // must resume the in-memory edits instead of clobbering them.
   useEffect(() => {
-    return doFetch();
-  }, [doFetch]);
+    const existing = useWorkflowDrafts.getState().drafts[tabId];
+    if (existing && existing.path === path) return;
+    return loadFromDisk();
+  }, [loadFromDisk, path, tabId]);
 
-  // Fetch schemas once on mount — they don't change per workflow tab
+  const aliveRef = useRef(true);
   useEffect(() => {
-    let alive = true;
-    fetchWorkspaceSchemas()
-      .then((s) => {
-        if (alive) setSchemas(s);
-      })
-      .catch(() => {
-        // Schemas are best-effort; fall back to inference if the call fails
-        if (alive) setSchemas({});
-      });
+    aliveRef.current = true;
     return () => {
-      alive = false;
+      aliveRef.current = false;
     };
   }, []);
+
+  const reloadSchemas = useCallback(() => {
+    fetchWorkspaceSchemas()
+      .then((s) => {
+        if (!aliveRef.current) return;
+        setSchemas(s);
+        setSchemasError(null);
+      })
+      .catch((e: Error) => {
+        // Keep the last good schemas; the canvas falls back to inference.
+        if (aliveRef.current) setSchemasError(e.message);
+      });
+  }, []);
+
+  useEffect(() => {
+    reloadSchemas();
+  }, [reloadSchemas]);
 
   /**
    * Called when the user edits a literal value in an inline input widget on a
@@ -406,10 +482,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
         ...wf,
         nodes: { ...wf.nodes, [nodeId]: { ...node, values: nextValues } },
       };
-      applyWorkflow(next);
-      markDirty(true);
+      // Typing into one field is one undo step, not one per keystroke.
+      applyWorkflow(next, { coalesceKey: `value:${nodeId}:${portId}` });
     },
-    [applyWorkflow, markDirty],
+    [applyWorkflow],
   );
 
   // Keep expansionRef in sync so node-init effect always sees fresh data
@@ -485,6 +561,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
         // onInputValueChange (workflow changes) don't reset the user's
         // expanded/collapsed state back to empty sets.
         const existingExp = expansionRef.current.get(id);
+        const bp = breakpointDataFor(breakpointsRef.current, path, id);
         return {
           id,
           type: "workflow",
@@ -503,6 +580,9 @@ export function WorkflowEditor({ path, tabId }: Props) {
               onTogglePort(id, side, handleId),
             onInputValueChange: (portId: string, value: unknown) =>
               onInputValueChange(id, portId, value),
+            nodeStatus: nodeStatusesRef.current.get(id),
+            nodeBreakpoint: bp.nodeBreakpoint,
+            portBreakpoints: bp.portBreakpoints,
           },
         };
       },
@@ -555,24 +635,10 @@ export function WorkflowEditor({ path, tabId }: Props) {
   // renders red dots for nodes/ports that have breakpoints set.
   useEffect(() => {
     setNodes((nds) =>
-      nds.map((n) => {
-        const bps = breakpoints.filter(
-          (b) => b.workflowPath === path && b.nodeId === n.id,
-        );
-        const nodeBreakpoint = {
-          before: bps.some((b) => b.kind === "before"),
-          after: bps.some((b) => b.kind === "after"),
-        };
-        const portBreakpoints = new Set(
-          bps
-            .filter((b) => b.kind.startsWith("port:"))
-            .map((b) => b.kind.slice("port:".length)),
-        );
-        return {
-          ...n,
-          data: { ...n.data, nodeBreakpoint, portBreakpoints },
-        };
-      }),
+      nds.map((n) => ({
+        ...n,
+        data: { ...n.data, ...breakpointDataFor(breakpoints, path, n.id) },
+      })),
     );
   }, [breakpoints, path, setNodes]);
 
@@ -751,6 +817,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
     const wf = workflowRef.current;
     if (!wf) return;
     setSaveState("saving");
+    setSaveError(null);
     const newView: Record<string, { x: number; y: number }> = {};
     for (const n of nodesRef.current) {
       newView[n.id] = {
@@ -760,29 +827,51 @@ export function WorkflowEditor({ path, tabId }: Props) {
     }
     const updated: WorkflowFile = { ...wf, view: newView };
     try {
-      await saveFile(path, `${JSON.stringify(updated, null, 2)}\n`);
-      // Update the in-memory workflow so subsequent saves start from the new state
-      workflowRef.current = updated;
-      markDirty(false);
+      await saveFile(path, serializeWorkflow(updated));
+      // The written content is the new baseline. Edits made while the write
+      // was in flight survive (markSaved only swaps in `updated` if the draft
+      // is still the state we saved from).
+      useWorkflowDrafts.getState().markSaved(tabId, updated, wf);
+      workflowRef.current = useWorkflowDrafts.getState().drafts[tabId]?.workflow ?? updated;
+      setDeletedOnDisk(false);
+      if (!aliveRef.current) return;
       setSaveState("saved");
-      setTimeout(() => setSaveState("idle"), 1500);
+      setTimeout(() => {
+        if (aliveRef.current) setSaveState((st) => (st === "saved" ? "idle" : st));
+      }, 1500);
     } catch (e) {
-      console.error("Failed to persist workflow positions:", e);
+      if (!aliveRef.current) return;
       setSaveState("error");
+      setSaveError((e as Error).message);
     }
-  }, [path, markDirty]);
+  }, [path, tabId]);
 
-  // Ctrl+S / Cmd+S — global listener (fine in v1; scope to div if needed later)
+  // Keyboard: Ctrl/Cmd+S saves; Ctrl/Cmd+Z undoes; Ctrl/Cmd+Shift+Z and
+  // Ctrl/Cmd+Y redo. Only one workflow editor is mounted at a time. Keys
+  // typed inside the code editor or a text field keep their native meaning.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest(".monaco-editor")) return;
+      const key = e.key.toLowerCase();
+      if (key === "s") {
         e.preventDefault();
         void save();
+        return;
+      }
+      if (isTextEntry(target)) return;
+      if (key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((key === "z" && e.shiftKey) || key === "y") {
+        e.preventDefault();
+        redo();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [save]);
+  }, [save, undo, redo]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -792,15 +881,25 @@ export function WorkflowEditor({ path, tabId }: Props) {
       nodesRef.current = next;
       setNodes(next);
 
-      // When any drag ends, mark the tab dirty (no autosave)
-      const dragEnded = changes.some(
-        (c) => c.type === "position" && c.dragging === false,
+      // When a drag ends, commit the new positions into the workflow's
+      // `view` block — one undo step per drag, and later edits (which
+      // rebuild nodes from the workflow) keep the moved positions.
+      const moved = changes.filter(
+        (c): c is Extract<NodeChange, { type: "position" }> =>
+          c.type === "position" && c.dragging === false,
       );
-      if (dragEnded) {
-        markDirty(true);
+      const wf = workflowRef.current;
+      if (moved.length > 0 && wf) {
+        const view = { ...(wf.view ?? {}) };
+        for (const c of moved) {
+          const n = next.find((node) => node.id === c.id);
+          if (!n) continue;
+          view[c.id] = { x: Math.round(n.position.x), y: Math.round(n.position.y) };
+        }
+        applyWorkflow({ ...wf, view });
       }
     },
-    [markDirty],
+    [applyWorkflow],
   );
 
   /**
@@ -936,25 +1035,55 @@ export function WorkflowEditor({ path, tabId }: Props) {
         nodes: { ...wf.nodes, [target]: nextNode },
       };
       applyWorkflow(next);
-      markDirty(true);
     },
-    [applyWorkflow, markDirty, schemas],
+    [applyWorkflow, schemas],
   );
 
-  // Subscribe to live file events — reload if the file changes externally,
-  // but only when this tab doesn't have unsaved drags (don't clobber local work).
+  // Live file events. Changes to this workflow flow into the draft: a clean
+  // tab reloads (as an undoable step), a dirty tab keeps its edits and shows
+  // a conflict notice. Node source changes refresh the port schemas.
   useEffect(() => {
-    return subscribeToFileEvents((e) => {
+    let schemaTimer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = subscribeToFileEvents((e) => {
+      if (e.path.startsWith("nodes/")) {
+        if (schemaTimer) clearTimeout(schemaTimer);
+        schemaTimer = setTimeout(reloadSchemas, 300);
+        return;
+      }
       if (e.path !== path) return;
-      if (dirtyRef.current) return; // keep local state
-      doFetch();
+      if (e.type === "unlink") {
+        setDeletedOnDisk(true);
+        return;
+      }
+      setDeletedOnDisk(false);
+      fetchWorkflowFile(path)
+        .then((wf) => {
+          if (!aliveRef.current) return;
+          setExternalError(null);
+          useWorkflowDrafts.getState().externalChange(tabId, wf);
+        })
+        .catch((err: Error) => {
+          if (aliveRef.current) setExternalError(err.message);
+        });
     });
-  }, [path, doFetch]);
+    return () => {
+      if (schemaTimer) clearTimeout(schemaTimer);
+      unsubscribe();
+    };
+  }, [path, tabId, reloadSchemas]);
 
-  if (error) {
+  if (error && !workflow) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-sm text-destructive">
-        Error loading workflow: {error}
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className="text-sm font-medium text-destructive">Error loading workflow</div>
+        <div className="max-w-md break-words font-mono text-xs text-muted-foreground">{error}</div>
+        <button
+          type="button"
+          onClick={() => loadFromDisk()}
+          className="rounded-md border border-border px-3 py-1 text-xs hover:bg-accent"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -996,29 +1125,101 @@ export function WorkflowEditor({ path, tabId }: Props) {
           <Controls />
         </ReactFlow>
       </div>
-      {saveState !== "idle" && (
-        <div
-          className={
-            saveState === "error"
-              ? "absolute bottom-3 right-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-1 text-xs text-destructive"
-              : "absolute bottom-3 right-3 rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground"
-          }
-        >
-          {saveState === "saving"
-            ? "Saving…"
-            : saveState === "saved"
-              ? "Saved"
-              : "Save failed"}
+      <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-col items-center gap-2">
+        {diskConflict && (
+          <EditorNotice
+            tone="warning"
+            title="This workflow changed on disk"
+            actions={[
+              {
+                label: "Reload from disk",
+                onClick: () => useWorkflowDrafts.getState().resolveConflict(tabId, "disk"),
+              },
+              {
+                label: "Keep my changes",
+                onClick: () => useWorkflowDrafts.getState().resolveConflict(tabId, "mine"),
+              },
+            ]}
+          >
+            You have unsaved edits. Reloading discards them (you can undo); keeping them
+            overwrites the disk version on your next save.
+          </EditorNotice>
+        )}
+        {deletedOnDisk && (
+          <EditorNotice tone="warning" title="This workflow was deleted on disk">
+            Save (Ctrl+S) to recreate it, or close the tab.
+          </EditorNotice>
+        )}
+        {externalError && (
+          <EditorNotice
+            tone="error"
+            title="Couldn't reload the file from disk"
+            actions={[{ label: "Dismiss", onClick: () => setExternalError(null) }]}
+          >
+            {externalError}
+          </EditorNotice>
+        )}
+        {schemasError && (
+          <EditorNotice
+            tone="warning"
+            title="Node schemas unavailable"
+            actions={[{ label: "Retry", onClick: reloadSchemas }]}
+          >
+            Ports are inferred from the workflow until schemas load. {schemasError}
+          </EditorNotice>
+        )}
+        {saveState === "error" && (
+          <EditorNotice
+            tone="error"
+            title="Save failed"
+            actions={[
+              { label: "Retry", onClick: () => void save() },
+              { label: "Dismiss", onClick: () => setSaveState("idle") },
+            ]}
+          >
+            {saveError ?? "The file could not be written."}
+          </EditorNotice>
+        )}
+      </div>
+      <div className="absolute bottom-3 right-3 flex items-center gap-2">
+        <div className="flex overflow-hidden rounded-md border border-border bg-card text-xs shadow-sm">
+          <button
+            type="button"
+            onClick={undo}
+            disabled={!canUndo}
+            aria-label="Undo"
+            title="Undo (Ctrl+Z)"
+            className="px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            onClick={redo}
+            disabled={!canRedo}
+            aria-label="Redo"
+            title="Redo (Ctrl+Shift+Z)"
+            className="border-l border-border px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          >
+            Redo
+          </button>
         </div>
-      )}
-      {dirty && saveState === "idle" && (
-        <div className="absolute bottom-3 right-3 rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-          Unsaved changes — Ctrl+S to save
-        </div>
-      )}
+        {saveState === "saving" || saveState === "saved" ? (
+          <div className="rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+            {saveState === "saving" ? "Saving…" : "Saved"}
+          </div>
+        ) : dirty && saveState === "idle" ? (
+          <div className="rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+            Unsaved changes — Ctrl+S to save
+          </div>
+        ) : null}
+      </div>
       <CommandPalette
         schemas={schemas}
-        onPick={(uses) => addNodeAt(uses, 100, 100)}
+        onPick={(uses) => {
+          const c = viewportCenter();
+          addNodeAt(uses, c.x, c.y);
+        }}
       />
       <CanvasContextMenu
         open={menu.open}
@@ -1034,7 +1235,7 @@ export function WorkflowEditor({ path, tabId }: Props) {
         onOpenChange={setNewNodeOpen}
         onCreated={(uses) => {
           // Re-fetch schemas so the new node type appears in the palette
-          fetchWorkspaceSchemas().then(setSchemas).catch(() => {})
+          reloadSchemas()
           // Add a node at the last-known context-menu position
           addNodeAt(uses, menu.flowX, menu.flowY)
         }}
@@ -1055,6 +1256,32 @@ export function WorkflowEditor({ path, tabId }: Props) {
       />
     </div>
   );
+}
+
+/** True when keyboard focus is somewhere text is typed (native undo applies). */
+function isTextEntry(el: Element | null): boolean {
+  if (!el) return false;
+  if (el instanceof HTMLElement && el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+/** Breakpoint decorations for one node, as WorkflowNode's data expects them. */
+function breakpointDataFor(
+  breakpoints: readonly Breakpoint[],
+  workflowPath: string,
+  nodeId: string,
+): { nodeBreakpoint: { before: boolean; after: boolean }; portBreakpoints: Set<string> } {
+  const bps = breakpoints.filter((b) => b.workflowPath === workflowPath && b.nodeId === nodeId);
+  return {
+    nodeBreakpoint: {
+      before: bps.some((b) => b.kind === "before"),
+      after: bps.some((b) => b.kind === "after"),
+    },
+    portBreakpoints: new Set(
+      bps.filter((b) => b.kind.startsWith("port:")).map((b) => b.kind.slice("port:".length)),
+    ),
+  };
 }
 
 function autoPosition(i: number): { x: number; y: number } {
