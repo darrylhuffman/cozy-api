@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { DebugSession } from "./debug-session.js"
 import type { Breakpoint, ServerMessage } from "./debug-protocol.js"
+import { DebugSession } from "./debug-session.js"
 import { loadWorkspace } from "./load.js"
 
 function makeMockClient() {
@@ -34,9 +34,7 @@ describe("DebugSession multi-active state", () => {
     const s = new DebugSession()
     const { ws, sent } = makeMockClient()
     s.connect(ws)
-    const bps: Breakpoint[] = [
-      { workflowPath: "a.workflow", nodeId: "n1", kind: "before" },
-    ]
+    const bps: Breakpoint[] = [{ workflowPath: "a.workflow", nodeId: "n1", kind: "before" }]
     await s.onMessage(ws, { type: "hello", breakpoints: bps })
     expect(sent.some((m) => m.type === "ready")).toBe(true)
     expect(s.getBreakpoints("a.workflow")).toEqual(bps)
@@ -57,9 +55,7 @@ describe("DebugSession multi-active state", () => {
       type: "set-breakpoints",
       breakpoints: [{ workflowPath: "a", nodeId: "n2", kind: "before" }],
     })
-    expect(s.getBreakpoints("a")).toEqual([
-      { workflowPath: "a", nodeId: "n2", kind: "before" },
-    ])
+    expect(s.getBreakpoints("a")).toEqual([{ workflowPath: "a", nodeId: "n2", kind: "before" }])
     expect(s.getBreakpoints("b")).toEqual([])
   })
 
@@ -84,11 +80,7 @@ describe("DebugSession multi-active state", () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(
       sent.some(
-        (m) =>
-          m.type === "paused" &&
-          m.runId === "r1" &&
-          m.nodeId === "X" &&
-          m.phase === "before",
+        (m) => m.type === "paused" && m.runId === "r1" && m.nodeId === "X" && m.phase === "before",
       ),
     ).toBe(true)
     await s.onMessage(ws, { type: "continue", runId: "r1" })
@@ -106,11 +98,9 @@ describe("DebugSession multi-active state", () => {
     const { onAfterNode } = s.registerRun("wf", "r1", Date.now())
     const pending = onAfterNode("X", { foo: 1 })
     await new Promise((r) => setTimeout(r, 10))
-    expect(
-      sent.some(
-        (m) => m.type === "paused" && m.runId === "r1" && m.phase === "after",
-      ),
-    ).toBe(true)
+    expect(sent.some((m) => m.type === "paused" && m.runId === "r1" && m.phase === "after")).toBe(
+      true,
+    )
     await s.onMessage(ws, { type: "continue", runId: "r1" })
     await pending
   })
@@ -146,18 +136,14 @@ describe("DebugSession multi-active state", () => {
     const b = s.registerRun("wf", "rB", Date.now())
     s._setStepModeForTest("rA", "step-over", "X")
     await a.onAfterNode("X", {})
-    expect(
-      sent.some(
-        (m) => m.type === "paused" && m.runId === "rA" && m.phase === "after",
-      ),
-    ).toBe(false)
+    expect(sent.some((m) => m.type === "paused" && m.runId === "rA" && m.phase === "after")).toBe(
+      false,
+    )
     const pendingB = b.onAfterNode("X", {})
     await new Promise((r) => setTimeout(r, 10))
-    expect(
-      sent.some(
-        (m) => m.type === "paused" && m.runId === "rB" && m.phase === "after",
-      ),
-    ).toBe(true)
+    expect(sent.some((m) => m.type === "paused" && m.runId === "rB" && m.phase === "after")).toBe(
+      true,
+    )
     await s.onMessage(ws, { type: "continue", runId: "rB" })
     await pendingB
   })
@@ -226,16 +212,16 @@ describe("DebugSession multi-active state", () => {
 })
 
 describe("DebugSession + loadWorkspace integration", () => {
-  let dir: string;
+  let dir: string
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "lorien-ds-load-"));
-  });
+    dir = mkdtempSync(join(tmpdir(), "lorien-ds-load-"))
+  })
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
-  });
+    rmSync(dir, { recursive: true, force: true })
+  })
 
   it("workflowPath set by IDE matches relativePath from loadWorkspace (after breakpoint fires)", async () => {
-    mkdirSync(join(dir, "workflows", "user"), { recursive: true });
+    mkdirSync(join(dir, "workflows", "user"), { recursive: true })
     writeFileSync(
       join(dir, "workflows", "user", "create.workflow"),
       JSON.stringify({
@@ -246,87 +232,85 @@ describe("DebugSession + loadWorkspace integration", () => {
           res: { uses: "@core/response", in: { body: "save.x" } },
         },
       }),
-    );
+    )
 
-    const ws = await loadWorkspace(dir);
-    const wf = ws.workflows[0]!;
+    const ws = await loadWorkspace(dir)
+    const wf = ws.workflows[0]!
 
     // The IDE stores breakpoints using workspace-root-relative paths.
-    const ideStyleWorkflowPath = "workflows/user/create.workflow";
+    const ideStyleWorkflowPath = "workflows/user/create.workflow"
 
     // The fix is precisely that these two values match.
-    expect(wf.relativePath).toBe(ideStyleWorkflowPath);
+    expect(wf.relativePath).toBe(ideStyleWorkflowPath)
 
     // Belt-and-suspenders: confirm the lookup the runtime does actually finds
     // the IDE-stored breakpoint. We use applyBreakpoints via the WS hello
     // message (the public surface).
-    const session = new DebugSession();
-    const { ws: fakeWs } = makeMockClient();
-    session.connect(fakeWs);
+    const session = new DebugSession()
+    const { ws: fakeWs } = makeMockClient()
+    session.connect(fakeWs)
     await session.onMessage(fakeWs, {
       type: "hello",
-      breakpoints: [
-        { workflowPath: ideStyleWorkflowPath, nodeId: "save", kind: "after" },
-      ],
-    });
-    expect(session.getBreakpoints(wf.relativePath)).toHaveLength(1);
-  });
-});
+      breakpoints: [{ workflowPath: ideStyleWorkflowPath, nodeId: "save", kind: "after" }],
+    })
+    expect(session.getBreakpoints(wf.relativePath)).toHaveLength(1)
+  })
+})
 
 describe("DebugSession.abortAllRuns", () => {
   it("rejects the pause promise for each paused run with an AbortError and clears the runs map", async () => {
-    const s = new DebugSession();
+    const s = new DebugSession()
 
     // Register two runs and seed an active pause on each via the test seam.
-    s.registerRun("wf", "rA", Date.now());
-    s.registerRun("wf", "rB", Date.now());
+    s.registerRun("wf", "rA", Date.now())
+    s.registerRun("wf", "rB", Date.now())
 
-    const rejections: unknown[] = [];
+    const rejections: unknown[] = []
     const pauseA = new Promise<void>((resolve, reject) => {
       s._setActivePauseForTest("rA", {
         resolve,
         reject: (err: unknown) => {
-          rejections.push(err);
-          reject(err);
+          rejections.push(err)
+          reject(err)
         },
         frame: { runId: "rA", nodeId: "n1", phase: "before" },
-      });
-    });
+      })
+    })
     const pauseB = new Promise<void>((resolve, reject) => {
       s._setActivePauseForTest("rB", {
         resolve,
         reject: (err: unknown) => {
-          rejections.push(err);
-          reject(err);
+          rejections.push(err)
+          reject(err)
         },
         frame: { runId: "rB", nodeId: "n1", phase: "before" },
-      });
-    });
+      })
+    })
 
-    s.abortAllRuns();
+    s.abortAllRuns()
 
     // Both pauses rejected; both runs removed.
-    expect(rejections).toHaveLength(2);
+    expect(rejections).toHaveLength(2)
     for (const err of rejections) {
-      expect((err as Error).name).toBe("AbortError");
-      expect((err as Error).message).toMatch(/workflow reloaded/i);
+      expect((err as Error).name).toBe("AbortError")
+      expect((err as Error).message).toMatch(/workflow reloaded/i)
     }
-    await expect(pauseA).rejects.toThrow();
-    await expect(pauseB).rejects.toThrow();
-    expect(s.getRunStartedAt("rA")).toBeNull();
-    expect(s.getRunStartedAt("rB")).toBeNull();
-  });
+    await expect(pauseA).rejects.toThrow()
+    await expect(pauseB).rejects.toThrow()
+    expect(s.getRunStartedAt("rA")).toBeNull()
+    expect(s.getRunStartedAt("rB")).toBeNull()
+  })
 
   it("is safe to call when there are no runs", () => {
-    const s = new DebugSession();
-    expect(() => s.abortAllRuns()).not.toThrow();
-  });
+    const s = new DebugSession()
+    expect(() => s.abortAllRuns()).not.toThrow()
+  })
 
   it("removes runs that are not paused too (in-flight without active pause)", () => {
-    const s = new DebugSession();
-    s.registerRun("wf", "r1", Date.now());
+    const s = new DebugSession()
+    s.registerRun("wf", "r1", Date.now())
     // No active pause seeded.
-    s.abortAllRuns();
-    expect(s.getRunStartedAt("r1")).toBeNull();
-  });
-});
+    s.abortAllRuns()
+    expect(s.getRunStartedAt("r1")).toBeNull()
+  })
+})

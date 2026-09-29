@@ -7,6 +7,7 @@ export function KeyValueGrid({ pairs, onChange }: Props) {
   return (
     <div className="mt-1 flex flex-col gap-1">
       {pairs.map(([k, v], i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional and keys are edited in place
         <div key={i} className="flex gap-1">
           <input
             className="w-1/3 rounded-md border bg-background px-2 py-1 font-mono"

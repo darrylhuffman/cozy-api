@@ -10,9 +10,7 @@ export function UserMessage({ text }: { text: string }): React.ReactElement {
     <div className="flex gap-2 rounded-md bg-muted/30 px-2 py-1.5">
       <User className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          You
-        </div>
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">You</div>
         <div className="whitespace-pre-wrap text-xs">{headline}</div>
         {context && (
           <details className="mt-1 text-[11px] text-muted-foreground">
@@ -74,20 +72,13 @@ interface ToolUseBashProps {
   exitCode?: number
 }
 
-export function ToolUseBash({
-  command,
-  exitCode,
-}: ToolUseBashProps): React.ReactElement {
+export function ToolUseBash({ command, exitCode }: ToolUseBashProps): React.ReactElement {
   return (
     <div className="flex items-center gap-2 rounded-sm bg-muted/30 px-2 py-1 text-xs">
       <Terminal className="h-3 w-3" />
       <code className="flex-1 truncate font-mono text-foreground">{command}</code>
       {exitCode !== undefined && (
-        <span
-          className={
-            exitCode === 0 ? "text-emerald-600" : "text-destructive"
-          }
-        >
+        <span className={exitCode === 0 ? "text-emerald-600" : "text-destructive"}>
           exit {exitCode}
         </span>
       )}
@@ -101,11 +92,7 @@ export function ToolUseBash({
  * by `tab.error`). Kept exported for future use when we decide to render
  * errors inline alongside the message stream instead.
  */
-export function AssistantError({
-  message,
-}: {
-  message: string
-}): React.ReactElement {
+export function AssistantError({ message }: { message: string }): React.ReactElement {
   return (
     <div className="flex items-start gap-2 rounded-sm border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
       <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

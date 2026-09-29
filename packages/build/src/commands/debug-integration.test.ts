@@ -1,9 +1,5 @@
+import { DebugSession, type RequestEnvelope, type ServerMessage } from "@darrylondil/lorien-runtime"
 import { describe, expect, it, vi } from "vitest"
-import {
-  type RequestEnvelope,
-  type ServerMessage,
-  DebugSession,
-} from "@darrylondil/lorien-runtime"
 import { makeDebugIntegration } from "./debug-integration.js"
 
 describe("makeDebugIntegration.buildRun", () => {
@@ -41,8 +37,6 @@ describe("makeDebugIntegration.buildRun", () => {
     // run-started must be the FIRST thing that happens in buildRun
     expect(sequence[0]).toBe("broadcast:run-started")
     expect(sequence).toContain("registerRun")
-    expect(sequence.indexOf("broadcast:run-started")).toBeLessThan(
-      sequence.indexOf("registerRun"),
-    )
+    expect(sequence.indexOf("broadcast:run-started")).toBeLessThan(sequence.indexOf("registerRun"))
   })
 })

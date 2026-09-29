@@ -68,6 +68,15 @@ export function RequestResult({
         <span className="truncate font-mono text-muted-foreground" title={result.request.url}>
           {result.request.method} {result.request.url}
         </span>
+        {!result.passed && onAskAi && (
+          <button
+            type="button"
+            onClick={onAskAi}
+            className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-violet-600 hover:bg-accent dark:text-violet-400"
+          >
+            <Sparkles className="h-3 w-3" /> Ask AI why it failed
+          </button>
+        )}
       </div>
       {result.error && (
         <div className="text-red-700 dark:text-red-400">Request failed: {result.error}</div>

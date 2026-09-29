@@ -1,5 +1,5 @@
-import { create } from "zustand"
 import type { RequestEnvelope } from "@darrylondil/lorien-runtime"
+import { create } from "zustand"
 
 export interface RequestHistoryEntry {
   id: string
@@ -83,9 +83,7 @@ export const useRequestHistoryStore = create<State>((set) => ({
   setError: (id, message) =>
     set((s) => ({
       entries: s.entries.map((entry) =>
-        entry.id === id
-          ? { ...entry, outcome: { kind: "network-error", message } }
-          : entry,
+        entry.id === id ? { ...entry, outcome: { kind: "network-error", message } } : entry,
       ),
     })),
   clear: () => set({ entries: [] }),

@@ -27,7 +27,10 @@ export function InputBar({ disabled, onSend }: InputBarProps): React.ReactElemen
   return (
     <div className="flex shrink-0 flex-col gap-1 border-t bg-background p-2">
       {chips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1" aria-label="Context to include">
+        <fieldset
+          className="m-0 flex min-w-0 flex-wrap items-center gap-1 border-0 p-0"
+          aria-label="Context to include"
+        >
           <span className="text-[10px] text-muted-foreground">Include</span>
           {chips.map((c) => (
             <button
@@ -57,7 +60,7 @@ export function InputBar({ disabled, onSend }: InputBarProps): React.ReactElemen
               {c.label}
             </button>
           ))}
-        </div>
+        </fieldset>
       )}
       <div className="flex items-end gap-2">
         <textarea

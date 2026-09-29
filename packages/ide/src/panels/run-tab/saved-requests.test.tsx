@@ -13,7 +13,9 @@ vi.mock("@/lib/api", async () => {
 })
 vi.mock("@/lib/events", () => ({ subscribeToFileEvents: vi.fn(() => () => {}) }))
 vi.mock("@/lib/open-code-file", () => ({ openCodeFile: vi.fn() }))
+vi.mock("@/ai/ask", () => ({ askAi: vi.fn() }))
 
+import { askAi } from "@/ai/ask"
 import { ApiError, createWorkspaceFile, fetchFile, saveFile } from "@/lib/api"
 import { openCodeFile } from "@/lib/open-code-file"
 import { useConfirmStore } from "@/store/confirm"
@@ -218,6 +220,26 @@ describe("request builder", () => {
     expect(within(result).getByText("Failed")).toBeInTheDocument()
     expect(within(result).getByText("expected status equals 200, got 201")).toBeInTheDocument()
     expect(within(result).getByText(/Undefined variables: \{\{email\}\}/)).toBeInTheDocument()
+  })
+
+  it("asks the AI why a failed request failed", async () => {
+    render(<Harness />)
+    await screen.findByText("Creates a user")
+    fireEvent.click(screen.getByText("+ Add check"))
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    fireEvent.click(await screen.findByRole("button", { name: /Ask AI why it failed/ }))
+    const req = vi.mocked(askAi).mock.calls[0]![0]
+    expect(req.headline).toContain(WF)
+    expect(req.context.join("\n")).toContain("expected status equals 200, got 201")
+  })
+
+  it("asks the AI to write requests for the workflow, with the existing ones", async () => {
+    render(<Harness />)
+    await screen.findByText("Creates a user")
+    fireEvent.click(screen.getByRole("button", { name: /Write with AI/ }))
+    const req = vi.mocked(askAi).mock.calls[0]![0]
+    expect(req.headline).toContain(COLLECTION)
+    expect(req.context.join("\n")).toContain("createsAUser")
   })
 
   it("adds checks from the last response", async () => {

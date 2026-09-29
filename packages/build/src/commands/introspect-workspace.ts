@@ -269,7 +269,7 @@ export async function resolveTsx(workspaceRoot: string): Promise<string | null> 
       bin?: Record<string, string> | string
     }
     const binField = pkg.bin
-    const binEntry = typeof binField === "string" ? binField : binField?.["tsx"]
+    const binEntry = typeof binField === "string" ? binField : binField?.tsx
     if (!binEntry) return null
     return resolvePath(pkgDir, binEntry)
   } catch {

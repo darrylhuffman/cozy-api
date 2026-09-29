@@ -16,9 +16,7 @@ async function collect(
     out.push(e)
     if (out.length >= count) break
     if (Date.now() - start > timeoutMs) {
-      throw new Error(
-        `timeout collecting events; got ${out.length}/${count}`,
-      )
+      throw new Error(`timeout collecting events; got ${out.length}/${count}`)
     }
   }
   return out

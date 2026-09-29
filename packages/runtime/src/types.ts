@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import type { z } from "zod"
 
 /**
  * Augmentable interface populated by the IDE's type generator from lorien.config.ts.
@@ -17,24 +17,22 @@ import type { z } from "zod";
 export interface Services {}
 
 export interface ServiceContext {
-  requestId: string;
-  timestamp: number;
+  requestId: string
+  timestamp: number
 }
 
-export type ServiceValue<T = unknown> =
-  | T
-  | ((ctx: ServiceContext) => T | Promise<T>);
+export type ServiceValue<T = unknown> = T | ((ctx: ServiceContext) => T | Promise<T>)
 
 export interface Disposable {
-  dispose?(): void | Promise<void>;
+  dispose?(): void | Promise<void>
 }
 
 export interface WorkflowConfig {
-  target: "hono";
-  services: Record<string, ServiceValue<unknown>>;
+  target: "hono"
+  services: Record<string, ServiceValue<unknown>>
 }
 
-export type ZodObjectAny = z.ZodObject<z.ZodRawShape>;
+export type ZodObjectAny = z.ZodObject<z.ZodRawShape>
 
 /**
  * Tailwind v3/v4 palette names. The IDE resolves these to the 500-weight hex
@@ -42,40 +40,58 @@ export type ZodObjectAny = z.ZodObject<z.ZodRawShape>;
  * typeahead in `defineNode({ color: ... })`.
  */
 export type TailwindColor =
-  | "slate" | "gray" | "zinc" | "neutral" | "stone"
-  | "red" | "orange" | "amber" | "yellow" | "lime" | "green" | "emerald"
-  | "teal" | "cyan" | "sky" | "blue" | "indigo" | "violet" | "purple"
-  | "fuchsia" | "pink" | "rose";
+  | "slate"
+  | "gray"
+  | "zinc"
+  | "neutral"
+  | "stone"
+  | "red"
+  | "orange"
+  | "amber"
+  | "yellow"
+  | "lime"
+  | "green"
+  | "emerald"
+  | "teal"
+  | "cyan"
+  | "sky"
+  | "blue"
+  | "indigo"
+  | "violet"
+  | "purple"
+  | "fuchsia"
+  | "pink"
+  | "rose"
 
 export interface Node<
   I extends ZodObjectAny = ZodObjectAny,
   O extends ZodObjectAny = ZodObjectAny,
   C extends ZodObjectAny | undefined = undefined,
 > {
-  readonly kind: "node";
-  readonly name?: string;
-  readonly inputs: I;
-  readonly outputs: O;
-  readonly config?: C;
+  readonly kind: "node"
+  readonly name?: string
+  readonly inputs: I
+  readonly outputs: O
+  readonly config?: C
   /** Optional Tailwind accent color, surfaced as a stripe in the IDE. */
-  readonly color?: TailwindColor;
+  readonly color?: TailwindColor
   run(
     input: z.infer<I>,
     services: Services,
     config: C extends ZodObjectAny ? z.infer<C> : undefined,
-  ): Promise<z.infer<O>>;
+  ): Promise<z.infer<O>>
 }
 
 export interface Trigger<
   O extends ZodObjectAny = ZodObjectAny,
   C extends ZodObjectAny | undefined = undefined,
 > {
-  readonly kind: "trigger";
-  readonly name?: string;
-  readonly outputs: O;
-  readonly config?: C;
+  readonly kind: "trigger"
+  readonly name?: string
+  readonly outputs: O
+  readonly config?: C
 }
 
 export type AnyNodeOrTrigger =
   | Node<ZodObjectAny, ZodObjectAny, ZodObjectAny | undefined>
-  | Trigger<ZodObjectAny, ZodObjectAny | undefined>;
+  | Trigger<ZodObjectAny, ZodObjectAny | undefined>

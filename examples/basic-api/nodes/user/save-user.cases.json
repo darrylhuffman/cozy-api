@@ -11,8 +11,13 @@
       "id": "returnsTheStoredRecord",
       "name": "Returns what the database stored",
       "input": { "email": "ada@example.com", "password": "correct-horse" },
-      "mocks": { "db": { "createUser": { "returns": { "id": "u_1", "email": "ada@example.com" } } } },
-      "expect": { "output": { "user": { "id": "u_1", "email": "ada@example.com" } }, "match": "equals" }
+      "mocks": {
+        "db": { "createUser": { "returns": { "id": "u_1", "email": "ada@example.com" } } }
+      },
+      "expect": {
+        "output": { "user": { "id": "u_1", "email": "ada@example.com" } },
+        "match": "equals"
+      }
     },
     {
       "id": "rejectsAShortPassword",

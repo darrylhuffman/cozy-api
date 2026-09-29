@@ -13,12 +13,13 @@ let capturedOnEdgesDelete: ((deleted: CapturedEdge[]) => void) | null = null
 let capturedOnReconnectEnd:
   | ((event: unknown, edge: CapturedEdge, handleType: unknown, connectionState: unknown) => void)
   | null = null
-let capturedOnNodeClick:
-  | ((event: unknown, node: { id: string }) => void)
-  | null = null
+let capturedOnNodeClick: ((event: unknown, node: { id: string }) => void) | null = null
 let capturedOnPaneClick: (() => void) | null = null
 let capturedOnNodeContextMenu:
-  | ((event: { preventDefault: () => void; clientX: number; clientY: number }, node: { id: string }) => void)
+  | ((
+      event: { preventDefault: () => void; clientX: number; clientY: number },
+      node: { id: string },
+    ) => void)
   | null = null
 // Simulated pan offset applied by the mocked screenToFlowPosition.
 let flowOffset = { x: 0, y: 0 }
@@ -39,9 +40,7 @@ interface CapturedEdge {
 let capturedEdges: CapturedEdge[] | null = null
 let capturedEdgeTypes: Record<string, unknown> | null = null
 // Capture last-rendered node data so we can poke at expandedInputs/outputs etc.
-let capturedNodes:
-  | { id: string; type?: string; data: Record<string, unknown> }[]
-  | null = null
+let capturedNodes: { id: string; type?: string; data: Record<string, unknown> }[] | null = null
 
 // Mock @xyflow/react — the actual library uses ResizeObserver + canvas APIs
 // that aren't available in jsdom. We replace with minimal stubs.
@@ -73,10 +72,18 @@ vi.mock("@xyflow/react", () => ({
     }) => void
     onNodesDelete?: (deleted: { id: string }[]) => void
     onEdgesDelete?: (deleted: CapturedEdge[]) => void
-    onReconnectEnd?: (event: unknown, edge: CapturedEdge, handleType: unknown, connectionState: unknown) => void
+    onReconnectEnd?: (
+      event: unknown,
+      edge: CapturedEdge,
+      handleType: unknown,
+      connectionState: unknown,
+    ) => void
     onNodeClick?: (event: unknown, node: { id: string }) => void
     onPaneClick?: () => void
-    onNodeContextMenu?: (event: { preventDefault: () => void; clientX: number; clientY: number }, node: { id: string }) => void
+    onNodeContextMenu?: (
+      event: { preventDefault: () => void; clientX: number; clientY: number },
+      node: { id: string },
+    ) => void
   }) => {
     capturedOnNodesChange = onNodesChange ?? null
     capturedOnConnect = onConnect ?? null
@@ -137,7 +144,7 @@ vi.mock("@xyflow/react", () => ({
 vi.mock("@xyflow/react/dist/style.css", () => ({}))
 
 // Mock NodeContextMenu to avoid Popover portal issues in jsdom
-let capturedNodeMenuProps: {
+let _capturedNodeMenuProps: {
   open: boolean
   onOpenChange: (o: boolean) => void
   x: number
@@ -159,7 +166,7 @@ vi.mock("./node-context-menu", () => ({
     onToggleBreakpointBefore?: () => void
     onToggleBreakpointAfter?: () => void
   }) => {
-    capturedNodeMenuProps = props
+    _capturedNodeMenuProps = props
     if (!props.open) return null
     return (
       <div data-testid="node-context-menu">
@@ -202,15 +209,15 @@ vi.mock("@/lib/events", () => ({
 
 import { ApiError, fetchWorkflowFile, fetchWorkspaceSchemas, saveFile } from "@/lib/api"
 import { type FileEvent, subscribeToFileEvents } from "@/lib/events"
+import { useConfirmStore } from "@/store/confirm"
+import { useDebugSessionStore } from "@/store/debug-session"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
+import { useNodeCases } from "@/store/node-cases"
+import { resetSchemasStore } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
-import { useLiveWorkflowStore } from "@/store/live-workflow"
-import { useDebugSessionStore } from "@/store/debug-session"
 import { useWorkflowDrafts } from "@/store/workflow-drafts"
-import { useNodeCases } from "@/store/node-cases"
-import { resetSchemasStore } from "@/store/schemas"
-import { useConfirmStore } from "@/store/confirm"
 import { defaultPathForWorkflow, WorkflowEditor } from "./workflow-editor.js"
 
 const sampleWorkflow: WorkflowFile = {
@@ -267,7 +274,7 @@ beforeEach(() => {
   capturedOnNodeClick = null
   capturedOnPaneClick = null
   capturedOnNodeContextMenu = null
-  capturedNodeMenuProps = null
+  _capturedNodeMenuProps = null
   capturedEdges = null
   capturedEdgeTypes = null
   capturedNodes = null
@@ -552,9 +559,7 @@ describe("WorkflowEditor", () => {
       // since both source-side handles also collapse onto the same point
       // (sourceHandle "body"), the editor MERGES them into one visual edge.
       await waitFor(() => {
-        const edges = capturedEdges?.filter(
-          (e) => e.source === "request" && e.target === "save",
-        )
+        const edges = capturedEdges?.filter((e) => e.source === "request" && e.target === "save")
         expect(edges?.length).toBe(1)
         // Root input handle is rendered as "$root" so React Flow can form the connection.
         expect(edges?.[0]?.targetHandle).toBe("$root")
@@ -562,9 +567,7 @@ describe("WorkflowEditor", () => {
 
       // The merged edge carries BOTH underlying mappings so the hover card
       // can render one table row per binding.
-      const merged = capturedEdges?.find(
-        (e) => e.source === "request" && e.target === "save",
-      )
+      const merged = capturedEdges?.find((e) => e.source === "request" && e.target === "save")
       expect(merged?.data?.mappings).toEqual([
         { source: "request.body.email", target: "save.email" },
         { source: "request.body.password", target: "save.password" },
@@ -607,9 +610,7 @@ describe("WorkflowEditor", () => {
       // handle that's rendered in the DOM).  Only one binding exists in this
       // partial workflow, so there's a single edge with one mapping.
       await waitFor(() => {
-        const edge = capturedEdges?.find(
-          (e) => e.source === "request" && e.target === "save",
-        )
+        const edge = capturedEdges?.find((e) => e.source === "request" && e.target === "save")
         expect(edge?.targetHandle).toBe("email")
         expect(edge?.data?.mappings).toEqual([
           { source: "request.body.email", target: "save.email" },
@@ -665,7 +666,7 @@ describe("WorkflowEditor", () => {
       }
     })
 
-    it("emits a single mapping with no target suffix for whole-object `in: \"...\"` form", async () => {
+    it('emits a single mapping with no target suffix for whole-object `in: "..."` form', async () => {
       const wholeObject: WorkflowFile = {
         ...createWorkflow,
         nodes: {
@@ -680,13 +681,9 @@ describe("WorkflowEditor", () => {
       })
 
       await waitFor(() => {
-        const edges = capturedEdges?.filter(
-          (e) => e.source === "request" && e.target === "save",
-        )
+        const edges = capturedEdges?.filter((e) => e.source === "request" && e.target === "save")
         expect(edges?.length).toBe(1)
-        expect(edges?.[0]?.data?.mappings).toEqual([
-          { source: "request.body", target: "save" },
-        ])
+        expect(edges?.[0]?.data?.mappings).toEqual([{ source: "request.body", target: "save" }])
       })
     })
 
@@ -706,9 +703,7 @@ describe("WorkflowEditor", () => {
       expect(emailEdge).toBeDefined()
       // save.user → response.body — full path is "save.user"
       const userEdge = capturedEdges!.find((e) =>
-        e.data?.mappings?.some(
-          (m) => m.source === "save.user" && m.target === "response.body",
-        ),
+        e.data?.mappings?.some((m) => m.source === "save.user" && m.target === "response.body"),
       )
       expect(userEdge).toBeDefined()
     })
@@ -1175,27 +1170,29 @@ describe("WorkflowEditor", () => {
       await waitFor(() => {
         expect(capturedEdges).not.toBeNull()
         const edge = capturedEdges?.find((e) =>
-          e.data?.mappings?.some(
-            (m) => m.source === "save.user" && m.target === "response.body",
-          ),
+          e.data?.mappings?.some((m) => m.source === "save.user" && m.target === "response.body"),
         )
         expect(edge).toBeDefined()
       })
 
       const edge = capturedEdges!.find((e) =>
-        e.data?.mappings?.some(
-          (m) => m.source === "save.user" && m.target === "response.body",
-        ),
+        e.data?.mappings?.some((m) => m.source === "save.user" && m.target === "response.body"),
       )!
 
       // Trigger onReconnectEnd without a prior successful reconnect (reconnectSuccess stays false)
       act(() => {
-        capturedOnReconnectEnd?.(
-          new MouseEvent("mouseup"),
-          edge,
-          "target",
-          { isValid: null, from: null, fromHandle: null, fromPosition: null, fromNode: null, to: null, toHandle: null, toPosition: null, toNode: null, pointer: null },
-        )
+        capturedOnReconnectEnd?.(new MouseEvent("mouseup"), edge, "target", {
+          isValid: null,
+          from: null,
+          fromHandle: null,
+          fromPosition: null,
+          fromNode: null,
+          to: null,
+          toHandle: null,
+          toPosition: null,
+          toNode: null,
+          pointer: null,
+        })
       })
 
       await act(async () => {
@@ -1275,7 +1272,9 @@ describe("WorkflowEditor", () => {
       // The live store must now include the newly-added node
       const stored = useLiveWorkflowStore.getState()
       const nodeIds = Object.keys(stored.workflow!.nodes)
-      expect(nodeIds.some((id) => stored.workflow!.nodes[id]!.uses === "@core/http-request")).toBe(true)
+      expect(nodeIds.some((id) => stored.workflow!.nodes[id]!.uses === "@core/http-request")).toBe(
+        true,
+      )
     })
 
     it("publishes to the live store after onNodesDelete", async () => {
@@ -1652,7 +1651,10 @@ describe("WorkflowEditor", () => {
 
       await waitFor(() => {
         const saveNode = capturedNodes?.find((n) => n.id === "save")
-        expect((saveNode?.data as { nodeBreakpoint?: { before: boolean; after: boolean } }).nodeBreakpoint).toEqual({
+        expect(
+          (saveNode?.data as { nodeBreakpoint?: { before: boolean; after: boolean } })
+            .nodeBreakpoint,
+        ).toEqual({
           before: true,
           after: false,
         })
@@ -1716,7 +1718,9 @@ describe("WorkflowEditor", () => {
       act(() => onInputValueChange("status", 202))
       await waitFor(() => {
         const response = capturedNodes?.find((n) => n.id === "response")
-        expect((response?.data.instance as { values?: { status?: number } }).values?.status).toBe(202)
+        expect((response?.data.instance as { values?: { status?: number } }).values?.status).toBe(
+          202,
+        )
       })
       expect(positionOf("save")).toEqual({ x: 700, y: 300 })
     })
@@ -1790,12 +1794,16 @@ describe("WorkflowEditor", () => {
       act(() => change()("status", 204))
       await waitFor(() => {
         const response = capturedNodes?.find((n) => n.id === "response")
-        expect((response?.data.instance as { values?: { status?: number } }).values?.status).toBe(204)
+        expect((response?.data.instance as { values?: { status?: number } }).values?.status).toBe(
+          204,
+        )
       })
       fireEvent.click(screen.getByRole("button", { name: "Undo" }))
       await waitFor(() => {
         const response = capturedNodes?.find((n) => n.id === "response")
-        expect((response?.data.instance as { values?: { status?: number } }).values?.status).toBe(201)
+        expect((response?.data.instance as { values?: { status?: number } }).values?.status).toBe(
+          201,
+        )
       })
     })
 
@@ -1920,7 +1928,9 @@ describe("WorkflowEditor", () => {
     })
 
     it("reports unavailable schemas with a Retry, and refetches when a node file changes", async () => {
-      vi.mocked(fetchWorkspaceSchemas).mockRejectedValueOnce(new ApiError("introspection crashed", 500))
+      vi.mocked(fetchWorkspaceSchemas).mockRejectedValueOnce(
+        new ApiError("introspection crashed", 500),
+      )
       await renderLoaded()
       await waitFor(() => expect(screen.getByText(/node schemas unavailable/i)).toBeInTheDocument())
       expect(screen.getByText(/introspection crashed/)).toBeInTheDocument()
@@ -1948,7 +1958,12 @@ describe("WorkflowEditor", () => {
       }
       // jsdom has no DragEvent, so build a MouseEvent (which carries clientX/Y)
       // under the "drop" type and attach the dataTransfer by hand.
-      const drop = new MouseEvent("drop", { bubbles: true, cancelable: true, clientX: 250, clientY: 150 })
+      const drop = new MouseEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 250,
+        clientY: 150,
+      })
       Object.defineProperty(drop, "dataTransfer", { value: dataTransfer })
       act(() => {
         canvas.dispatchEvent(drop)
@@ -2047,7 +2062,15 @@ describe("WorkflowEditor", () => {
               saving: false,
             },
           },
-          results: { "saveUser.cases.json#a": { caseId: "a", name: "A", passed: false, failures: ["x"], durationMs: 1 } },
+          results: {
+            "saveUser.cases.json#a": {
+              caseId: "a",
+              name: "A",
+              passed: false,
+              failures: ["x"],
+              durationMs: 1,
+            },
+          },
         })
       })
       await waitFor(() =>

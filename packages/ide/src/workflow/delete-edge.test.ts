@@ -6,7 +6,10 @@ const wf: WorkflowFile = {
   lorien: 1,
   nodes: {
     request: { uses: "@core/http-request" },
-    save: { uses: "./save", in: { email: "request.body.email", password: "request.body.password" } },
+    save: {
+      uses: "./save",
+      in: { email: "request.body.email", password: "request.body.password" },
+    },
     log: { uses: "./log", in: "save.user" },
   },
 }

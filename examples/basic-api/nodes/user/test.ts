@@ -4,7 +4,7 @@ import { z } from "zod"
 export default defineNode({
   inputs: z.object({}),
   outputs: z.object({}),
-  async run(input) {
+  async run(_input) {
     return {}
   },
 })

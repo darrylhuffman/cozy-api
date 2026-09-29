@@ -14,15 +14,7 @@ interface Props {
  * Right-click menu for the files panel. Mirrors the Popover + fixed 1x1
  * trigger pattern used by canvas-context-menu and node-context-menu.
  */
-export function TreeContextMenu({
-  open,
-  onOpenChange,
-  x,
-  y,
-  tree,
-  onNewFolder,
-  onNewItem,
-}: Props) {
+export function TreeContextMenu({ open, onOpenChange, x, y, tree, onNewFolder, onNewItem }: Props) {
   const itemLabel = tree === "workflows" ? "New workflow…" : "New node…"
   return (
     <Popover open={open} onOpenChange={onOpenChange}>

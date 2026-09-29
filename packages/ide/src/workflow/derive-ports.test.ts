@@ -90,10 +90,7 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
     expect(body.id).toBe("body")
     expect(body.isLeaf).toBe(false)
     expect(body.inferred).toBe(true)
-    expect(body.children.map((c) => c.id).sort()).toEqual([
-      "body.email",
-      "body.password",
-    ])
+    expect(body.children.map((c) => c.id).sort()).toEqual(["body.email", "body.password"])
     for (const child of body.children) {
       expect(child.inferred).toBe(true)
       expect(child.isLeaf).toBe(true)
@@ -197,10 +194,7 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
     expect(body.id).toBe("body")
     expect(body.inferred).toBe(true)
     expect(body.isLeaf).toBe(false)
-    expect(body.children.map((c) => c.id).sort()).toEqual([
-      "body.email",
-      "body.password",
-    ])
+    expect(body.children.map((c) => c.id).sort()).toEqual(["body.email", "body.password"])
 
     const savePorts = ports.get("save")!
     expect(savePorts.inputs).toEqual(rootBranch([leaf("email"), leaf("password")]))
@@ -444,10 +438,7 @@ describe("derivePorts (with schemas)", () => {
     expect(body.isLeaf).toBe(false)
     expect(body.inferred).toBe(true)
     expect(body.schema).toBeUndefined() // schema dropped on promotion
-    expect(body.children.map((c) => c.id).sort()).toEqual([
-      "body.email",
-      "body.password",
-    ])
+    expect(body.children.map((c) => c.id).sort()).toEqual(["body.email", "body.password"])
     for (const child of body.children) {
       expect(child.inferred).toBe(true)
     }

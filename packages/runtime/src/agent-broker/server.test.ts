@@ -1,13 +1,13 @@
 import { mkdtempSync, rmSync } from "node:fs"
-import { createServer } from "node:http"
+import type { createServer } from "node:http"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join, resolve as resolvePath } from "node:path"
 import { pathToFileURL } from "node:url"
 import { serve } from "@hono/node-server"
 import { Hono } from "hono"
-import WebSocket from "ws"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import WebSocket from "ws"
 import { AvailabilityProbe } from "./availability.js"
 import { attachAgentBroker, mountAgentBroker } from "./server.js"
 import { TranscriptStore } from "./transcript.js"
@@ -76,11 +76,7 @@ describe("mountAgentBroker — REST", () => {
   })
 })
 
-const MOCK_CLI = resolvePath(
-  import.meta.dirname,
-  "__fixtures__",
-  "mock-cli.ts",
-)
+const MOCK_CLI = resolvePath(import.meta.dirname, "__fixtures__", "mock-cli.ts")
 
 interface RunningServer {
   port: number
@@ -90,9 +86,7 @@ interface RunningServer {
 async function startTestServer(root: string): Promise<RunningServer> {
   const app = new Hono()
   mountAgentBroker(app, { projectRoot: root })
-  const server = serve({ fetch: app.fetch, port: 0 }) as ReturnType<
-    typeof createServer
-  >
+  const server = serve({ fetch: app.fetch, port: 0 }) as ReturnType<typeof createServer>
   attachAgentBroker({
     app,
     server,
@@ -178,10 +172,7 @@ describe("attachAgentBroker — WebSocket", () => {
   it("user message produces a stream of normalized events", async () => {
     const ws = await openWs(server.port)
     send(ws, { type: "new_chat", agent: "claude" })
-    const created = (await nextServerMsg(ws)) as Extract<
-      ServerMsg,
-      { type: "chat_created" }
-    >
+    const created = (await nextServerMsg(ws)) as Extract<ServerMsg, { type: "chat_created" }>
     send(ws, { type: "user", chatId: created.chatId, text: "hi" })
     const kinds: string[] = []
     for (let i = 0; i < 4; i++) {
@@ -189,20 +180,14 @@ describe("attachAgentBroker — WebSocket", () => {
       expect(m.type).toBe("event")
       if (m.type === "event") kinds.push(m.event.kind)
     }
-    expect(kinds).toEqual([
-      "assistant_text",
-      "tool_use",
-      "tool_result",
-      "turn_done",
-    ])
+    expect(kinds).toEqual(["assistant_text", "tool_use", "tool_result", "turn_done"])
     ws.close()
   })
 
   it("rejects upgrade from non-loopback origin", async () => {
-    const ws = new WebSocket(
-      `ws://127.0.0.1:${server.port}/__lorien/agents/ws`,
-      { origin: "https://evil.example" },
-    )
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/__lorien/agents/ws`, {
+      origin: "https://evil.example",
+    })
     await new Promise<void>((resolve, reject) => {
       ws.on("open", () => reject(new Error("should not open")))
       ws.on("unexpected-response", (_req, res) => {
@@ -216,10 +201,7 @@ describe("attachAgentBroker — WebSocket", () => {
   it("cancel kills the subprocess and emits chat_closed", async () => {
     const ws = await openWs(server.port)
     send(ws, { type: "new_chat", agent: "claude" })
-    const created = (await nextServerMsg(ws)) as Extract<
-      ServerMsg,
-      { type: "chat_created" }
-    >
+    const created = (await nextServerMsg(ws)) as Extract<ServerMsg, { type: "chat_created" }>
     send(ws, { type: "user", chatId: created.chatId, text: "hi" })
     // Consume the first event, then cancel.
     await nextServerMsg(ws)

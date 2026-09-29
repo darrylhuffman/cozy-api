@@ -1,6 +1,6 @@
+import type { RequestEnvelope, ServerMessage } from "@darrylondil/lorien-runtime"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useDebugSessionStore } from "./debug-session"
-import type { RequestEnvelope, ServerMessage } from "@darrylondil/lorien-runtime"
 
 describe("useDebugSessionStore (multi-active)", () => {
   beforeEach(() => {
@@ -39,7 +39,9 @@ describe("useDebugSessionStore (multi-active)", () => {
   })
 
   it("applyMessage(ready) sets connected", () => {
-    useDebugSessionStore.getState().applyMessage({ type: "ready", sessionId: "s1" } as ServerMessage)
+    useDebugSessionStore
+      .getState()
+      .applyMessage({ type: "ready", sessionId: "s1" } as ServerMessage)
     expect(useDebugSessionStore.getState().connected).toBe(true)
   })
 
@@ -55,8 +57,19 @@ describe("useDebugSessionStore (multi-active)", () => {
 
   it("paused message sets the matching run's pausedFrame and outcome=paused", () => {
     const s = useDebugSessionStore.getState()
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
-    s.applyMessage({ type: "paused", runId: "rA", nodeId: "x", phase: "before", payload: { foo: 1 } } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "paused",
+      runId: "rA",
+      nodeId: "x",
+      phase: "before",
+      payload: { foo: 1 },
+    } as ServerMessage)
     const r = useDebugSessionStore.getState().runs[0]!
     expect(r.pausedFrame?.nodeId).toBe("x")
     expect(r.outcome.kind).toBe("paused")
@@ -64,10 +77,32 @@ describe("useDebugSessionStore (multi-active)", () => {
 
   it("resumed clears pausedFrame on the matching run only", () => {
     const s = useDebugSessionStore.getState()
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
-    s.applyMessage({ type: "event", runId: "rB", event: { type: "before-node", nodeId: "y", input: {} }, offsetMs: 0 } as ServerMessage)
-    s.applyMessage({ type: "paused", runId: "rA", nodeId: "x", phase: "before", payload: null } as ServerMessage)
-    s.applyMessage({ type: "paused", runId: "rB", nodeId: "y", phase: "before", payload: null } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rB",
+      event: { type: "before-node", nodeId: "y", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "paused",
+      runId: "rA",
+      nodeId: "x",
+      phase: "before",
+      payload: null,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "paused",
+      runId: "rB",
+      nodeId: "y",
+      phase: "before",
+      payload: null,
+    } as ServerMessage)
     s.applyMessage({ type: "resumed", runId: "rA" } as ServerMessage)
     const runs = useDebugSessionStore.getState().runs
     expect(runs.find((r) => r.runId === "rA")?.pausedFrame).toBeNull()
@@ -76,24 +111,57 @@ describe("useDebugSessionStore (multi-active)", () => {
 
   it("log appends to the matching run's logs", () => {
     const s = useDebugSessionStore.getState()
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
-    s.applyMessage({ type: "log", runId: "rA", level: "info", message: "hello", offsetMs: 5 } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "log",
+      runId: "rA",
+      level: "info",
+      message: "hello",
+      offsetMs: 5,
+    } as ServerMessage)
     const r = useDebugSessionStore.getState().runs[0]!
     expect(r.logs).toEqual([{ offsetMs: 5, level: "info", message: "hello" }])
   })
 
   it("run-complete sets outcome.ok", () => {
     const s = useDebugSessionStore.getState()
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
-    s.applyMessage({ type: "run-complete", runId: "rA", status: 200, body: { ok: true }, totalMs: 42 } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "run-complete",
+      runId: "rA",
+      status: 200,
+      body: { ok: true },
+      totalMs: 42,
+    } as ServerMessage)
     const r = useDebugSessionStore.getState().runs[0]!
     expect(r.outcome).toEqual({ kind: "ok", status: 200, body: { ok: true }, totalMs: 42 })
   })
 
   it("run-error sets outcome.errored with stack and nodeId", () => {
     const s = useDebugSessionStore.getState()
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
-    s.applyMessage({ type: "run-error", runId: "rA", nodeId: "saveUser", message: "boom", stack: "Error: boom\n  at ..." } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "run-error",
+      runId: "rA",
+      nodeId: "saveUser",
+      message: "boom",
+      stack: "Error: boom\n  at ...",
+    } as ServerMessage)
     const r = useDebugSessionStore.getState().runs[0]!
     expect(r.outcome.kind).toBe("errored")
     if (r.outcome.kind === "errored") {
@@ -105,17 +173,43 @@ describe("useDebugSessionStore (multi-active)", () => {
 
   it("selectedRun returns the focused run or null", () => {
     const s = useDebugSessionStore.getState()
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
     s.selectRun("rA")
     expect(useDebugSessionStore.getState().selectedRun()?.runId).toBe("rA")
   })
 
   it("nodeStatusesFor reflects the run's events + pause", () => {
     const s = useDebugSessionStore.getState()
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "after-node", nodeId: "x", output: {}, durationMs: 1 }, offsetMs: 1 } as ServerMessage)
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "y", input: {} }, offsetMs: 2 } as ServerMessage)
-    s.applyMessage({ type: "paused", runId: "rA", nodeId: "y", phase: "before", payload: null } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "after-node", nodeId: "x", output: {}, durationMs: 1 },
+      offsetMs: 1,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "y", input: {} },
+      offsetMs: 2,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "paused",
+      runId: "rA",
+      nodeId: "y",
+      phase: "before",
+      payload: null,
+    } as ServerMessage)
     const statuses = useDebugSessionStore.getState().nodeStatusesFor("rA")
     expect(statuses.get("x")).toBe("completed")
     expect(statuses.get("y")).toBe("paused")
@@ -124,7 +218,12 @@ describe("useDebugSessionStore (multi-active)", () => {
   it("retains at most 20 runs", () => {
     const s = useDebugSessionStore.getState()
     for (let i = 0; i < 22; i++) {
-      s.applyMessage({ type: "event", runId: `r${i}`, event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+      s.applyMessage({
+        type: "event",
+        runId: `r${i}`,
+        event: { type: "before-node", nodeId: "x", input: {} },
+        offsetMs: 0,
+      } as ServerMessage)
     }
     expect(useDebugSessionStore.getState().runs.length).toBe(20)
   })

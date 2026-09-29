@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { useDebugSessionStore } from "@/store/debug-session"
 import type { ServerMessage } from "@darrylondil/lorien-runtime"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it } from "vitest"
+import { useDebugSessionStore } from "@/store/debug-session"
 import { RunsList } from "./runs-list"
 
 describe("RunsList", () => {
@@ -17,16 +17,36 @@ describe("RunsList", () => {
 
   it("renders one row per run", () => {
     const s = useDebugSessionStore.getState()
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
-    s.applyMessage({ type: "event", runId: "rB", event: { type: "before-node", nodeId: "y", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rB",
+      event: { type: "before-node", nodeId: "y", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
     render(<RunsList />)
     expect(screen.getAllByTestId("runs-row")).toHaveLength(2)
   })
 
   it("clicking a row changes selectedRunId", () => {
     const s = useDebugSessionStore.getState()
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
-    s.applyMessage({ type: "event", runId: "rB", event: { type: "before-node", nodeId: "y", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rB",
+      event: { type: "before-node", nodeId: "y", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
     render(<RunsList />)
     const rows = screen.getAllByTestId("runs-row")
     // After lazy-create, selectedRunId is set to rA (first event's runId). New runs are

@@ -1,14 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import {
-  appendChatEvent,
-  createChat,
-  listChats,
-  loadChat,
-  TranscriptStore,
-} from "./transcript.js"
+import { appendChatEvent, createChat, listChats, loadChat, TranscriptStore } from "./transcript.js"
 import type { AgentEvent } from "./types.js"
 
 describe("transcript store", () => {
@@ -74,11 +68,7 @@ describe("transcript store", () => {
 
   it("quarantines a corrupted chat file on load and surfaces null", async () => {
     const id = await store.createChat({ agent: "claude", title: "tbd" })
-    writeFileSync(
-      join(root, ".lorien", "chats", `${id}.json`),
-      "{ not valid json",
-      "utf-8",
-    )
+    writeFileSync(join(root, ".lorien", "chats", `${id}.json`), "{ not valid json", "utf-8")
     const result = await store.loadChat(id)
     expect(result).toBeNull()
     // The corrupted file moves to .broken/
@@ -97,9 +87,7 @@ describe("transcript store", () => {
     const chat = await store.loadChat(id)
     expect(chat?.events).toHaveLength(25)
     // All events present, regardless of order
-    const texts = (chat?.events ?? []).map((e) =>
-      e.kind === "user_message" ? e.text : "",
-    )
+    const texts = (chat?.events ?? []).map((e) => (e.kind === "user_message" ? e.text : ""))
     for (let i = 0; i < 25; i++) {
       expect(texts).toContain(`msg-${i}`)
     }

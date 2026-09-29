@@ -21,6 +21,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
       # Packages first: the example project runs the built `lorien` CLI.
       - run: pnpm -r --filter "./packages/**" build
       - run: pnpm -r typecheck

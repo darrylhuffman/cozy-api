@@ -25,10 +25,7 @@ import type { PortNode } from "./schema-to-tree"
  *   effectiveHandle("body.email", {"body"})                    → "body"  (no root on outputs side)
  *   effectiveHandle("", anything)                              → ""
  */
-export function effectiveHandle(
-  handle: string,
-  visiblePaths: ReadonlySet<string>,
-): string {
+export function effectiveHandle(handle: string, visiblePaths: ReadonlySet<string>): string {
   if (handle === "") return ""
   if (visiblePaths.has(handle)) return handle
   const segments = handle.split(".")

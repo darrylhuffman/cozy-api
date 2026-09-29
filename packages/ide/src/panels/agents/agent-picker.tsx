@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react"
 import { restBase } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { useAgentChats, type AgentAvailability, type AvailabilityResponse } from "@/store/agent-chats"
+import {
+  type AgentAvailability,
+  type AvailabilityResponse,
+  useAgentChats,
+} from "@/store/agent-chats"
 
 interface AgentPickerProps {
   pickerId: string
 }
 
-type ProbeState =
-  | { kind: "loading" }
-  | { kind: "ok" }
-  | { kind: "error"; message: string }
+type ProbeState = { kind: "loading" } | { kind: "ok" } | { kind: "error"; message: string }
 
 export function AgentPicker({ pickerId }: AgentPickerProps): React.ReactElement {
   const availability = useAgentChats((s) => s.availability)
@@ -57,9 +58,9 @@ export function AgentPicker({ pickerId }: AgentPickerProps): React.ReactElement 
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
         <p className="text-sm text-destructive">{probeState.message}</p>
         <p className="text-xs text-muted-foreground">
-          Run <code className="rounded bg-muted/40 px-1 font-mono">{`npm run dev:server`}</code>{" "}
-          (or <code className="rounded bg-muted/40 px-1 font-mono">{`pnpm dev:server`}</code>) in
-          your project, then close this tab and start a new chat.
+          Run <code className="rounded bg-muted/40 px-1 font-mono">{`npm run dev:server`}</code> (or{" "}
+          <code className="rounded bg-muted/40 px-1 font-mono">{`pnpm dev:server`}</code>) in your
+          project, then close this tab and start a new chat.
         </p>
       </div>
     )
@@ -134,9 +135,7 @@ function AgentCard({
         ) : availability === undefined ? (
           <span>Detecting…</span>
         ) : availability.installed ? (
-          <span>
-            Installed{availability.version ? ` (v${availability.version})` : ""}
-          </span>
+          <span>Installed{availability.version ? ` (v${availability.version})` : ""}</span>
         ) : (
           <span>
             Not installed — see{" "}

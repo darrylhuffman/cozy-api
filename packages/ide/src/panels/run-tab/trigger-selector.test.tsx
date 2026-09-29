@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { cleanup, render } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { fetchWorkspaceSchemas, type NodeSchemas, type WorkflowFile } from "@/lib/api"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { resetSchemasStore } from "@/store/schemas"
 import { TriggerSelector } from "./trigger-selector"
-import { fetchWorkspaceSchemas, type NodeSchemas, type WorkflowFile } from "@/lib/api"
 
 // Mock fetchWorkspaceSchemas BEFORE any tests render TriggerSelector.
 vi.mock("@/lib/api", async () => {

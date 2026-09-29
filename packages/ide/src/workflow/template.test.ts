@@ -15,9 +15,7 @@ describe("deriveWorkflowPath", () => {
   })
 
   it("preserves multi-segment paths, dropping only the final crud verb", () => {
-    expect(deriveWorkflowPath("workflows/admin/users/delete.workflow")).toBe(
-      "/admin/users",
-    )
+    expect(deriveWorkflowPath("workflows/admin/users/delete.workflow")).toBe("/admin/users")
   })
 
   it("returns / for an empty path after stripping", () => {
@@ -25,9 +23,7 @@ describe("deriveWorkflowPath", () => {
   })
 
   it("keeps a non-verb final segment intact", () => {
-    expect(deriveWorkflowPath("workflows/users/profile.workflow")).toBe(
-      "/users/profile",
-    )
+    expect(deriveWorkflowPath("workflows/users/profile.workflow")).toBe("/users/profile")
   })
 })
 
@@ -58,9 +54,7 @@ describe("expandTemplate", () => {
   })
 
   it("replaces multiple occurrences of {workflow_path}", () => {
-    expect(
-      expandTemplate("{workflow_path} and {workflow_path}", ctx),
-    ).toBe("/users and /users")
+    expect(expandTemplate("{workflow_path} and {workflow_path}", ctx)).toBe("/users and /users")
   })
 
   it("uses the derived path, not the raw file path", () => {

@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { buildDefaultLayout, loadSavedLayout, STORAGE_KEY, saveLayout, reopenPanel, type PaneId, PANE_IDS, PANE_TITLES } from "./default-layout.js"
+import {
+  buildDefaultLayout,
+  loadSavedLayout,
+  PANE_IDS,
+  PANE_TITLES,
+  type PaneId,
+  reopenPanel,
+  STORAGE_KEY,
+  saveLayout,
+} from "./default-layout.js"
 
 describe("loadSavedLayout", () => {
   beforeEach(() => {
@@ -72,7 +81,8 @@ describe("reopenPanel for agents", () => {
   it("does not throw when Inspector exists", () => {
     const calls: unknown[] = []
     const api = {
-      getPanel: (id: string) => (id === "inspector" ? { id, api: { setActive: () => {} } } : undefined),
+      getPanel: (id: string) =>
+        id === "inspector" ? { id, api: { setActive: () => {} } } : undefined,
       addPanel: (opts: unknown) => calls.push(opts),
     } as unknown as Parameters<typeof reopenPanel>[0]
     reopenPanel(api, "agents" satisfies PaneId)
@@ -89,7 +99,10 @@ describe("reopenPanel for agents", () => {
     } as unknown as Parameters<typeof reopenPanel>[0]
     reopenPanel(api, "agents" satisfies PaneId)
     expect(calls).toHaveLength(1)
-    const opts = calls[0] as { position?: { referencePanel: string; direction: string }; initialWidth?: number }
+    const opts = calls[0] as {
+      position?: { referencePanel: string; direction: string }
+      initialWidth?: number
+    }
     expect(opts.position).toEqual({ referencePanel: "code", direction: "right" })
     expect(opts.initialWidth).toBe(400)
   })

@@ -16,13 +16,7 @@ interface Props {
   root: FileFolder
 }
 
-export function NewFolderDialog({
-  open,
-  onOpenChange,
-  onCreated,
-  defaultFolder,
-  root,
-}: Props) {
+export function NewFolderDialog({ open, onOpenChange, onCreated, defaultFolder, root }: Props) {
   const [parent, setParent] = useState(defaultFolder)
   const [name, setName] = useState("")
   const [pickerOpen, setPickerOpen] = useState(false)

@@ -1,14 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { useDebugSessionStore } from "@/store/debug-session"
 
 // Mock @monaco-editor/react BEFORE importing BodyEditor so the mock module is hot.
 vi.mock("@monaco-editor/react", () => ({
-  default: (props: {
-    defaultLanguage?: string
-    value?: string
-    height?: number | string
-  }) => (
+  default: (props: { defaultLanguage?: string; value?: string; height?: number | string }) => (
     <div
       data-testid="monaco-mock"
       data-language={props.defaultLanguage}
@@ -60,7 +56,10 @@ describe("BodyEditor", () => {
     useDebugSessionStore.getState().setRequestForm((c) => ({
       ...c,
       bodyKind: "form",
-      formBody: [["x", "1"], ["y", "2"]],
+      formBody: [
+        ["x", "1"],
+        ["y", "2"],
+      ],
     }))
     render(<BodyEditor />)
     // KeyValueGrid renders one row per pair with the value in an input.

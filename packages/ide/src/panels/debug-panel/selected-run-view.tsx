@@ -1,9 +1,9 @@
 import { useState } from "react"
-import { useDebugSessionStore } from "@/store/debug-session"
 import { cn } from "@/lib/utils"
+import { useDebugSessionStore } from "@/store/debug-session"
+import { LogsView } from "./logs-view"
 import { StatusBanner } from "./status-banner"
 import { Timeline } from "./timeline"
-import { LogsView } from "./logs-view"
 
 export function SelectedRunView() {
   const selectedRunId = useDebugSessionStore((s) => s.selectedRunId)
@@ -21,8 +21,12 @@ export function SelectedRunView() {
     <div className="flex flex-1 flex-col gap-2 overflow-hidden">
       <StatusBanner runId={selectedRunId} />
       <div className="flex gap-1 border-b text-xs">
-        <TabButton active={tab === "timeline"} onClick={() => setTab("timeline")}>Timeline</TabButton>
-        <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>Logs</TabButton>
+        <TabButton active={tab === "timeline"} onClick={() => setTab("timeline")}>
+          Timeline
+        </TabButton>
+        <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>
+          Logs
+        </TabButton>
       </div>
       <div className="flex-1 overflow-auto">
         {tab === "timeline" ? (

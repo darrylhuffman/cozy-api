@@ -25,13 +25,7 @@ export function makeDebugIntegration(debugSession: DebugSession): DebugIntegrati
       })
       const startedAt = Date.now()
       const lifecycle = new LifecycleEmitter()
-      for (const t of [
-        "before-node",
-        "after-node",
-        "edge-fired",
-        "error",
-        "complete",
-      ] as const) {
+      for (const t of ["before-node", "after-node", "edge-fired", "error", "complete"] as const) {
         lifecycle.on(t, (ev) => {
           const wireEvent =
             ev.type === "error"
@@ -52,11 +46,7 @@ export function makeDebugIntegration(debugSession: DebugSession): DebugIntegrati
           })
         })
       }
-      const { onBeforeNode, onAfterNode } = debugSession.registerRun(
-        workflowPath,
-        runId,
-        startedAt,
-      )
+      const { onBeforeNode, onAfterNode } = debugSession.registerRun(workflowPath, runId, startedAt)
       return { lifecycle, onBeforeNode, onAfterNode }
     },
     onResult: (runId, result, totalMs) => {

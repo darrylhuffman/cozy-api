@@ -7,11 +7,7 @@ export function isLoopbackOriginString(origin: string | undefined | null): boole
   if (!origin) return false
   try {
     const u = new URL(origin)
-    return (
-      u.hostname === "localhost" ||
-      u.hostname === "127.0.0.1" ||
-      u.hostname === "[::1]"
-    )
+    return u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]"
   } catch {
     return false
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { SubscriberRegistry, type SocketLike } from "./subscribers.js"
+import { type SocketLike, SubscriberRegistry } from "./subscribers.js"
 
 function makeSocket(): SocketLike & { messages: string[] } {
   const messages: string[] = []
@@ -21,7 +21,11 @@ describe("SubscriberRegistry", () => {
     const b = makeSocket()
     reg.subscribe("c1", a)
     reg.subscribe("c1", b)
-    reg.broadcast("c1", { type: "event", chatId: "c1", event: { kind: "turn_done", turnId: "t", at: "x" } })
+    reg.broadcast("c1", {
+      type: "event",
+      chatId: "c1",
+      event: { kind: "turn_done", turnId: "t", at: "x" },
+    })
     expect(a.messages).toHaveLength(1)
     expect(b.messages).toHaveLength(1)
   })
@@ -89,9 +93,7 @@ describe("SubscriberRegistry", () => {
     const good = makeSocket()
     reg.subscribe("c1", bad)
     reg.subscribe("c1", good)
-    expect(() =>
-      reg.broadcast("c1", { type: "chat_created", chatId: "c1" }),
-    ).not.toThrow()
+    expect(() => reg.broadcast("c1", { type: "chat_created", chatId: "c1" })).not.toThrow()
     expect(good.messages).toHaveLength(1)
   })
 })

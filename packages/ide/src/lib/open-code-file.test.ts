@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { useTabsStore } from "@/store/tabs"
 import { useDockviewApi } from "@/store/dockview-api"
+import { useTabsStore } from "@/store/tabs"
 import { openCodeFile } from "./open-code-file.js"
 
 // Mock dockview API

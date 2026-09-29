@@ -1,9 +1,5 @@
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "@xyflow/react"
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card"
+import { BaseEdge, EdgeLabelRenderer, type EdgeProps, getBezierPath } from "@xyflow/react"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 
 /** A single source→target binding represented by one row in the hover table. */
 export interface PathMapping {
@@ -68,11 +64,7 @@ export function PathEdge(props: EdgeProps) {
                   className="h-2.5 w-2.5 rounded-full border border-border bg-card shadow-sm hover:bg-accent"
                 />
               </HoverCardTrigger>
-              <HoverCardContent
-                className="w-auto p-0 overflow-hidden"
-                align="center"
-                side="top"
-              >
+              <HoverCardContent className="w-auto p-0 overflow-hidden" align="center" side="top">
                 <table className="font-mono text-xs">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">

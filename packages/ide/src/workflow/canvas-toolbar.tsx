@@ -1,8 +1,8 @@
 import { Keyboard, LayoutGrid, Maximize, Plus, Redo2, Undo2 } from "lucide-react"
 import type { ReactNode } from "react"
 import { cn } from "@/lib/utils"
-import type { Diagnostic } from "./diagnose"
 import { AskAiPopover } from "./ask-ai-popover"
+import type { Diagnostic } from "./diagnose"
 import { ProblemsPopover } from "./problems-popover"
 
 export type SaveStatus = "clean" | "dirty" | "saving" | "saved" | "error"

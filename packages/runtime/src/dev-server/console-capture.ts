@@ -15,9 +15,7 @@ let handler:
   | ((e: { runId: string; level: "log" | "info" | "warn" | "error"; message: string }) => void)
   | null = null
 
-export function installConsoleCapture(
-  onLog: NonNullable<typeof handler>,
-): void {
+export function installConsoleCapture(onLog: NonNullable<typeof handler>): void {
   handler = onLog
 
   // If the current console.log is already our wrapper, don't double-wrap.
@@ -45,10 +43,7 @@ export function installConsoleCapture(
   }
 }
 
-export function withRunContext<T>(
-  runId: string,
-  fn: () => Promise<T>,
-): Promise<T> {
+export function withRunContext<T>(runId: string, fn: () => Promise<T>): Promise<T> {
   return runContext.run({ runId }, fn)
 }
 

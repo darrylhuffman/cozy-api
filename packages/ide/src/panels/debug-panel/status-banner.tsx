@@ -1,11 +1,11 @@
 import { askAi } from "@/ai/ask"
 import { fixFailedRun } from "@/ai/prompts"
-import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useDebugSessionStore } from "@/store/debug-session"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
 
 export function StatusBanner({ runId }: { runId: string | null }) {
   const run = useDebugSessionStore((s) =>
-    runId ? s.runs.find((r) => r.runId === runId) ?? null : null,
+    runId ? (s.runs.find((r) => r.runId === runId) ?? null) : null,
   )
   const sendContinue = useDebugSessionStore((s) => s.sendContinue)
   const sendStep = useDebugSessionStore((s) => s.sendStep)
@@ -17,7 +17,9 @@ export function StatusBanner({ runId }: { runId: string | null }) {
   if (out.kind === "running") {
     return (
       <BannerShell label="▶ Running…">
-        <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>Stop</ControlButton>
+        <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>
+          Stop
+        </ControlButton>
       </BannerShell>
     )
   }
@@ -29,7 +31,9 @@ export function StatusBanner({ runId }: { runId: string | null }) {
         {run.pausedFrame.phase === "before" && (
           <ControlButton onClick={() => sendStepOver(run.runId)}>Step Over</ControlButton>
         )}
-        <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>Stop</ControlButton>
+        <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>
+          Stop
+        </ControlButton>
       </BannerShell>
     )
   }

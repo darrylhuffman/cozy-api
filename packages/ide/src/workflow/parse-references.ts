@@ -72,10 +72,7 @@ export function extractReferences(workflow: WorkflowFile): Reference[] {
   return refs
 }
 
-function parseRefString(
-  value: string,
-  workflow: WorkflowFile,
-): Reference["source"] | null {
+function parseRefString(value: string, workflow: WorkflowFile): Reference["source"] | null {
   if (!REFERENCE.test(value)) return null
   const [nodeId, firstSegment, ...rest] = value.split(".")
   if (!nodeId) return null

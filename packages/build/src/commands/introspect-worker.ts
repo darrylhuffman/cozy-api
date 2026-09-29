@@ -165,7 +165,9 @@ async function main(): Promise<void> {
 
       const description = extractTSDoc(abs)
 
-      process.stdout.write(`${JSON.stringify({ uses: usesKey, name, inputs, outputs, color, description })}\n`)
+      process.stdout.write(
+        `${JSON.stringify({ uses: usesKey, name, inputs, outputs, color, description })}\n`,
+      )
     } catch (e) {
       process.stderr.write(`introspect-worker: failed for ${abs}: ${(e as Error).message}\n`)
     }

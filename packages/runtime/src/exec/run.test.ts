@@ -287,7 +287,10 @@ describe("runWorkflow", () => {
           context: { requestId: "", timestamp: 0 },
         },
         services: {},
-        resolveNode: (u) => resolveCoreNode(u) ?? ({ "./strict": strict } as Record<string, ReturnType<typeof defineNode>>)[u] ?? null,
+        resolveNode: (u) =>
+          resolveCoreNode(u) ??
+          ({ "./strict": strict } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+          null,
       }),
     ).rejects.toThrow(/input validation failed.*email/i)
   })
@@ -326,7 +329,10 @@ describe("runWorkflow", () => {
         context: { requestId: "", timestamp: 0 },
       },
       services: {},
-      resolveNode: (u) => resolveCoreNode(u) ?? ({ "./coerced": coerced } as Record<string, ReturnType<typeof defineNode>>)[u] ?? null,
+      resolveNode: (u) =>
+        resolveCoreNode(u) ??
+        ({ "./coerced": coerced } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+        null,
     })
     expect(received).toEqual({ count: 42 }) // string → number via coerce
   })
@@ -678,7 +684,9 @@ function buildTinyWorkflow() {
     triggerOutputs: hookTriggerOutputs,
     services: {},
     resolveNode: (u: string) =>
-      resolveCoreNode(u) ?? ({ "./echo": echo } as Record<string, ReturnType<typeof defineNode>>)[u] ?? null,
+      resolveCoreNode(u) ??
+      ({ "./echo": echo } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+      null,
   }
 }
 
@@ -713,7 +721,9 @@ function buildWorkflowWithBadInput() {
     triggerOutputs: hookTriggerOutputs, // body.msg = "hello" — not an email
     services: {},
     resolveNode: (u: string) =>
-      resolveCoreNode(u) ?? ({ "./strict": strict } as Record<string, ReturnType<typeof defineNode>>)[u] ?? null,
+      resolveCoreNode(u) ??
+      ({ "./strict": strict } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+      null,
   }
 }
 
@@ -753,7 +763,9 @@ function buildWorkflowWithThrowingNode() {
     },
     services: {},
     resolveNode: (u: string) =>
-      resolveCoreNode(u) ?? ({ "./throwing": throwing } as Record<string, ReturnType<typeof defineNode>>)[u] ?? null,
+      resolveCoreNode(u) ??
+      ({ "./throwing": throwing } as Record<string, ReturnType<typeof defineNode>>)[u] ??
+      null,
   }
 }
 

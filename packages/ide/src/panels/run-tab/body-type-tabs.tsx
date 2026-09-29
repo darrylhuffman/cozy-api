@@ -1,5 +1,5 @@
-import { useDebugSessionStore, type BodyKind } from "@/store/debug-session"
 import { cn } from "@/lib/utils"
+import { type BodyKind, useDebugSessionStore } from "@/store/debug-session"
 
 const TABS: Array<{ kind: BodyKind; label: string }> = [
   { kind: "json", label: "JSON" },
@@ -61,7 +61,10 @@ export function BodyTypeTabs() {
   return (
     <div className="flex items-center gap-2 text-xs">
       <span className="text-muted-foreground">Body:</span>
-      <div role="group" className="inline-flex overflow-hidden rounded-md border">
+      <fieldset
+        aria-label="Body type"
+        className="m-0 inline-flex min-w-0 overflow-hidden rounded-md border p-0"
+      >
         {TABS.map((t) => {
           const active = bodyKind === t.kind
           return (
@@ -79,7 +82,7 @@ export function BodyTypeTabs() {
             </button>
           )
         })}
-      </div>
+      </fieldset>
     </div>
   )
 }

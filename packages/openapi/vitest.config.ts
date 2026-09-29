@@ -4,7 +4,10 @@ import { defineConfig } from "vitest/config"
 // Resolve zod and @darrylondil/lorien-runtime explicitly so that dynamically-imported
 // generated TypeScript files (written to a temp dir during acceptance tests)
 // can resolve their imports through the workspace graph.
-const zodDir = resolve(import.meta.dirname, "node_modules/@darrylondil/lorien-runtime/node_modules/zod")
+const zodDir = resolve(
+  import.meta.dirname,
+  "node_modules/@darrylondil/lorien-runtime/node_modules/zod",
+)
 const runtimeDir = resolve(import.meta.dirname, "node_modules/@darrylondil/lorien-runtime")
 
 export default defineConfig({

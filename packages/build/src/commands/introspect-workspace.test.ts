@@ -16,7 +16,7 @@ describe("CORE_SCHEMAS", () => {
 
   it("@core/http-request schema includes a body input", () => {
     const entry = CORE_SCHEMAS["@core/http-request"]
-    expect(entry?.inputs.properties?.["body"]).toBeDefined()
+    expect(entry?.inputs.properties?.body).toBeDefined()
   })
 
   it("every core schema exposes inputs + outputs JSON Schemas", () => {

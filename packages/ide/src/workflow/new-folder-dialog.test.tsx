@@ -1,5 +1,5 @@
-import React from "react"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type React from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/components/ui/dialog", () => ({
@@ -16,8 +16,8 @@ vi.mock("@/lib/api", () => ({
   createWorkspaceFolder: vi.fn(),
 }))
 
-import { createWorkspaceFolder } from "@/lib/api"
 import type { FileFolder } from "@/data/mock-files"
+import { createWorkspaceFolder } from "@/lib/api"
 import { NewFolderDialog } from "./new-folder-dialog"
 
 const tree: FileFolder = {

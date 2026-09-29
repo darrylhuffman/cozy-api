@@ -4,12 +4,7 @@
     "outDir": "./dist",
     "rootDir": ".",
     "allowImportingTsExtensions": false,
-    "types": ["node"],
+    "types": ["node"]
   },
-  "include": [
-    "src/**/*",
-    "nodes/**/*",
-    "lorien.config.ts",
-    "workflows/**/*.test.ts",
-  ],
+  "include": ["src/**/*", "nodes/**/*", "lorien.config.ts", "workflows/**/*.test.ts"]
 }

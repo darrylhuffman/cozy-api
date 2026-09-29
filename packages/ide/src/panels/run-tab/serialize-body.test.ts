@@ -34,9 +34,9 @@ describe("serializeBody", () => {
   })
 
   it("xml → raw string body", () => {
-    expect(
-      serializeBody({ ...baseForm, bodyKind: "xml", body: "<x>1</x>" }),
-    ).toEqual({ body: "<x>1</x>" })
+    expect(serializeBody({ ...baseForm, bodyKind: "xml", body: "<x>1</x>" })).toEqual({
+      body: "<x>1</x>",
+    })
   })
 
   it("xml empty → no body key", () => {
@@ -44,9 +44,9 @@ describe("serializeBody", () => {
   })
 
   it("text → raw string body (whitespace preserved)", () => {
-    expect(
-      serializeBody({ ...baseForm, bodyKind: "text", body: "  hello\n" }),
-    ).toEqual({ body: "  hello\n" })
+    expect(serializeBody({ ...baseForm, bodyKind: "text", body: "  hello\n" })).toEqual({
+      body: "  hello\n",
+    })
   })
 
   it("form → URL-encoded string, empty keys filtered", () => {

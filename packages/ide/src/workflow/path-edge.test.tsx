@@ -53,6 +53,7 @@ describe("PathEdge", () => {
   it("renders the base edge path", () => {
     render(
       <svg>
+        <title>edge</title>
         <PathEdge {...makeProps("e1")} />
       </svg>,
     )
@@ -62,6 +63,7 @@ describe("PathEdge", () => {
   it("renders the hover dot when data.mappings has at least one entry", () => {
     render(
       <svg>
+        <title>edge</title>
         <PathEdge
           {...makeProps("e2", {
             mappings: [{ source: "request.body.email", target: "save.email" }],
@@ -76,6 +78,7 @@ describe("PathEdge", () => {
   it("omits the hover dot when there are no mappings (trivial edge)", () => {
     render(
       <svg>
+        <title>edge</title>
         <PathEdge {...makeProps("e3", { mappings: [] })} />
       </svg>,
     )
@@ -85,6 +88,7 @@ describe("PathEdge", () => {
   it("renders a single-row table for one mapping", () => {
     render(
       <svg>
+        <title>edge</title>
         <PathEdge
           {...makeProps("e4", {
             mappings: [{ source: "request.body", target: "save" }],
@@ -102,6 +106,7 @@ describe("PathEdge", () => {
   it("renders one body row per mapping when N edges merge", () => {
     render(
       <svg>
+        <title>edge</title>
         <PathEdge
           {...makeProps("e5", {
             mappings: [
@@ -126,6 +131,7 @@ describe("PathEdge", () => {
   it("dot uses path-edge-label-<id> data-testid for stable selection", () => {
     render(
       <svg>
+        <title>edge</title>
         <PathEdge
           {...makeProps("e6", {
             mappings: [{ source: "x.y", target: "z" }],

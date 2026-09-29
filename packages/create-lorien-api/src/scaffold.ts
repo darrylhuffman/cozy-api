@@ -1,6 +1,6 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import type { PackageManager } from "./detect-package-manager.js";
+import { mkdir, writeFile } from "node:fs/promises"
+import { dirname, join } from "node:path"
+import type { PackageManager } from "./detect-package-manager.js"
 import {
   renderAgentsMd,
   renderBiomeJson,
@@ -13,17 +13,17 @@ import {
   renderSayHelloNode,
   renderServerEntry,
   renderTsconfig,
-} from "./templates.js";
+} from "./templates.js"
 
 export interface ScaffoldOptions {
-  target: string;
-  name: string;
-  pm: PackageManager;
+  target: string
+  name: string
+  pm: PackageManager
 }
 
 export async function scaffold(opts: ScaffoldOptions): Promise<void> {
-  const { target, name, pm } = opts;
-  const ctx = { name };
+  const { target, name, pm } = opts
+  const ctx = { name }
 
   const files: Array<[string, string]> = [
     [".gitignore", renderGitignore()],
@@ -37,11 +37,11 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
     ["AGENTS.md", renderAgentsMd()],
     [".claude/skills/lorien-api/SKILL.md", renderClaudeSkill()],
     ["README.md", renderReadme(ctx, pm)],
-  ];
+  ]
 
   for (const [relPath, contents] of files) {
-    const abs = join(target, relPath);
-    await mkdir(dirname(abs), { recursive: true });
-    await writeFile(abs, contents, "utf-8");
+    const abs = join(target, relPath)
+    await mkdir(dirname(abs), { recursive: true })
+    await writeFile(abs, contents, "utf-8")
   }
 }

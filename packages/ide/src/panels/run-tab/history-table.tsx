@@ -1,8 +1,5 @@
 import { useState } from "react"
-import {
-  useRequestHistoryStore,
-  type RequestHistoryEntry,
-} from "@/store/request-history"
+import { type RequestHistoryEntry, useRequestHistoryStore } from "@/store/request-history"
 
 export function HistoryTable() {
   const entries = useRequestHistoryStore((s) => s.entries)
@@ -17,9 +14,7 @@ export function HistoryTable() {
 
   return (
     <div className="flex flex-col gap-1 text-xs">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        History
-      </div>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">History</div>
       {entries.map((e) => (
         <HistoryRow key={e.id} entry={e} />
       ))}
@@ -75,17 +70,11 @@ function StatusIndicator({ outcome }: { outcome: RequestHistoryEntry["outcome"] 
     )
   if (outcome.kind === "ok")
     return (
-      <span
-        data-testid="status-ok"
-        className="inline-block h-2 w-2 rounded-full bg-green-500"
-      />
+      <span data-testid="status-ok" className="inline-block h-2 w-2 rounded-full bg-green-500" />
     )
   if (outcome.kind === "error")
     return (
-      <span
-        data-testid="status-error"
-        className="inline-block h-2 w-2 rounded-full bg-red-500"
-      />
+      <span data-testid="status-error" className="inline-block h-2 w-2 rounded-full bg-red-500" />
     )
   return (
     <span
@@ -101,9 +90,7 @@ function ResponseView({
   outcome: Extract<RequestHistoryEntry["outcome"], { kind: "ok" | "error" }>
 }) {
   const bodyText =
-    typeof outcome.body === "string"
-      ? outcome.body
-      : JSON.stringify(outcome.body, null, 2)
+    typeof outcome.body === "string" ? outcome.body : JSON.stringify(outcome.body, null, 2)
   return (
     <div className="flex flex-col gap-2">
       <div>

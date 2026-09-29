@@ -12,10 +12,10 @@ import {
   MenubarSubTrigger,
   MenubarTrigger,
 } from "@/components/ui/menubar"
-import { cn } from "@/lib/utils"
 import { PANE_IDS, PANE_TITLES, type PaneId, reopenPanel } from "@/layout/default-layout"
-import { useDockviewApi } from "@/store/dockview-api"
+import { cn } from "@/lib/utils"
 import { confirmAction } from "@/store/confirm"
+import { useDockviewApi } from "@/store/dockview-api"
 import { useThemeStore } from "@/store/theme"
 
 const LAYOUT_KEY = "lorien-ide-layout"

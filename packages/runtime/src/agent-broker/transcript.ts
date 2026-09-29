@@ -1,20 +1,7 @@
 import { randomUUID } from "node:crypto"
-import {
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  stat,
-  writeFile,
-} from "node:fs/promises"
+import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
-import type {
-  AgentEvent,
-  AgentName,
-  ChatIndex,
-  ChatIndexEntry,
-  ChatTranscript,
-} from "./types.js"
+import type { AgentEvent, AgentName, ChatIndex, ChatIndexEntry, ChatTranscript } from "./types.js"
 
 const INDEX_VERSION = 1 as const
 
@@ -81,10 +68,7 @@ async function saveIndex(l: ChatsLayout, idx: ChatIndex): Promise<void> {
  */
 const chatQueues = new Map<string, Promise<unknown>>()
 
-function withChatLock<T>(
-  key: string,
-  fn: () => Promise<T>,
-): Promise<T> {
+function withChatLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prior = chatQueues.get(key) ?? Promise.resolve()
   const next = prior.then(fn, fn)
   chatQueues.set(
@@ -99,10 +83,7 @@ export interface CreateChatInput {
   title: string
 }
 
-export async function createChat(
-  projectRoot: string,
-  input: CreateChatInput,
-): Promise<string> {
+export async function createChat(projectRoot: string, input: CreateChatInput): Promise<string> {
   const l = layout(projectRoot)
   await mkdir(l.chatsDir, { recursive: true })
   const id = randomUUID()
@@ -152,10 +133,7 @@ export async function appendChatEvent(
   })
 }
 
-export async function loadChat(
-  projectRoot: string,
-  id: string,
-): Promise<ChatTranscript | null> {
+export async function loadChat(projectRoot: string, id: string): Promise<ChatTranscript | null> {
   const l = layout(projectRoot)
   return withChatLock(`${projectRoot}::${id}`, async () => {
     const path = l.chatPath(id)

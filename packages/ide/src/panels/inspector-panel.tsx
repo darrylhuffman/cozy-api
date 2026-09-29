@@ -1,16 +1,16 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { RunTab } from "./run-tab"
-import { TestsTab } from "./tests-tab"
 import type { JsonSchema, NodeInstance } from "@/lib/api"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useSchemas } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
-import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkflowDrafts } from "@/store/workflow-drafts"
 import { isValidNodeId } from "@/workflow/diagnose"
 import { renameNode } from "@/workflow/graph-ops"
 import { expandTemplate } from "@/workflow/template"
+import { RunTab } from "./run-tab"
+import { TestsTab } from "./tests-tab"
 
 export function InspectorPanel() {
   return (
@@ -75,10 +75,7 @@ function InspectContent() {
             k="color"
             v={
               <span className="flex items-center gap-2">
-                <span
-                  className="h-3 w-3 rounded-sm"
-                  style={{ background: schema.color }}
-                />
+                <span className="h-3 w-3 rounded-sm" style={{ background: schema.color }} />
                 <span>{schema.color}</span>
               </span>
             }
@@ -199,9 +196,7 @@ function NodeIdField({
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
+      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
       {children}
     </div>
   )
@@ -239,13 +234,7 @@ function SchemaTree({
             ? effectiveInputValue(key, sub, instance, workflowPath ?? "")
             : null
         return (
-          <SchemaTreeRow
-            key={key}
-            name={key}
-            schema={sub}
-            depth={depth}
-            effectiveValue={value}
-          />
+          <SchemaTreeRow key={key} name={key} schema={sub} depth={depth} effectiveValue={value} />
         )
       })}
     </ul>
@@ -261,10 +250,7 @@ function SchemaTreeRow({
   name: string
   schema: JsonSchema
   depth: number
-  effectiveValue?:
-    | { kind: "reference"; value: string }
-    | { kind: "literal"; value: unknown }
-    | null
+  effectiveValue?: { kind: "reference"; value: string } | { kind: "literal"; value: unknown } | null
 }) {
   const isObject = schema.type === "object" && schema.properties
   const isArray = schema.type === "array" && schema.items

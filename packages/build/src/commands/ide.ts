@@ -4,33 +4,30 @@ import type { Server as HttpServer } from "node:http"
 import { createRequire } from "node:module"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
-import { serve } from "@hono/node-server"
-import { serveStatic } from "@hono/node-server/serve-static"
 import {
-  attachAgentBroker,
-  mountAgentBroker,
-} from "@darrylondil/lorien-runtime/agent-broker"
-import {
+  type AnyNodeOrTrigger,
   attachDebugWebSocket,
   createServiceResolver,
+  type DebugIntegration,
   DebugSession,
   importNodes,
   installConsoleCapture,
   isLoopbackOriginString,
+  type LoadedWorkflow,
   loadWorkspace,
   mountWorkflows,
-  type AnyNodeOrTrigger,
-  type DebugIntegration,
-  type LoadedWorkflow,
   type Services,
 } from "@darrylondil/lorien-runtime"
-import { makeDebugIntegration } from "./debug-integration.js"
+import { attachAgentBroker, mountAgentBroker } from "@darrylondil/lorien-runtime/agent-broker"
+import { serve } from "@hono/node-server"
+import { serveStatic } from "@hono/node-server/serve-static"
 import chokidar from "chokidar"
 import type { Command } from "commander"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
+import { makeDebugIntegration } from "./debug-integration.js"
 import { introspectWorkspace, invalidateSchemaCache } from "./introspect-workspace.js"
 import { type NodeCasesRequest, type NodeCasesRun, runNodeCasesInWorker } from "./run-node-cases.js"
 
@@ -417,7 +414,10 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
       // No lorien.config.ts — services will be empty
     }
     const resolver = createServiceResolver(configServices)
-    const resolved = await resolver.resolve({ requestId: `ide-boot-${Math.random().toString(36).slice(2)}`, timestamp: Date.now() })
+    const resolved = await resolver.resolve({
+      requestId: `ide-boot-${Math.random().toString(36).slice(2)}`,
+      timestamp: Date.now(),
+    })
     return resolved as Services
   })()
 
@@ -484,9 +484,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
       })
       console.log(`lorien IDE: reloaded ${ws.workflows.length} workflow(s)`)
     } catch (err) {
-      console.error(
-        `lorien IDE: reload failed — ${(err as Error).message}`,
-      )
+      console.error(`lorien IDE: reload failed — ${(err as Error).message}`)
     }
   }
 
@@ -498,7 +496,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     usePolling: process.platform === "win32",
     interval: 50,
   })
-  workflowWatcher.on("all", (event, filePath) => {
+  workflowWatcher.on("all", (_event, filePath) => {
     if (typeof filePath === "string" && filePath.endsWith(".workflow")) {
       debouncedReload()
     }
@@ -506,8 +504,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
   const watcherReady = new Promise<void>((r) => workflowWatcher.once("ready", r))
 
   return new Promise((resolveStarted) => {
-    const dispatcher: typeof currentApp.fetch = (req, env, ctx) =>
-      currentApp.fetch(req, env, ctx)
+    const dispatcher: typeof currentApp.fetch = (req, env, ctx) => currentApp.fetch(req, env, ctx)
     const server = serve({ fetch: dispatcher, port: availablePort }, ({ port: actualPort }) => {
       const url = `http://localhost:${actualPort}`
       console.log(`lorien IDE running at ${url}`)

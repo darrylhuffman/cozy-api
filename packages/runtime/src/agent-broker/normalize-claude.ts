@@ -1,12 +1,6 @@
 import type { AgentEvent, ToolKind } from "./types.js"
 
-const KNOWN_TOOLS = new Set<ToolKind>([
-  "Read",
-  "Edit",
-  "Write",
-  "Bash",
-  "Grep",
-])
+const KNOWN_TOOLS = new Set<ToolKind>(["Read", "Edit", "Write", "Bash", "Grep"])
 
 function classifyTool(name: string): ToolKind {
   return KNOWN_TOOLS.has(name as ToolKind) ? (name as ToolKind) : "Other"
@@ -73,9 +67,7 @@ export function normalizeClaude(line: string): AgentEvent[] {
   }
 
   if (type === "assistant") {
-    const message = obj.message as
-      | { id?: string; content?: unknown[] }
-      | undefined
+    const message = obj.message as { id?: string; content?: unknown[] } | undefined
     if (!message || !Array.isArray(message.content)) return []
     const turnId = typeof message.id === "string" ? message.id : ""
     const events: AgentEvent[] = []
@@ -89,11 +81,7 @@ export function normalizeClaude(line: string): AgentEvent[] {
           turnId,
           at: now(),
         })
-      } else if (
-        b.type === "tool_use" &&
-        typeof b.id === "string" &&
-        typeof b.name === "string"
-      ) {
+      } else if (b.type === "tool_use" && typeof b.id === "string" && typeof b.name === "string") {
         events.push({
           kind: "tool_use",
           toolUseId: b.id,
@@ -130,11 +118,8 @@ export function normalizeClaude(line: string): AgentEvent[] {
   }
 
   if (type === "result") {
-    const turnId =
-      typeof obj.session_id === "string" ? `result-${obj.session_id}` : "result"
-    const usage = obj.usage as
-      | { input_tokens?: number; output_tokens?: number }
-      | undefined
+    const turnId = typeof obj.session_id === "string" ? `result-${obj.session_id}` : "result"
+    const usage = obj.usage as { input_tokens?: number; output_tokens?: number } | undefined
     const ev: Extract<AgentEvent, { kind: "turn_done" }> = {
       kind: "turn_done",
       turnId,

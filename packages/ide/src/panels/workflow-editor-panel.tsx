@@ -1,39 +1,39 @@
-import { X } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { confirmAction } from "@/store/confirm";
-import { useTabsStore, useWorkflowTabs } from "@/store/tabs";
-import { useWorkflowDrafts } from "@/store/workflow-drafts";
-import { WorkflowEditor } from "@/workflow/workflow-editor";
+import { X } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { confirmAction } from "@/store/confirm"
+import { useTabsStore, useWorkflowTabs } from "@/store/tabs"
+import { useWorkflowDrafts } from "@/store/workflow-drafts"
+import { WorkflowEditor } from "@/workflow/workflow-editor"
 
 export function WorkflowEditorPanel() {
-  const tabs = useWorkflowTabs();
-  const activeId = useTabsStore((s) => s.activeWorkflowId);
-  const selectTab = useTabsStore((s) => s.selectTab);
-  const closeTab = useTabsStore((s) => s.closeTab);
+  const tabs = useWorkflowTabs()
+  const activeId = useTabsStore((s) => s.activeWorkflowId)
+  const selectTab = useTabsStore((s) => s.selectTab)
+  const closeTab = useTabsStore((s) => s.closeTab)
 
   if (tabs.length === 0) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-muted-foreground">
         <p className="text-sm">Open a .workflow file to see its graph here.</p>
       </div>
-    );
+    )
   }
 
-  const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
+  const active = tabs.find((t) => t.id === activeId) ?? tabs[0]
 
   async function handleClose(tabId: string) {
-    const tab = tabs.find((t) => t.id === tabId);
+    const tab = tabs.find((t) => t.id === tabId)
     if (tab?.dirty) {
       const confirmed = await confirmAction({
         title: `Close ${tab.title} without saving?`,
         description: "Your unsaved changes will be lost.",
         confirmLabel: "Close without saving",
         destructive: true,
-      });
-      if (!confirmed) return;
+      })
+      if (!confirmed) return
     }
-    closeTab(tabId);
-    useWorkflowDrafts.getState().drop(tabId);
+    closeTab(tabId)
+    useWorkflowDrafts.getState().drop(tabId)
   }
 
   return (
@@ -41,12 +41,13 @@ export function WorkflowEditorPanel() {
       {/* Custom tab strip for workflow tabs */}
       <div className="flex shrink-0 items-center gap-px overflow-x-auto border-b border-border bg-muted/30">
         {tabs.map((tab) => (
+          // biome-ignore lint/a11y/noStaticElementInteractions: middle-click to close; the tab's own controls are buttons
           <div
             key={tab.id}
             onMouseDown={(e) => {
               if (e.button === 1) {
-                e.preventDefault();
-                void handleClose(tab.id);
+                e.preventDefault()
+                void handleClose(tab.id)
               }
             }}
             className={cn(
@@ -65,9 +66,7 @@ export function WorkflowEditorPanel() {
               )}
             >
               {tab.title}
-              {tab.dirty && (
-                <span className="ml-1 text-muted-foreground">&bull;</span>
-              )}
+              {tab.dirty && <span className="ml-1 text-muted-foreground">&bull;</span>}
             </button>
             <button
               type="button"
@@ -97,5 +96,5 @@ export function WorkflowEditorPanel() {
         ) : null}
       </div>
     </div>
-  );
+  )
 }

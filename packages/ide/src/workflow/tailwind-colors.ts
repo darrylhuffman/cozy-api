@@ -26,8 +26,8 @@ const TAILWIND_500: Record<string, string> = {
   fuchsia: "#d946ef",
   pink: "#ec4899",
   rose: "#f43f5e",
-};
+}
 
 export function resolveAccentColor(value: string): string {
-  return TAILWIND_500[value] ?? value;
+  return TAILWIND_500[value] ?? value
 }

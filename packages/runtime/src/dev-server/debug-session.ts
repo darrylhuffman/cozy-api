@@ -1,9 +1,5 @@
 import type { WebSocket } from "ws"
-import type {
-  Breakpoint,
-  ClientMessage,
-  ServerMessage,
-} from "./debug-protocol.js"
+import type { Breakpoint, ClientMessage, ServerMessage } from "./debug-protocol.js"
 
 interface PauseFrame {
   runId: string
@@ -92,34 +88,20 @@ export class DebugSession {
     }
     this.runs.set(runId, state)
 
-    const shouldPause = (
-      nodeId: string,
-      phase: "before" | "after",
-    ): boolean => {
+    const shouldPause = (nodeId: string, phase: "before" | "after"): boolean => {
       if (state.stepMode === "step") return true
       const bps = this.breakpoints.get(workflowPath) ?? []
       if (phase === "before") {
-        if (
-          state.stepMode === "step-over" &&
-          state.stepOverNodeId !== nodeId
-        )
-          return true
+        if (state.stepMode === "step-over" && state.stepOverNodeId !== nodeId) return true
         return bps.some((b) => b.nodeId === nodeId && b.kind === "before")
       }
-      if (state.stepMode === "step-over" && state.stepOverNodeId === nodeId)
-        return false
+      if (state.stepMode === "step-over" && state.stepOverNodeId === nodeId) return false
       return bps.some(
-        (b) =>
-          b.nodeId === nodeId &&
-          (b.kind === "after" || b.kind.startsWith("port:")),
+        (b) => b.nodeId === nodeId && (b.kind === "after" || b.kind.startsWith("port:")),
       )
     }
 
-    const pause = (
-      nodeId: string,
-      phase: "before" | "after",
-      payload: unknown,
-    ): Promise<void> => {
+    const pause = (nodeId: string, phase: "before" | "after", payload: unknown): Promise<void> => {
       const frame: PauseFrame = { runId, nodeId, phase }
       this.broadcast({ type: "paused", runId, nodeId, phase, payload })
       return new Promise<void>((resolve, reject) => {

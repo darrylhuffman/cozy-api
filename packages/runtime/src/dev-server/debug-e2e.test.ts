@@ -1,20 +1,18 @@
 import { createServer, type Server as HttpServer } from "node:http"
-import { describe, expect, it } from "vitest"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
+import { describe, expect, it } from "vitest"
 import { WebSocket } from "ws"
 import { z } from "zod"
 import { defineNode } from "../define-node.js"
 import { LifecycleEmitter } from "../exec/lifecycle.js"
-import { DebugSession } from "./debug-session.js"
-import { attachDebugWebSocket } from "./debug-ws.js"
-import { mountWorkflows, type DebugIntegration } from "./server.js"
-import {
-  installConsoleCapture,
-} from "./console-capture.js"
+import { installConsoleCapture } from "./console-capture.js"
 import { isLoopbackOriginString } from "./cors.js"
 import type { ServerMessage } from "./debug-protocol.js"
+import { DebugSession } from "./debug-session.js"
+import { attachDebugWebSocket } from "./debug-ws.js"
 import type { LoadedWorkflow } from "./load.js"
+import { type DebugIntegration, mountWorkflows } from "./server.js"
 
 function startServerWithDebug(): Promise<{
   server: HttpServer
@@ -78,13 +76,7 @@ function startServerWithDebug(): Promise<{
       })
       const startedAt = Date.now()
       const lifecycle = new LifecycleEmitter()
-      for (const t of [
-        "before-node",
-        "after-node",
-        "edge-fired",
-        "error",
-        "complete",
-      ] as const) {
+      for (const t of ["before-node", "after-node", "edge-fired", "error", "complete"] as const) {
         lifecycle.on(t, (ev) =>
           session.broadcast({
             type: "event",
@@ -94,11 +86,7 @@ function startServerWithDebug(): Promise<{
           }),
         )
       }
-      const { onBeforeNode, onAfterNode } = session.registerRun(
-        workflowPath,
-        runId,
-        startedAt,
-      )
+      const { onBeforeNode, onAfterNode } = session.registerRun(workflowPath, runId, startedAt)
       return { lifecycle, onBeforeNode, onAfterNode }
     },
     onResult: (runId, result, totalMs) => {
@@ -128,8 +116,7 @@ function startServerWithDebug(): Promise<{
   app.use(
     "*",
     cors({
-      origin: (origin) =>
-        isLoopbackOriginString(origin) ? origin : null,
+      origin: (origin) => (isLoopbackOriginString(origin) ? origin : null),
       allowMethods: ["POST", "GET"],
       allowHeaders: ["content-type"],
     }),
@@ -223,9 +210,7 @@ describe("debugger HTTP-driven e2e", () => {
 
     const log = received.find((m) => m.type === "log")
     expect(log).toBeTruthy()
-    expect((log as Extract<ServerMessage, { type: "log" }>).message).toMatch(
-      /echo node ran/,
-    )
+    expect((log as Extract<ServerMessage, { type: "log" }>).message).toMatch(/echo node ran/)
 
     ws.close()
     server.close()
@@ -238,9 +223,7 @@ describe("debugger HTTP-driven e2e", () => {
     })
     const received: ServerMessage[] = []
     await new Promise<void>((resolve) => ws.on("open", () => resolve()))
-    ws.on("message", (raw) =>
-      received.push(JSON.parse(raw.toString()) as ServerMessage),
-    )
+    ws.on("message", (raw) => received.push(JSON.parse(raw.toString()) as ServerMessage))
 
     ws.send(
       JSON.stringify({

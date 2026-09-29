@@ -71,11 +71,7 @@ function FolderRow({
         ) : (
           <span className="inline-block h-3 w-3" />
         )}
-        {open ? (
-          <FolderOpen className="h-3.5 w-3.5" />
-        ) : (
-          <FolderIcon className="h-3.5 w-3.5" />
-        )}
+        {open ? <FolderOpen className="h-3.5 w-3.5" /> : <FolderIcon className="h-3.5 w-3.5" />}
         <span className="truncate">{node.name}</span>
       </button>
       {open && (

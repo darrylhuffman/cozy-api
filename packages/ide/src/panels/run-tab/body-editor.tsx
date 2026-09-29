@@ -1,5 +1,5 @@
 import Editor from "@monaco-editor/react"
-import { useDebugSessionStore, type BodyKind } from "@/store/debug-session"
+import { useDebugSessionStore } from "@/store/debug-session"
 import { useThemeStore } from "@/store/theme"
 import { KeyValueGrid } from "./key-value-grid"
 

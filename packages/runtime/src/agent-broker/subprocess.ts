@@ -1,9 +1,6 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process"
 import { createInterface } from "node:readline"
-import {
-  extractClaudeSessionId,
-  normalizeClaude,
-} from "./normalize-claude.js"
+import { extractClaudeSessionId, normalizeClaude } from "./normalize-claude.js"
 import type { AgentEvent } from "./types.js"
 
 export interface SpawnClaudeOptions {

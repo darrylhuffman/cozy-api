@@ -321,7 +321,9 @@ function renderParallelWave(
     const ident = usesToIdent.get(inst.uses)
     if (!ident) throw new Error(`emit-workflow: no identifier for uses \`${inst.uses}\``)
     const inputVar = `_${id}Input`
-    lines.push(`${indent}  ${ident}.run(${inputVar} as never, services as never, undefined as never),`)
+    lines.push(
+      `${indent}  ${ident}.run(${inputVar} as never, services as never, undefined as never),`,
+    )
   }
   lines.push(`${indent}])`)
   lines.push(

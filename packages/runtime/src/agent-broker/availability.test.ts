@@ -1,14 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
-import {
-  AvailabilityProbe,
-  type ProbeExec,
-} from "./availability.js"
+import { AvailabilityProbe, type ProbeExec } from "./availability.js"
 
 describe("AvailabilityProbe", () => {
   it("reports installed=true and a version when the CLI exits 0", async () => {
     const exec: ProbeExec = vi.fn(async (cmd) => {
-      if (cmd === "claude")
-        return { exitCode: 0, stdout: "claude-code 1.2.3\n", stderr: "" }
+      if (cmd === "claude") return { exitCode: 0, stdout: "claude-code 1.2.3\n", stderr: "" }
       return { exitCode: 127, stdout: "", stderr: "not found" }
     })
     const probe = new AvailabilityProbe({ exec, now: () => 0 })

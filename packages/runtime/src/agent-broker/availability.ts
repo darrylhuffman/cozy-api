@@ -1,9 +1,5 @@
 import { spawn } from "node:child_process"
-import type {
-  AgentAvailability,
-  AgentName,
-  AvailabilityResponse,
-} from "./types.js"
+import type { AgentAvailability, AgentName, AvailabilityResponse } from "./types.js"
 
 export interface ProbeExecResult {
   exitCode: number
@@ -11,10 +7,7 @@ export interface ProbeExecResult {
   stderr: string
 }
 
-export type ProbeExec = (
-  command: string,
-  args: string[],
-) => Promise<ProbeExecResult>
+export type ProbeExec = (command: string, args: string[]) => Promise<ProbeExecResult>
 
 interface CacheEntry {
   expiresAt: number
@@ -113,9 +106,7 @@ export class AvailabilityProbe {
       const r = await this.exec(binary, ["--version"])
       if (r.exitCode !== 0) return { installed: false }
       const version = parseVersion(r.stdout || r.stderr)
-      return version === undefined
-        ? { installed: true }
-        : { installed: true, version }
+      return version === undefined ? { installed: true } : { installed: true, version }
     } catch {
       return { installed: false }
     }

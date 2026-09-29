@@ -1,14 +1,8 @@
 import { useEffect, useRef } from "react"
-import { useAgentChats } from "@/store/agent-chats"
 import type { AgentEvent } from "@/store/agent-chats"
+import { useAgentChats } from "@/store/agent-chats"
+import { AssistantText, ToolUseBash, ToolUseEdit, ToolUseRead, UserMessage } from "./cards"
 import { InputBar } from "./input-bar"
-import {
-  AssistantText,
-  ToolUseBash,
-  ToolUseEdit,
-  ToolUseRead,
-  UserMessage,
-} from "./cards"
 
 function eventKey(event: AgentEvent, fallback: number): string {
   if (event.kind === "tool_use" || event.kind === "tool_result") {
@@ -29,8 +23,7 @@ function EventRow({ event }: { event: AgentEvent }): React.ReactElement | null {
     case "tool_use": {
       const input = (event.input ?? {}) as Record<string, unknown>
       const path = typeof input.path === "string" ? input.path : ""
-      const command =
-        typeof input.command === "string" ? input.command : ""
+      const command = typeof input.command === "string" ? input.command : ""
       if (event.tool === "Read" || event.tool === "Grep") {
         return <ToolUseRead path={path || event.tool} />
       }
@@ -40,11 +33,7 @@ function EventRow({ event }: { event: AgentEvent }): React.ReactElement | null {
       if (event.tool === "Bash") {
         return <ToolUseBash command={command} />
       }
-      return (
-        <div className="text-xs text-muted-foreground">
-          tool: {event.tool}
-        </div>
-      )
+      return <div className="text-xs text-muted-foreground">tool: {event.tool}</div>
     }
     case "tool_result":
       // Result events arrive after the tool_use card already exists. v1 doesn't
@@ -68,6 +57,7 @@ export function ChatView({ chatId }: ChatViewProps): React.ReactElement | null {
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventCount = tab?.kind === "chat" ? tab.events.length : 0
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when a new event arrives
   useEffect(() => {
     // Auto-scroll on new events. Guard required: jsdom does not implement scrollTo.
     const el = scrollRef.current
@@ -96,10 +86,7 @@ export function ChatView({ chatId }: ChatViewProps): React.ReactElement | null {
           </div>
         ))}
       </div>
-      <InputBar
-        disabled={tab.turnInFlight}
-        onSend={(text) => sendMessage(chatId, text)}
-      />
+      <InputBar disabled={tab.turnInFlight} onSend={(text) => sendMessage(chatId, text)} />
     </div>
   )
 }

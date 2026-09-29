@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it } from "vitest"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { BodyTypeTabs } from "./body-type-tabs"
 

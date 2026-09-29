@@ -20,10 +20,7 @@ export function scrubReferencesTo(node: NodeInstance, targetId: string): NodeIns
   // per-field object form
   const nextIn: Record<string, string> = {}
   for (const [field, value] of Object.entries(node.in)) {
-    if (
-      typeof value === "string" &&
-      (value === targetId || value.startsWith(`${targetId}.`))
-    ) {
+    if (typeof value === "string" && (value === targetId || value.startsWith(`${targetId}.`))) {
       continue // strip
     }
     nextIn[field] = value
