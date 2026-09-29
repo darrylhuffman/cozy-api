@@ -27,6 +27,8 @@ describe("runBuild (integration)", () => {
         root: fixtureRoot,
         outDir: tmp,
         skipTypes: true, // fixture's lorien.config writes to its own .lorien/ — skip in tests
+        // The output lives outside the fixture, so its relative imports cannot be bundled.
+        bundle: false,
       });
       expect(result.ok).toBe(true);
       expect(result.workflowsBuilt).toBeGreaterThan(0);

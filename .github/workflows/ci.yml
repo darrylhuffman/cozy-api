@@ -21,9 +21,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Packages first: the example project links the freshly built `lorien` bin.
+      # Packages first: the example project runs the built `lorien` CLI.
       - run: pnpm -r --filter "./packages/**" build
-      - run: pnpm install --frozen-lockfile
       - run: pnpm -r typecheck
       - run: pnpm -r test
       - name: Install Playwright's Chromium
