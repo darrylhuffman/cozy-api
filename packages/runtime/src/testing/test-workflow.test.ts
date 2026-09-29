@@ -16,9 +16,9 @@ describe("testWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/add", method: "POST" } },
+        req: { uses: "@core/http-request", values: { path: "/add", method: "POST" } },
         add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
-        res: { uses: "@core/response", in: { body: "add.sum", status: 200 } },
+        res: { uses: "@core/response", in: { body: "add.sum" }, values: { status: 200 } },
       },
     })
     const res = await testWorkflow(wf, {
@@ -41,7 +41,7 @@ describe("testWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
+        req: { uses: "@core/http-request", values: { path: "/", method: "GET" } },
         n: { uses: "./n", in: {} },
         r: { uses: "@core/response", in: { body: "n.msg" } },
       },
@@ -67,7 +67,7 @@ describe("traceWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/", method: "GET" } },
+        req: { uses: "@core/http-request", values: { path: "/", method: "GET" } },
         u: { uses: "./u", in: { s: "req.body" } },
         r: { uses: "@core/response", in: { body: "u.out" } },
       },

@@ -113,6 +113,8 @@ export async function runDevWithIde(opts: {
   port?: number
   idePort: number
   spawnImpl?: typeof spawn
+  /** For tests: replace the IDE server start. */
+  runIdeImpl?: typeof runIde
 }): Promise<RunDevResult> {
   const devOpts: { root: string; port?: number; spawnImpl?: typeof spawn } = { root: opts.root }
   if (opts.port !== undefined) devOpts.port = opts.port
@@ -120,7 +122,8 @@ export async function runDevWithIde(opts: {
 
   // Start the IDE static server first; it stays alive in the background.
   try {
-    await runIde({ port: opts.idePort, open: true })
+    // The IDE must serve the same project as the API server, not the cwd.
+    await (opts.runIdeImpl ?? runIde)({ port: opts.idePort, open: true, root: opts.root })
   } catch (e) {
     console.error(`Could not start the IDE: ${(e as Error).message}`)
     console.error("Falling back to dev-server-only.")

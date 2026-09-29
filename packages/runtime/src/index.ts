@@ -36,6 +36,7 @@ export type {
   ServiceContext,
   Services,
   ServiceValue,
+  TailwindColor,
   Trigger,
   WorkflowConfig,
   ZodObjectAny,
@@ -46,15 +47,31 @@ export {
   parseWorkflowFromString,
   WorkflowParseError,
 } from "./workflow/parse.js";
-export { parseReference, resolveInputValue } from "./workflow/reference.js";
+export { isReferenceString, parseReference } from "./workflow/reference.js";
 export type {
   NodeInstance,
   NodeView,
   ParsedReference,
-  ResolvedInputValue,
   WorkflowFile,
 } from "./workflow/types.js";
 export type { ValidationError, ValidationResult } from "./workflow/validate.js";
 export { validateWorkflow } from "./workflow/validate.js";
+
+export { attachDebugWebSocket } from "./dev-server/debug-ws.js"
+export type { AttachDebugWebSocketOptions } from "./dev-server/debug-ws.js"
+export { DebugSession } from "./dev-server/debug-session.js"
+export type {
+  Breakpoint,
+  ClientMessage,
+  ServerMessage,
+  RequestEnvelope,
+  WireLifecycleEvent,
+} from "./dev-server/debug-protocol.js"
+export { installConsoleCapture, withRunContext } from "./dev-server/console-capture.js"
+export { isLoopbackOriginString } from "./dev-server/cors.js"
+export type { DebugIntegration } from "./dev-server/server.js"
+// Services
+export { createServiceResolver } from "./services/resolve.js"
+export type { ServiceResolver, ServicesConfig } from "./services/types.js"
 
 export const VERSION = "0.0.0";

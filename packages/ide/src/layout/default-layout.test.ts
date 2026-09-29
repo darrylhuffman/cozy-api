@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { loadSavedLayout, STORAGE_KEY, saveLayout } from "./default-layout.js"
+import { buildDefaultLayout, loadSavedLayout, STORAGE_KEY, saveLayout, reopenPanel, type PaneId, PANE_IDS, PANE_TITLES } from "./default-layout.js"
 
 describe("loadSavedLayout", () => {
   beforeEach(() => {
@@ -56,5 +56,69 @@ describe("saveLayout", () => {
     const fakeApi = { toJSON: vi.fn(() => ({})) } as unknown as Parameters<typeof saveLayout>[0]
     expect(() => saveLayout(fakeApi)).not.toThrow()
     Storage.prototype.setItem = originalSetItem
+  })
+})
+
+describe("PANE_IDS and PANE_TITLES include agents", () => {
+  it("PANE_IDS contains 'agents'", () => {
+    expect(PANE_IDS).toContain("agents")
+  })
+  it("PANE_TITLES.agents is 'Agents'", () => {
+    expect(PANE_TITLES.agents).toBe("Agents")
+  })
+})
+
+describe("reopenPanel for agents", () => {
+  it("does not throw when Inspector exists", () => {
+    const calls: unknown[] = []
+    const api = {
+      getPanel: (id: string) => (id === "inspector" ? { id, api: { setActive: () => {} } } : undefined),
+      addPanel: (opts: unknown) => calls.push(opts),
+    } as unknown as Parameters<typeof reopenPanel>[0]
+    reopenPanel(api, "agents" satisfies PaneId)
+    expect(calls).toHaveLength(1)
+    const opts = calls[0] as { position?: { referencePanel: string; direction: string } }
+    expect(opts.position).toEqual({ referencePanel: "inspector", direction: "within" })
+  })
+
+  it("falls back to a new pane on the right when Inspector is absent", () => {
+    const calls: unknown[] = []
+    const api = {
+      getPanel: (id: string) => (id === "code" ? { id, api: { setActive: () => {} } } : undefined),
+      addPanel: (opts: unknown) => calls.push(opts),
+    } as unknown as Parameters<typeof reopenPanel>[0]
+    reopenPanel(api, "agents" satisfies PaneId)
+    expect(calls).toHaveLength(1)
+    const opts = calls[0] as { position?: { referencePanel: string; direction: string }; initialWidth?: number }
+    expect(opts.position).toEqual({ referencePanel: "code", direction: "right" })
+    expect(opts.initialWidth).toBe(400)
+  })
+})
+
+describe("buildDefaultLayout", () => {
+  it("sizes the side columns and opens on the Workflow and Inspector tabs", () => {
+    const log: string[] = []
+    const added = new Set<string>()
+    const api = {
+      addPanel: (opts: { id: string }) => added.add(opts.id),
+      getPanel: (id: string) =>
+        added.has(id)
+          ? {
+              id,
+              api: {
+                setActive: () => log.push(`active:${id}`),
+                setSize: (s: { width: number }) => log.push(`size:${id}:${s.width}`),
+              },
+            }
+          : undefined,
+    } as unknown as Parameters<typeof buildDefaultLayout>[0]
+    buildDefaultLayout(api)
+    expect([...added]).toEqual(["files", "workflow", "code", "inspector", "agents", "debug"])
+    expect(log).toEqual([
+      "size:files:250",
+      "size:inspector:400",
+      "active:workflow",
+      "active:inspector",
+    ])
   })
 })

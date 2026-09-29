@@ -1,13 +1,19 @@
 import { cleanup, render, screen } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { App } from "./app.js"
 
 beforeEach(() => {
   localStorage.clear()
+  // No real backend in tests — stub fetch so FilesPanel falls back to mock data
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockRejectedValue(new Error("fetch not available in tests")),
+  )
 })
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  vi.unstubAllGlobals()
 })
 
 describe("App", () => {

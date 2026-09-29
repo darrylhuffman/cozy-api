@@ -1,4 +1,4 @@
-import { resolveInputValue, type WorkflowFile } from "@darrylondil/lorien-runtime"
+import { parseReference, type WorkflowFile } from "@darrylondil/lorien-runtime"
 
 /**
  * Result of generating a single workflow's .gen.ts source.
@@ -54,12 +54,7 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   const triggers: TriggerInfo[] = []
   for (const [nodeId, inst] of Object.entries(workflow.nodes)) {
     if (inst.uses !== "@core/http-request") continue
-    const config = (inst.config ?? {}) as { path?: string; method?: string }
-    triggers.push({
-      nodeId,
-      path: config.path ?? "/",
-      method: (config.method ?? "GET").toUpperCase(),
-    })
+    triggers.push(getHttpRequestMeta(nodeId, inst))
   }
 
   // Build a stable map from `uses` to local identifier.
@@ -113,6 +108,33 @@ interface TriggerInfo {
   nodeId: string
   path: string
   method: string
+}
+
+/**
+ * Extracts method + path for an @core/http-request node instance.
+ *
+ * `method` and `path` are user-typed literals that live under `values:`. The
+ * route is fixed at build time — references in `in:` would resolve per-request,
+ * which doesn't fit Hono's static route registration, so we don't read them
+ * here. If a user wires `in.method`/`in.path`, they need a different setup
+ * (we'd warn, but for now: silently fall back to defaults).
+ */
+function getHttpRequestMeta(nodeId: string, inst: { values?: unknown }): TriggerInfo {
+  const values =
+    typeof inst.values === "object" && inst.values !== null && !Array.isArray(inst.values)
+      ? (inst.values as Record<string, unknown>)
+      : {}
+
+  const method = (values.method as string | undefined) ?? "GET"
+  const path = (values.path as string | undefined) ?? "/"
+
+  if (!method || !path) {
+    throw new Error(
+      `@core/http-request "${nodeId}" needs method and path — set them under values: { method, path }`,
+    )
+  }
+
+  return { nodeId, path, method: method.toUpperCase() }
 }
 
 function renderResolveServicesHelper(): string {
@@ -248,14 +270,30 @@ function renderSingleNodeCall(
   const ident = usesToIdent.get(inst.uses)
   if (!ident) throw new Error(`emit-workflow: no identifier for uses \`${inst.uses}\``)
   const outVar = outputsVar(nodeId)
-  const inputExpr = renderInputObject(inst.in ?? {})
-  const configExpr = inst.config !== undefined ? renderJsonLiteral(inst.config) : "undefined"
+  const inputVar = `_${nodeId}Input`
+  const inputRawVar = `_${nodeId}InputRaw`
+  const inputExpr = renderInputExpr(inst.in, inst.values)
+
+  // Whole-object form: source is a reference expression (already a JS access
+  // chain). Emit a raw alias for clarity, then run through inputs.parse().
+  if (typeof inst.in === "string") {
+    return [
+      `${indent}const ${inputRawVar} = ${inputExpr}`,
+      `${indent}const ${inputVar} = ${ident}.inputs.parse(${inputRawVar})`,
+      `${indent}const ${outVar} = (await ${ident}.run(`,
+      `${indent}  ${inputVar} as never,`,
+      `${indent}  services as never,`,
+      `${indent}  undefined as never,`,
+      `${indent})) as Record<string, unknown>`,
+    ]
+  }
 
   return [
+    `${indent}const ${inputVar} = ${ident}.inputs.parse(${inputExpr})`,
     `${indent}const ${outVar} = (await ${ident}.run(`,
-    `${indent}  ${inputExpr},`,
+    `${indent}  ${inputVar} as never,`,
     `${indent}  services as never,`,
-    `${indent}  ${configExpr} as never,`,
+    `${indent}  undefined as never,`,
     `${indent})) as Record<string, unknown>`,
   ]
 }
@@ -267,15 +305,23 @@ function renderParallelWave(
   indent: string,
 ): string[] {
   const lines: string[] = []
+  // Emit inputs.parse() for each node before the allSettled block.
+  for (const id of nodeIds) {
+    const inst = workflow.nodes[id]!
+    const ident = usesToIdent.get(inst.uses)
+    if (!ident) throw new Error(`emit-workflow: no identifier for uses \`${inst.uses}\``)
+    const inputVar = `_${id}Input`
+    const inputExpr = renderInputExpr(inst.in, inst.values)
+    lines.push(`${indent}const ${inputVar} = ${ident}.inputs.parse(${inputExpr})`)
+  }
   const settledNames = nodeIds.map((id) => `${id}_settled`)
   lines.push(`${indent}const [${settledNames.join(", ")}] = await Promise.allSettled([`)
   for (const id of nodeIds) {
     const inst = workflow.nodes[id]!
     const ident = usesToIdent.get(inst.uses)
     if (!ident) throw new Error(`emit-workflow: no identifier for uses \`${inst.uses}\``)
-    const inputExpr = renderInputObject(inst.in ?? {})
-    const configExpr = inst.config !== undefined ? renderJsonLiteral(inst.config) : "undefined"
-    lines.push(`${indent}  ${ident}.run(${inputExpr}, services as never, ${configExpr} as never),`)
+    const inputVar = `_${id}Input`
+    lines.push(`${indent}  ${ident}.run(${inputVar} as never, services as never, undefined as never),`)
   }
   lines.push(`${indent}])`)
   lines.push(
@@ -293,11 +339,41 @@ function renderParallelWave(
 
 function renderResponseReturn(workflow: WorkflowFile, nodeId: string, indent: string): string[] {
   const inst = workflow.nodes[nodeId]!
-  const inMap = inst.in ?? {}
 
-  const bodyExpr = "body" in inMap ? renderInputValue(inMap.body) : `null`
-  const statusExpr = "status" in inMap ? renderInputValue(inMap.status) : `200`
-  const headersExpr = "headers" in inMap ? renderInputValue(inMap.headers) : `{}`
+  let bodyExpr: string
+  let statusExpr: string
+  let headersExpr: string
+
+  if (typeof inst.in === "string") {
+    // Whole-object form: the resolved value is the input bag itself; pluck
+    // body/status/headers fields off it directly. `values:` is ignored here.
+    const base = renderInputExpr(inst.in, inst.values)
+    bodyExpr = `(${base})?.body`
+    statusExpr = `(${base})?.status`
+    headersExpr = `(${base})?.headers`
+  } else {
+    // Per-field: references in `in:` win over literals in `values:`.
+    const inMap = inst.in ?? {}
+    const values = (inst.values ?? {}) as Record<string, unknown>
+    bodyExpr =
+      "body" in inMap
+        ? renderReferenceValue(inMap.body)
+        : "body" in values
+          ? renderJsonLiteral(values.body)
+          : `null`
+    statusExpr =
+      "status" in inMap
+        ? renderReferenceValue(inMap.status)
+        : "status" in values
+          ? renderJsonLiteral(values.status)
+          : `200`
+    headersExpr =
+      "headers" in inMap
+        ? renderReferenceValue(inMap.headers)
+        : "headers" in values
+          ? renderJsonLiteral(values.headers)
+          : `{}`
+  }
 
   return [
     `${indent}const _bodyValue = ${bodyExpr}`,
@@ -315,30 +391,65 @@ function renderResponseReturn(workflow: WorkflowFile, nodeId: string, indent: st
 }
 
 /**
- * Render an `in: { ... }` object as a JS object literal expression.
+ * Render the per-field input object for `inputs.parse(...)`. Combines literal
+ * values from `values:` (the floor) with reference overrides from `in:`.
  */
-function renderInputObject(inMap: Record<string, unknown>): string {
-  const entries = Object.entries(inMap)
-  if (entries.length === 0) return `{}`
+function renderInputObject(
+  inMap: Record<string, string> | undefined,
+  values: Record<string, unknown> | undefined,
+): string {
+  // Merge keys: values first, then in: (which can override). Maintain key
+  // insertion order — values keys first, then in: keys that weren't in values.
+  const merged = new Map<string, string>()
+  if (values) {
+    for (const [k, v] of Object.entries(values)) {
+      merged.set(k, renderJsonLiteral(v))
+    }
+  }
+  if (inMap) {
+    for (const [k, v] of Object.entries(inMap)) {
+      merged.set(k, renderReferenceValue(v))
+    }
+  }
+  if (merged.size === 0) return `{}`
   const parts: string[] = []
-  for (const [k, v] of entries) {
-    parts.push(`${jsKey(k)}: ${renderInputValue(v)}`)
+  for (const [k, expr] of merged) {
+    parts.push(`${jsKey(k)}: ${expr}`)
   }
   return `{ ${parts.join(", ")} }`
 }
 
 /**
- * Render a single `in:` value as a JS expression — reference or literal.
+ * Render `in:` of either form (string reference for whole-object, or per-field
+ * object) as a JS expression suitable for passing to `inputs.parse(...)`.
  */
-function renderInputValue(raw: unknown): string {
-  const resolved = resolveInputValue(raw)
-  if (resolved.kind === "reference") {
-    const { nodeId, path } = resolved.ref
-    const base = outputsVar(nodeId)
-    if (path.length === 0) return base
-    return base + path.map((seg) => `.${seg}`).join("")
+function renderInputExpr(
+  inField: string | Record<string, string> | undefined,
+  values: Record<string, unknown> | undefined,
+): string {
+  if (typeof inField === "string") {
+    // Whole-object reference: literals under `values:` are ignored.
+    return renderReferenceValue(inField)
   }
-  return renderJsonLiteral(resolved.value)
+  return renderInputObject(inField, values)
+}
+
+/**
+ * Render a reference string from `in:` as a JS access-chain expression.
+ * The string MUST be a valid reference — `in:` is references-only.
+ */
+function renderReferenceValue(raw: unknown): string {
+  if (typeof raw !== "string") {
+    throw new Error(`emit-workflow: \`in:\` value must be a reference string, got ${typeof raw}`)
+  }
+  const ref = parseReference(raw)
+  if (!ref) {
+    throw new Error(`emit-workflow: not a valid node reference: ${JSON.stringify(raw)}`)
+  }
+  const { nodeId, path } = ref
+  const base = outputsVar(nodeId)
+  if (path.length === 0) return base
+  return base + path.map((seg) => `.${seg}`).join("")
 }
 
 /**
@@ -394,11 +505,15 @@ function buildDepsByNode(wf: WorkflowFile): Map<string, Set<string>> {
   const depsByNode = new Map<string, Set<string>>()
   for (const [id, inst] of Object.entries(wf.nodes)) {
     const deps = new Set<string>()
-    if (inst.in) {
-      for (const raw of Object.values(inst.in)) {
-        const resolved = resolveInputValue(raw)
-        if (resolved.kind === "reference") {
-          if (wf.nodes[resolved.ref.nodeId]) deps.add(resolved.ref.nodeId)
+    if (inst.in !== undefined) {
+      if (typeof inst.in === "string") {
+        const ref = parseReference(inst.in)
+        if (ref && wf.nodes[ref.nodeId]) deps.add(ref.nodeId)
+      } else {
+        for (const raw of Object.values(inst.in)) {
+          if (typeof raw !== "string") continue
+          const ref = parseReference(raw)
+          if (ref && wf.nodes[ref.nodeId]) deps.add(ref.nodeId)
         }
       }
     }

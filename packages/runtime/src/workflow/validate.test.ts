@@ -7,7 +7,7 @@ describe("validateWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        request: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
+        request: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
         response: { uses: "@core/response", in: { body: "request.body" } },
       },
     })
@@ -62,11 +62,64 @@ describe("validateWorkflow", () => {
     expect(result.errors.some((e) => /cycle/i.test(e.message))).toBe(true)
   })
 
+  describe("whole-object `in` (string form)", () => {
+    it("accepts a string reference to a known node and tracks the dep", () => {
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          request: { uses: "@core/http-request", values: { path: "/x", method: "POST" } },
+          save: { uses: "./nodes/save", in: "request.body" },
+        },
+      })
+      const result = validateWorkflow(wf)
+      expect(result.errors).toEqual([])
+      // dep on `request` should be tracked
+      expect(result.depsByNode.get("save")?.has("request")).toBe(true)
+    })
+
+    it("rejects a string reference to an unknown node", () => {
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          save: { uses: "./nodes/save", in: "nonexistent.body" },
+        },
+      })
+      const result = validateWorkflow(wf)
+      expect(result.errors).toHaveLength(1)
+      expect(result.errors[0]?.message).toMatch(/nonexistent/)
+      expect(result.errors[0]?.field).toBe("in")
+    })
+
+    it("rejects a literal string (not a parseable reference)", () => {
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          save: { uses: "./nodes/save", in: "not a reference!" },
+        },
+      })
+      const result = validateWorkflow(wf)
+      expect(result.errors).toHaveLength(1)
+      expect(result.errors[0]?.message).toMatch(/must be a node reference/)
+    })
+
+    it("detects cycles when whole-object `in` participates", () => {
+      const wf = parseWorkflow({
+        lorien: 1,
+        nodes: {
+          a: { uses: "./n", in: "b.x" },
+          b: { uses: "./n", in: "a.y" },
+        },
+      })
+      const result = validateWorkflow(wf)
+      expect(result.errors.some((e) => /cycle/i.test(e.message))).toBe(true)
+    })
+  })
+
   it("allows multi-incoming dependencies (joins)", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        req: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
+        req: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
         a: { uses: "./n", in: { v: "req.body" } },
         b: { uses: "./n", in: { v: "req.body" } },
         join: { uses: "./n", in: { x: "a.out", y: "b.out" } },
@@ -74,5 +127,28 @@ describe("validateWorkflow", () => {
     })
     const result = validateWorkflow(wf)
     expect(result.errors).toEqual([])
+  })
+
+  it("rejects a per-field `in` value that isn't a parseable reference", () => {
+    // Literals belong under `values:`, not `in:`. Validator must catch this.
+    expect(() =>
+      parseWorkflow({
+        lorien: 1,
+        nodes: {
+          save: { uses: "./n", in: { method: "GET" } },
+        },
+      }),
+    ).not.toThrow() // schema accepts strings; parseable check is in validateWorkflow.
+
+    const wf = parseWorkflow({
+      lorien: 1,
+      nodes: {
+        save: { uses: "./n", in: { method: "GET" } },
+      },
+    })
+    const result = validateWorkflow(wf)
+    // "GET" parses as a bare nodeId reference, but there's no node called "GET".
+    expect(result.errors.length).toBeGreaterThan(0)
+    expect(result.errors[0]?.message).toMatch(/unknown node|not a valid/)
   })
 })

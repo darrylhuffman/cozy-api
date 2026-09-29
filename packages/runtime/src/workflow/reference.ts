@@ -1,4 +1,4 @@
-import type { ParsedReference, ResolvedInputValue } from "./types.js"
+import type { ParsedReference } from "./types.js"
 
 const IDENT = /^[a-zA-Z_$][\w$]*$/
 const REFERENCE = /^[a-zA-Z_$][\w$]*(?:\.[a-zA-Z_$][\w$]*)*$/
@@ -18,26 +18,10 @@ export function parseReference(input: string): ParsedReference | null {
 }
 
 /**
- * Decides whether an `in` value is a reference (to resolve at runtime) or a literal.
- * Strings that match the reference grammar are references; everything else is a literal.
- * The {$literal: x} escape wraps literal values that would otherwise be parsed as references.
+ * Returns true when `value` is a string that parses as a node reference.
+ * Used by code that needs a yes/no answer; for the parsed shape, call
+ * `parseReference` directly.
  */
-export function resolveInputValue(value: unknown): ResolvedInputValue {
-  // Explicit literal escape: { $literal: <anything> } unwraps to literal.
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    "$literal" in value &&
-    Object.keys(value as object).length === 1
-  ) {
-    return { kind: "literal", value: (value as { $literal: unknown }).$literal }
-  }
-
-  if (typeof value === "string") {
-    const ref = parseReference(value)
-    if (ref) return { kind: "reference", ref }
-  }
-
-  return { kind: "literal", value }
+export function isReferenceString(value: unknown): value is string {
+  return typeof value === "string" && parseReference(value) !== null
 }

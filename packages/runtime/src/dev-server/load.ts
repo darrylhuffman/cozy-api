@@ -30,7 +30,7 @@ export async function loadWorkspace(root: string): Promise<LoadedWorkspace> {
         const file = parseWorkflowFromString(text)
         workflows.push({
           absolutePath: abs,
-          relativePath: relative(workflowsDir, abs).replaceAll("\\", "/"),
+          relativePath: relative(root, abs).replaceAll("\\", "/"),
           file,
         })
       } catch (e) {

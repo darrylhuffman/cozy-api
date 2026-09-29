@@ -238,6 +238,8 @@ So when a node writes `async run(input, { db, logger }) { ... }`, TypeScript typ
 
 **Termination.** The workflow completes when the response node (the terminal `@core/response` for HTTP triggers) fires. Other unreachable-from-trigger or post-response nodes do not run.
 
+**Input validation.** Before calling each node's `run()`, the runtime validates the resolved input bag against the node's `inputs` Zod schema. A validation failure throws `NodeRunError` with the failing path and message. This means nodes never have to manually `.parse()` their inputs — declaring the schema IS the validation.
+
 **Error policy (v1.0):** fail-fast. If any node throws, the workflow halts. In-flight sibling nodes are awaited (so `dispose()`s run on services) but their results are discarded. The response becomes a 500 with a generic message. Custom error handler nodes (`error: "nodeId"` at the top level) are deferred to v1.x — not in v1.0.
 
 **Multiple triggers per workflow.** `nodes` may contain multiple `@core/http-request` (or other trigger) nodes. Each defines an independent entry point. When a trigger fires, the scheduler walks forward only through nodes transitively reachable through ports from *that* trigger. Two triggers in the same file are independent at execution time even when they share intermediate nodes (each invocation instantiates its own port resolution state).

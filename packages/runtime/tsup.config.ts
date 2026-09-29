@@ -4,6 +4,9 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     "testing/index": "src/testing/index.ts",
+    "requests/index": "src/requests/index.ts",
+    "cases/index": "src/cases/index.ts",
+    "agent-broker/index": "src/agent-broker/index.ts",
   },
   format: ["esm"],
   dts: true,

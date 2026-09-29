@@ -6,7 +6,7 @@ describe("parseWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        request: { uses: "@core/http-request", config: { path: "/x", method: "GET" } },
+        request: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
         response: { uses: "@core/response", in: { body: "request.params" } },
       },
     })

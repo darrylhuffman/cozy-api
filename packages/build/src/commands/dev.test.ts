@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { runDev } from "./dev.js"
+import { runDev, runDevWithIde } from "./dev.js"
 
 describe("runDev", () => {
   let dir: string
@@ -75,5 +75,50 @@ describe("runDev", () => {
 
     expect(result.exitCode).toBe(1)
     expect(result.error).toMatch(/tsx/)
+  })
+})
+
+describe("runDevWithIde", () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "lorien-dev-ide-"))
+    mkdirSync(join(dir, "src"))
+    writeFileSync(join(dir, "src", "server.ts"), "")
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it("starts the IDE on the same project root as the API server", async () => {
+    const runIdeImpl = vi.fn().mockResolvedValue({ port: 8188, root: "dist" })
+    const fakeChild = {
+      on(event: string, cb: (...args: unknown[]) => void) {
+        if (event === "close") setTimeout(() => cb(0), 5)
+        return this
+      },
+    }
+    const spawnImpl = vi.fn(() => fakeChild as never)
+    const result = await runDevWithIde({ root: dir, idePort: 8188, spawnImpl, runIdeImpl })
+    expect(runIdeImpl).toHaveBeenCalledWith({ port: 8188, open: true, root: dir })
+    expect(spawnImpl.mock.calls[0]![2].cwd).toBe(dir)
+    expect(result.exitCode).toBe(0)
+  })
+
+  it("falls back to the dev server alone when the IDE cannot start", async () => {
+    const runIdeImpl = vi.fn().mockRejectedValue(new Error("dist missing"))
+    const fakeChild = {
+      on(event: string, cb: (...args: unknown[]) => void) {
+        if (event === "close") setTimeout(() => cb(0), 5)
+        return this
+      },
+    }
+    const spawnImpl = vi.fn(() => fakeChild as never)
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const result = await runDevWithIde({ root: dir, idePort: 8188, spawnImpl, runIdeImpl })
+    expect(spawnImpl).toHaveBeenCalledOnce()
+    expect(result.exitCode).toBe(0)
+    errSpy.mockRestore()
   })
 })

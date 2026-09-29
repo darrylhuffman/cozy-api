@@ -2,6 +2,164 @@ export interface TemplateContext {
   name: string
 }
 
+/**
+ * Canonical authoring guide for AI agents working in a lorien-api project.
+ * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
+ * (with frontmatter wrapper). Single source of truth — both renderers must use this.
+ */
+export const SKILL_BODY = `<!-- lorien-skill-version: 2 -->
+
+# lorien-api project guide
+
+This is a lorien-api project. HTTP endpoints are defined as \`.workflow\` files: named-input JSON dependency graphs of typed nodes. Workflows compile to plain TypeScript via \`lorien build\`; the deployed code has zero runtime dependency on lorien-api.
+
+## Layout
+
+\`\`\`
+workflows/**/*.workflow   ← HTTP routes (you author these)
+nodes/**/*.ts             ← typed compute units, one defineNode per file
+lorien.config.ts          ← service registry (db, logger, etc.)
+.lorien/                  ← IDE cache, do not edit
+.lorien/chats/            ← agent chat transcripts, do not edit
+\`\`\`
+
+## The node contract
+
+Every node is exactly one file under \`nodes/\`. Filename is the node name in kebab-case. One default export, returning \`defineNode(...)\`:
+
+\`\`\`ts
+import { defineNode } from "@darrylondil/lorien-runtime"
+import { z } from "zod"
+
+export default defineNode({
+  name: "Save User",
+  inputs: z.object({
+    email: z.string().email(),
+    passwordHash: z.string(),
+  }),
+  outputs: z.object({
+    id: z.string(),
+  }),
+  async run({ email, passwordHash }, services) {
+    const row = await services.db.users.insert({ email, passwordHash })
+    return { id: row.id }
+  },
+})
+\`\`\`
+
+Rules:
+- \`inputs\` and \`outputs\` are Zod object schemas.
+- \`run\` is \`async\`; receives the typed input and the \`services\` object from \`lorien.config.ts\`.
+- Don't throw. Return shaped errors via the output schema if needed.
+- One node per file. Filename kebab-case. Export default.
+
+## The .workflow file format
+
+Named-input JSON. Each node lists where its inputs come from inline. No separate edges list:
+
+\`\`\`jsonc
+{
+  "lorien": 1,
+  "nodes": {
+    "request": {
+      "uses": "@core/http-request",
+      "values": { "path": "/users", "method": "POST" }
+    },
+    "parseBody": {
+      "uses": "./nodes/parse-body",
+      "in": { "raw": "request.body" }
+    },
+    "saveUser": {
+      "uses": "./nodes/save-user",
+      "in": {
+        "email": "parseBody.email",
+        "passwordHash": "parseBody.passwordHash"
+      }
+    },
+    "response": {
+      "uses": "@core/response",
+      "in": { "body": "saveUser" }
+    }
+  }
+}
+\`\`\`
+
+Rules:
+- Keys in \`in\` must match the target node's \`inputs\` schema.
+- Values in \`in\` are \`<nodeId>.<outputField>\` references (or just \`<nodeId>\` to pass the whole output object).
+- No cycles.
+- A \`view\` block (when present) is IDE-only layout metadata. After hand-editing, you may set it to \`null\` and the IDE will re-lay-out.
+
+## Authoring recipes
+
+**Add a new node**
+1. Create \`nodes/<name>.ts\` following the node contract.
+2. Reference it from a workflow via \`"uses": "./nodes/<name>"\`.
+
+**Wire a new node into a workflow**
+1. Add an entry under \`nodes\` with \`uses\` pointing to the node file.
+2. In its \`in\` block, reference upstream outputs as \`<id>.<field>\`.
+
+**Add a service (db, logger, etc.)**
+1. Edit \`lorien.config.ts\` and add to the \`services\` object.
+2. Destructure it from the second argument of \`run()\` in any node that needs it.
+
+**Add an OpenAPI-typed HTTP client**
+1. Run \`lorien openapi add <url-or-path>\`.
+2. Generated client nodes appear under \`nodes/<api>/\` — use them like any other node.
+
+## Verification
+
+After edits, run (any package manager works — \`npm\`, \`pnpm\`, \`yarn\`, \`bun\`):
+
+\`\`\`
+npm run typecheck && npm run test
+\`\`\`
+
+Tests live next to nodes in \`*.test.ts\` files and use \`testWorkflow\` / \`traceWorkflow\` from \`@darrylondil/lorien-runtime/testing\`.
+
+## Node test cases and saved requests
+
+The IDE's Tests and Run tabs read two JSON files. Write them by hand or from the IDE; both are checked by \`lorien test\`.
+
+**Node cases**: \`nodes/<path>/<node>.cases.json\` next to \`<node>.ts\`:
+
+\`\`\`json
+{ "lorien": 1, "cases": [
+  { "id": "saves-user", "name": "saves a user", "input": { "email": "a@b.co" },
+    "mocks": { "db": { "insert": { "returns": { "id": "u1" } } } },
+    "expect": { "output": { "id": "u1" } } },
+  { "id": "rejects-bad-email", "name": "rejects a bad email", "input": { "email": "x" },
+    "expect": { "error": "email" } }
+] }
+\`\`\`
+
+\`expect.output\` matches as a subset unless \`"match": "equals"\`. \`expect.error\` passes when the message contains the text. \`mocks\` replace a service's methods with \`{ "returns": value }\` or \`{ "throws": "message" }\`.
+
+**Saved requests**: \`workflows/<path>/<workflow>.requests.json\` next to the \`.workflow\` file:
+
+\`\`\`json
+{ "lorien": 1, "requests": [
+  { "id": "create-user", "name": "create a user", "method": "POST", "path": "/users",
+    "body": { "kind": "json", "json": { "email": "{{userPrefix}}-{{$uuid}}@b.co" } },
+    "expect": [ { "target": "status", "op": "equals", "value": 201 },
+                { "target": "body", "path": "id", "op": "exists" } ],
+    "capture": { "userId": "body.id" } }
+] }
+\`\`\`
+
+Checks: \`target\` is \`status\`, \`header\`, \`body\` or \`duration\`; \`op\` is \`equals\`, \`notEquals\`, \`contains\`, \`exists\`, \`notExists\`, \`matches\`, \`lessThan\`, \`greaterThan\` or \`type\`. \`{{name}}\` reads variables from \`lorien.environments.json\` (\`lorien.environments.local.json\` overrides it and stays out of git), from earlier captures, or the built-ins \`$uuid\`, \`$timestamp\`, \`$isoTimestamp\`, \`$randomInt\`.
+
+Run everything with \`npx lorien test\` (\`--env <name>\`, \`--base-url <url>\` to hit a running server, \`--no-nodes\`, \`--no-requests\`, \`--json\`, and an optional name filter).
+
+## What you should NOT do
+
+- Don't add \`@darrylondil/lorien-runtime\` as a *runtime* dep in user code — it's build-time only. The compiled output has no runtime dep on lorien.
+- Don't hand-edit anything under \`.lorien/\` (IDE cache + chat transcripts).
+- Don't introduce an edges-array workflow format. lorien-api is named-input style: each node declares its own inputs.
+- Don't add middleware-style global error handling. Handle errors at the node level by returning shaped output.
+`
+
 export function renderPackageJson(ctx: TemplateContext): string {
   const pkg = {
     name: ctx.name,
@@ -113,7 +271,7 @@ export function renderHelloWorkflow(): string {
     nodes: {
       request: {
         uses: "@core/http-request",
-        config: { path: "/hello", method: "GET" },
+        values: { path: "/hello", method: "GET" },
       },
       say: {
         uses: "./nodes/say-hello",
@@ -146,65 +304,38 @@ export default defineNode({
 export function renderServerEntry(): string {
   return `import { serve } from "@hono/node-server"
 import { startLorienServer } from "@darrylondil/lorien-runtime"
+import { attachAgentBroker, mountAgentBroker } from "@darrylondil/lorien-runtime/agent-broker"
 
 const app = await startLorienServer()
+mountAgentBroker(app, { projectRoot: process.cwd() })
+
 const port = Number(process.env.PORT) || 3000
-serve({ fetch: app.fetch, port }, ({ port }) => {
+const server = serve({ fetch: app.fetch, port }, ({ port }) => {
   console.log(\`lorien-api listening on http://localhost:\${port}\`)
 })
+attachAgentBroker({ app, server, projectRoot: process.cwd() })
 `
 }
 
-export function renderAgentsMd(ctx: TemplateContext): string {
-  return `# AI agent guide for ${ctx.name}
+export function renderAgentsMd(): string {
+  return SKILL_BODY
+}
 
-This project uses **lorien-api**: a file-based API framework where \`.workflow\`
-files define HTTP endpoints as dependency graphs of typed nodes.
-
-## Layout
-
-- \`workflows/**/*.workflow\` — HTTP routes as JSON dependency graphs
-- \`nodes/**/*.ts\` — typed compute units (via \`defineNode\` from \`@darrylondil/lorien-runtime\`)
-- \`lorien.config.ts\` — service registry (db, logger, etc.)
-
-## Adding a new endpoint
-
-1. Create a node in \`nodes/\` (e.g., \`nodes/calculate.ts\`):
-
-   \`\`\`ts
-   import { defineNode } from "@darrylondil/lorien-runtime"
-   import { z } from "zod"
-
-   export default defineNode({
-     name: "Calculate",
-     inputs: z.object({ x: z.number() }),
-     outputs: z.object({ result: z.number() }),
-     async run({ x }) {
-       return { result: x * 2 }
-     },
-   })
-   \`\`\`
-
-2. Create a workflow in \`workflows/\` (e.g., \`workflows/calc.workflow\`):
-
-   \`\`\`json
-   {
-     "lorien": 1,
-     "nodes": {
-       "req": { "uses": "@core/http-request", "config": { "path": "/calc", "method": "POST" } },
-       "calc": { "uses": "./nodes/calculate", "in": { "x": "req.body.x" } },
-       "res": { "uses": "@core/response", "in": { "body": "calc.result" } }
-     }
-   }
-   \`\`\`
-
-3. Restart the dev server. \`POST /calc {"x": 5}\` returns \`10\`.
-
-## References
-
-- Documentation: https://lorien-api.dev (placeholder)
-- @darrylondil/lorien-runtime API: \`testWorkflow\`, \`traceWorkflow\`, \`defineNode\`, \`defineConfig\`
-`
+/**
+ * Renders the Claude Code skill file (.claude/skills/lorien-api/SKILL.md).
+ * Wraps SKILL_BODY in YAML frontmatter so Claude auto-loads it when working
+ * in the project. The `description` is what Claude reads to decide whether
+ * the skill applies to the current task.
+ */
+export function renderClaudeSkill(): string {
+  const frontmatter = [
+    "---",
+    "name: lorien-api",
+    "description: Use when authoring or editing files in a lorien-api project — workflows (.workflow JSON dependency graphs), nodes (typed defineNode modules), or lorien.config.ts (service registry). Triggers on edits in workflows/, nodes/, or any file ending in .workflow.",
+    "---",
+    "",
+  ].join("\n")
+  return `${frontmatter}\n${SKILL_BODY}`
 }
 
 /** Returns the correct run prefix for the given package manager. */

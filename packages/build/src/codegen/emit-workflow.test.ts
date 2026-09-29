@@ -15,7 +15,7 @@ describe("emitWorkflow — header & imports", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
         },
       }),
@@ -33,7 +33,7 @@ describe("emitWorkflow — header & imports", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
           n: { uses: "./nodes/foo", in: {} },
         },
@@ -55,7 +55,7 @@ describe("emitWorkflow — header & imports", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/say-hello", in: {} },
         },
@@ -76,7 +76,7 @@ describe("emitWorkflow — handler shape", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/users", method: "POST" },
+            values: { path: "/users", method: "POST" },
           },
           res: { uses: "@core/response", in: { body: "req.body" } },
         },
@@ -93,7 +93,7 @@ describe("emitWorkflow — handler shape", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
         },
       }),
@@ -120,7 +120,7 @@ describe("emitWorkflow — handler shape", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
         },
       }),
@@ -139,7 +139,7 @@ describe("emitWorkflow — handler shape", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/foo", in: {} },
           res: { uses: "@core/response", in: { body: "a.value" } },
@@ -149,6 +149,8 @@ describe("emitWorkflow — handler shape", () => {
     });
     expect(source).toMatch(/services as never/);
     expect(source).toMatch(/as never,\n\s*\)\) as Record<string, unknown>/);
+    // inputs.parse() is called before run()
+    expect(source).toMatch(/foo\.inputs\.parse\(\{\}\)/);
   });
 });
 
@@ -160,7 +162,7 @@ describe("emitWorkflow — input value resolution", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/foo", in: { x: "req.body" } },
           res: { uses: "@core/response", in: { body: "a.value" } },
@@ -178,7 +180,7 @@ describe("emitWorkflow — input value resolution", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/foo", in: { email: "req.body.user.email" } },
           res: { uses: "@core/response", in: { body: "a.value" } },
@@ -189,17 +191,17 @@ describe("emitWorkflow — input value resolution", () => {
     expect(source).toMatch(/email: req_outputs\.body\.user\.email/);
   });
 
-  it("emits literal numbers, booleans, and strings (non-reference) as JS literals", () => {
+  it("emits literal numbers, booleans, and strings from values: as JS literals", () => {
     const { source } = emitWorkflow({
       workflow: wf({
         lorien: 1,
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
-          a: { uses: "./nodes/foo", in: { n: 42, b: true, s: "hello world" } },
-          res: { uses: "@core/response", in: { body: "a.value", status: 201 } },
+          a: { uses: "./nodes/foo", values: { n: 42, b: true, s: "hello world" } },
+          res: { uses: "@core/response", in: { body: "a.value" }, values: { status: 201 } },
         },
       }),
       relativePath: "x",
@@ -211,18 +213,19 @@ describe("emitWorkflow — input value resolution", () => {
     expect(source).toMatch(/\(\(201\) as number \| undefined\) \?\? 200/);
   });
 
-  it("honors the $literal escape for strings that would otherwise be parsed as references", () => {
+  it("emits literal strings from values: even when they look like references", () => {
+    // No $literal escape needed: values: is literals-only, never parsed as refs.
     const { source } = emitWorkflow({
       workflow: wf({
         lorien: 1,
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
           a: {
             uses: "./nodes/foo",
-            in: { s: { $literal: "looks.like.a.ref" } },
+            values: { s: "looks.like.a.ref" },
           },
           res: { uses: "@core/response", in: { body: "a.value" } },
         },
@@ -230,6 +233,30 @@ describe("emitWorkflow — input value resolution", () => {
       relativePath: "x",
     });
     expect(source).toMatch(/s: "looks\.like\.a\.ref"/);
+  });
+
+  it("references in in: override literals in values: for the same field", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: {
+            uses: "@core/http-request",
+            values: { path: "/", method: "POST" },
+          },
+          a: {
+            uses: "./nodes/foo",
+            values: { x: 99 },
+            in: { x: "req.body" },
+          },
+          res: { uses: "@core/response", in: { body: "a.value" } },
+        },
+      }),
+      relativePath: "x",
+    });
+    // The reference wins — the literal 99 is replaced.
+    expect(source).toMatch(/x: req_outputs\.body/);
+    expect(source).not.toMatch(/x: 99/);
   });
 });
 
@@ -241,7 +268,7 @@ describe("emitWorkflow — parallel waves", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/foo", in: {} },
           res: { uses: "@core/response", in: { body: "a.value" } },
@@ -249,6 +276,8 @@ describe("emitWorkflow — parallel waves", () => {
       }),
       relativePath: "x",
     });
+    // inputs.parse() is called before run()
+    expect(source).toMatch(/const _aInput = foo\.inputs\.parse\(\{\}\)/);
     expect(source).toMatch(/const a_outputs = \(await foo\.run\(/);
     expect(source).not.toMatch(/Promise\.allSettled/);
   });
@@ -260,7 +289,7 @@ describe("emitWorkflow — parallel waves", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/foo", in: { x: "req.body" } },
           b: { uses: "./nodes/bar", in: { x: "req.body" } },
@@ -269,6 +298,9 @@ describe("emitWorkflow — parallel waves", () => {
       }),
       relativePath: "x",
     });
+    // inputs.parse() is called for each parallel node before allSettled
+    expect(source).toMatch(/const _aInput = foo\.inputs\.parse\(\{ x: req_outputs\.body \}\)/);
+    expect(source).toMatch(/const _bInput = bar\.inputs\.parse\(\{ x: req_outputs\.body \}\)/);
     expect(source).toMatch(/Promise\.allSettled\(\[/);
     expect(source).toMatch(/a_settled/);
     expect(source).toMatch(/b_settled/);
@@ -286,12 +318,13 @@ describe("emitWorkflow — response", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/u", method: "POST" },
+            values: { path: "/u", method: "POST" },
           },
           save: { uses: "./nodes/save-user", in: { x: "req.body" } },
           res: {
             uses: "@core/response",
-            in: { body: "save.user", status: 201 },
+            in: { body: "save.user" },
+            values: { status: 201 },
           },
         },
       }),
@@ -311,7 +344,7 @@ describe("emitWorkflow — response", () => {
         nodes: {
           req: {
             uses: "@core/http-request",
-            config: { path: "/", method: "GET" },
+            values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/foo", in: {} },
         },
@@ -323,6 +356,37 @@ describe("emitWorkflow — response", () => {
   });
 });
 
+describe("emitWorkflow — http-request method/path resolution", () => {
+  it("reads method and path from the values: block", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: {
+            uses: "@core/http-request",
+            values: { method: "POST", path: "/items" },
+          },
+        },
+      }),
+      relativePath: "items",
+    });
+    expect(source).toMatch(/app\.on\("POST", "\/items",/);
+  });
+
+  it("defaults to GET / when neither values nor in supply method/path", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request" },
+        },
+      }),
+      relativePath: "x",
+    });
+    expect(source).toMatch(/app\.on\("GET", "\/",/);
+  });
+});
+
 describe("emitWorkflow — multiple triggers", () => {
   it("registers one route per @core/http-request trigger", () => {
     const { source } = emitWorkflow({
@@ -331,11 +395,11 @@ describe("emitWorkflow — multiple triggers", () => {
         nodes: {
           reqA: {
             uses: "@core/http-request",
-            config: { path: "/a", method: "GET" },
+            values: { path: "/a", method: "GET" },
           },
           reqB: {
             uses: "@core/http-request",
-            config: { path: "/b", method: "POST" },
+            values: { path: "/b", method: "POST" },
           },
           resA: { uses: "@core/response", in: { body: "reqA.body" } },
           resB: { uses: "@core/response", in: { body: "reqB.body" } },
@@ -348,6 +412,62 @@ describe("emitWorkflow — multiple triggers", () => {
   });
 });
 
+describe("emitWorkflow — whole-object `in` (string form)", () => {
+  it("emits a raw alias + inputs.parse() pair when `in:` is a reference string", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          request: { uses: "@core/http-request", values: { path: "/u", method: "POST" } },
+          save: { uses: "./nodes/save-user", in: "request.body" },
+          response: { uses: "@core/response", in: { body: "save.user" }, values: { status: 201 } },
+        },
+      }),
+      relativePath: "users/create",
+    });
+    // The raw value is captured from request_outputs.body
+    expect(source).toMatch(/const _saveInputRaw = request_outputs\.body/);
+    // Then validated through the node's Zod schema
+    expect(source).toMatch(/const _saveInput = saveUser\.inputs\.parse\(_saveInputRaw\)/);
+    // run() still gets the validated input
+    expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/);
+    expect(source).toMatch(/_saveInput as never/);
+  });
+
+  it("renders a deep dotted reference as a chained property access (whole-object form)", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
+          n: { uses: "./nodes/foo", in: "req.body.user" },
+          res: { uses: "@core/response", in: { body: "n.value" } },
+        },
+      }),
+      relativePath: "x",
+    });
+    expect(source).toMatch(/const _nInputRaw = req_outputs\.body\.user/);
+  });
+
+  it("supports @core/response with whole-object `in:` (plucks body/status/headers)", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
+          shape: { uses: "./nodes/shape", in: { x: "req.body" } },
+          res: { uses: "@core/response", in: "shape.result" },
+        },
+      }),
+      relativePath: "x",
+    });
+    // body/status/headers are plucked off the whole-object base expression
+    expect(source).toMatch(/_bodyValue = \(shape_outputs\.result\)\?\.body/);
+    expect(source).toMatch(/\(shape_outputs\.result\)\?\.status/);
+    expect(source).toMatch(/\(shape_outputs\.result\)\?\.headers/);
+  });
+});
+
 describe("emitWorkflow — full example matches the spec shape", () => {
   it("emits the expected pieces of the create.workflow example", () => {
     const { source } = emitWorkflow({
@@ -356,38 +476,34 @@ describe("emitWorkflow — full example matches the spec shape", () => {
         nodes: {
           request: {
             uses: "@core/http-request",
-            config: { path: "/users", method: "POST" },
-          },
-          creds: {
-            uses: "./nodes/parse-credentials",
-            in: { raw: "request.body" },
+            values: { path: "/users", method: "POST" },
           },
           save: {
-            uses: "./nodes/save-user",
-            in: { email: "creds.email", passwordHash: "creds.password" },
+            uses: "./nodes/users/save-user",
+            in: {
+              email: "request.body.email",
+              password: "request.body.password",
+            },
           },
           response: {
             uses: "@core/response",
-            in: { body: "save.user", status: 201 },
+            in: { body: "save.user" },
+            values: { status: 201 },
           },
         },
       }),
       relativePath: "users/create",
     });
     expect(source).toMatch(
-      /import parseCredentials from "\.\.\/\.\.\/\.\.\/nodes\/parse-credentials\.js"/,
-    );
-    expect(source).toMatch(
-      /import saveUser from "\.\.\/\.\.\/\.\.\/nodes\/save-user\.js"/,
+      /import saveUser from "\.\.\/\.\.\/\.\.\/nodes\/users\/save-user\.js"/,
     );
     expect(source).toMatch(/export function register\(app: Hono\): void/);
+    // inputs.parse() is called before run() — validation is embedded in emitted code
     expect(source).toMatch(
-      /const creds_outputs = \(await parseCredentials\.run\(/,
+      /const _saveInput = saveUser\.inputs\.parse\(\{ email: request_outputs\.body\.email, password: request_outputs\.body\.password \}\)/,
     );
-    expect(source).toMatch(/raw: request_outputs\.body/);
     expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/);
-    expect(source).toMatch(/email: creds_outputs\.email/);
-    expect(source).toMatch(/passwordHash: creds_outputs\.password/);
+    expect(source).toMatch(/_saveInput as never/);
     expect(source).toMatch(/_bodyValue = save_outputs\.user/);
   });
 });

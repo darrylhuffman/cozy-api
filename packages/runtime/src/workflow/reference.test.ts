@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { parseReference, resolveInputValue } from "./reference.js"
+import { isReferenceString, parseReference } from "./reference.js"
 
 describe("parseReference", () => {
   it("parses a single identifier as nodeId with empty path", () => {
@@ -28,42 +28,20 @@ describe("parseReference", () => {
   })
 })
 
-describe("resolveInputValue", () => {
-  it("treats valid reference strings as references", () => {
-    expect(resolveInputValue("parseBody.email")).toEqual({
-      kind: "reference",
-      ref: { nodeId: "parseBody", path: ["email"] },
-    })
+describe("isReferenceString", () => {
+  it("returns true for valid reference strings", () => {
+    expect(isReferenceString("parseBody.email")).toBe(true)
+    expect(isReferenceString("node")).toBe(true)
   })
 
-  it("treats non-reference strings as literals", () => {
-    expect(resolveInputValue("hello world")).toEqual({
-      kind: "literal",
-      value: "hello world",
-    })
+  it("returns false for strings that don't match the reference grammar", () => {
+    expect(isReferenceString("hello world")).toBe(false)
+    expect(isReferenceString("123abc")).toBe(false)
   })
 
-  it("treats numbers, booleans, and arrays as literals", () => {
-    expect(resolveInputValue(201)).toEqual({ kind: "literal", value: 201 })
-    expect(resolveInputValue(true)).toEqual({ kind: "literal", value: true })
-    expect(resolveInputValue([1, 2, 3])).toEqual({ kind: "literal", value: [1, 2, 3] })
-  })
-
-  it("treats nested objects as literals (NOT recursively scanned for refs)", () => {
-    expect(resolveInputValue({ a: 1, b: "x" })).toEqual({
-      kind: "literal",
-      value: { a: 1, b: "x" },
-    })
-  })
-
-  it("unwraps {$literal: ...} into a plain literal", () => {
-    expect(resolveInputValue({ $literal: "parseBody" })).toEqual({
-      kind: "literal",
-      value: "parseBody",
-    })
-    expect(resolveInputValue({ $literal: { nested: 1 } })).toEqual({
-      kind: "literal",
-      value: { nested: 1 },
-    })
+  it("returns false for non-string values", () => {
+    expect(isReferenceString(42)).toBe(false)
+    expect(isReferenceString(null)).toBe(false)
+    expect(isReferenceString({ x: 1 })).toBe(false)
   })
 })

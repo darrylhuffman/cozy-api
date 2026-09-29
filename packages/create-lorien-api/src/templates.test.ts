@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   renderAgentsMd,
   renderBiomeJson,
+  renderClaudeSkill,
   renderGitignore,
   renderHelloWorkflow,
   renderLorienConfig,
@@ -10,6 +11,7 @@ import {
   renderSayHelloNode,
   renderServerEntry,
   renderTsconfig,
+  SKILL_BODY,
 } from "./templates.js"
 
 const ctx = { name: "my-app" }
@@ -52,7 +54,7 @@ describe("template renderers", () => {
   it("hello.workflow parses as JSON and is a valid lorien v1 file", () => {
     const wf = JSON.parse(renderHelloWorkflow())
     expect(wf.lorien).toBe(1)
-    expect(wf.nodes.request.config.path).toBe("/hello")
+    expect(wf.nodes.request.values.path).toBe("/hello")
     expect(wf.nodes.say.uses).toBe("./nodes/say-hello")
   })
 
@@ -61,14 +63,24 @@ describe("template renderers", () => {
     expect(renderSayHelloNode()).toMatch(/Hello from lorien-api/)
   })
 
-  it("server.ts uses startLorienServer + serve", () => {
-    expect(renderServerEntry()).toMatch(/startLorienServer/)
-    expect(renderServerEntry()).toMatch(/@hono\/node-server/)
+  it("server.ts uses startLorienServer + serve + agent broker", () => {
+    const out = renderServerEntry()
+    expect(out).toMatch(/startLorienServer/)
+    expect(out).toMatch(/@hono\/node-server/)
+    expect(out).toMatch(/mountAgentBroker/)
+    expect(out).toMatch(/attachAgentBroker/)
   })
 
-  it("AGENTS.md contains the project name", () => {
-    expect(renderAgentsMd(ctx)).toMatch(/my-app/)
-    expect(renderAgentsMd(ctx)).toMatch(/lorien-api/)
+  it("AGENTS.md is the canonical SKILL_BODY with no frontmatter", () => {
+    const out = renderAgentsMd()
+    expect(out.startsWith("---")).toBe(false)
+    expect(out).toMatch(/# lorien-api project guide/)
+    expect(out).toMatch(/## The node contract/)
+    expect(out).toMatch(/<!-- lorien-skill-version: 2 -->/)
+    // Project name is intentionally NOT interpolated — guide is generic.
+    expect(out).not.toMatch(/my-app/)
+    // Trailing newline preserved
+    expect(out.endsWith("\n")).toBe(true)
   })
 
   it("README has the project name and uses the chosen package manager (pnpm)", () => {
@@ -90,5 +102,42 @@ describe("template renderers", () => {
     const md = renderReadme(ctx, "yarn")
     expect(md).toMatch(/yarn dev/)
     expect(md).toMatch(/yarn test/)
+  })
+
+  it("SKILL_BODY contains the canonical authoring guide content", () => {
+    expect(SKILL_BODY).toMatch(/<!-- lorien-skill-version: 2 -->/)
+    expect(SKILL_BODY).toMatch(/# lorien-api project guide/)
+    expect(SKILL_BODY).toMatch(/## The node contract/)
+    expect(SKILL_BODY).toMatch(/## The \.workflow file format/)
+    expect(SKILL_BODY).toMatch(/## What you should NOT do/)
+    // node contract example uses the real defineNode shape
+    expect(SKILL_BODY).toMatch(/inputs: z\.object/)
+    expect(SKILL_BODY).toMatch(/outputs: z\.object/)
+    expect(SKILL_BODY).toMatch(/async run/)
+    // no YAML frontmatter — that's the SKILL.md renderer's job
+    expect(SKILL_BODY.startsWith("---")).toBe(false)
+  })
+
+  it("renderClaudeSkill wraps SKILL_BODY with valid Claude Code frontmatter", () => {
+    const out = renderClaudeSkill()
+    // YAML frontmatter present and well-formed
+    expect(out.startsWith("---\n")).toBe(true)
+    expect(out).toMatch(/^---\nname: lorien-api\ndescription: .+\n---\n\n/)
+    // description is a single line (skill loader requires this), non-empty
+    const descMatch = out.match(/^description: (.+)$/m)
+    expect(descMatch).not.toBeNull()
+    expect(descMatch![1].length).toBeGreaterThan(40)
+    // Multi-line descriptions break Claude Code's YAML frontmatter parser.
+    // Guard by asserting the frontmatter block contains exactly the three
+    // expected lines between the --- fences.
+    const fmMatch = out.match(/^---\n([\s\S]*?)\n---\n/)
+    expect(fmMatch).not.toBeNull()
+    const fmLines = fmMatch![1].split("\n")
+    expect(fmLines).toHaveLength(2) // name + description, no continuation lines
+    // Body follows the frontmatter
+    expect(out).toMatch(/# lorien-api project guide/)
+    expect(out).toMatch(/<!-- lorien-skill-version: 2 -->/)
+    // Trailing newline preserved
+    expect(out.endsWith("\n")).toBe(true)
   })
 })

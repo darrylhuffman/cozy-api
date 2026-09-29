@@ -5,6 +5,7 @@ export interface FileLeaf {
   id: string // unique within the tree
   name: string // display name (e.g., "create.workflow")
   kind: FileKind
+  path?: string // relative path from workspace root (e.g., "workflows/users/create.workflow")
 }
 
 export interface FileFolder {
@@ -26,14 +27,32 @@ export const mockWorkflows: FileFolder = {
       id: "wf-users",
       name: "users",
       children: [
-        { type: "file", id: "wf-users-create", name: "create.workflow", kind: "workflow" },
+        {
+          type: "file",
+          id: "wf-users-create",
+          name: "create.workflow",
+          kind: "workflow",
+          path: "workflows/users/create.workflow",
+        },
         {
           type: "folder",
           id: "wf-users-id",
           name: "[id]",
           children: [
-            { type: "file", id: "wf-users-id-get", name: "get.workflow", kind: "workflow" },
-            { type: "file", id: "wf-users-id-update", name: "update.workflow", kind: "workflow" },
+            {
+              type: "file",
+              id: "wf-users-id-get",
+              name: "get.workflow",
+              kind: "workflow",
+              path: "workflows/users/[id]/get.workflow",
+            },
+            {
+              type: "file",
+              id: "wf-users-id-update",
+              name: "update.workflow",
+              kind: "workflow",
+              path: "workflows/users/[id]/update.workflow",
+            },
           ],
         },
       ],
@@ -42,7 +61,15 @@ export const mockWorkflows: FileFolder = {
       type: "folder",
       id: "wf-auth",
       name: "auth",
-      children: [{ type: "file", id: "wf-auth-login", name: "login.workflow", kind: "workflow" }],
+      children: [
+        {
+          type: "file",
+          id: "wf-auth-login",
+          name: "login.workflow",
+          kind: "workflow",
+          path: "workflows/auth/login.workflow",
+        },
+      ],
     },
   ],
 }
@@ -57,8 +84,20 @@ export const mockNodes: FileFolder = {
       id: "n-shared",
       name: "shared",
       children: [
-        { type: "file", id: "n-shared-parseBody", name: "parseBody.ts", kind: "node" },
-        { type: "file", id: "n-shared-validateEmail", name: "validateEmail.ts", kind: "node" },
+        {
+          type: "file",
+          id: "n-shared-parseBody",
+          name: "parseBody.ts",
+          kind: "node",
+          path: "nodes/shared/parseBody.ts",
+        },
+        {
+          type: "file",
+          id: "n-shared-validateEmail",
+          name: "validateEmail.ts",
+          kind: "node",
+          path: "nodes/shared/validateEmail.ts",
+        },
       ],
     },
     {
@@ -66,8 +105,20 @@ export const mockNodes: FileFolder = {
       id: "n-users",
       name: "users",
       children: [
-        { type: "file", id: "n-users-save", name: "saveUser.ts", kind: "node" },
-        { type: "file", id: "n-users-hash", name: "hashPassword.ts", kind: "node" },
+        {
+          type: "file",
+          id: "n-users-save",
+          name: "saveUser.ts",
+          kind: "node",
+          path: "nodes/users/saveUser.ts",
+        },
+        {
+          type: "file",
+          id: "n-users-hash",
+          name: "hashPassword.ts",
+          kind: "node",
+          path: "nodes/users/hashPassword.ts",
+        },
       ],
     },
   ],

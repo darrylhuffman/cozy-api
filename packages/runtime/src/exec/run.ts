@@ -1,5 +1,5 @@
 import type { AnyNodeOrTrigger, Node, Services } from "../types.js"
-import { resolveInputValue } from "../workflow/reference.js"
+import { parseReference } from "../workflow/reference.js"
 import type { WorkflowFile } from "../workflow/types.js"
 import { NodeRunError } from "./errors.js"
 import type { LifecycleEmitter } from "./lifecycle.js"
@@ -22,6 +22,22 @@ export interface RunWorkflowOptions {
   /** Maps a node's `uses` string to its Node/Trigger object. */
   resolveNode: (uses: string) => AnyNodeOrTrigger | null
   lifecycle?: LifecycleEmitter
+  /**
+   * Optional async hook called immediately after Zod input validation, before
+   * the node's `run()` executes. Dev-only (the debugger uses this to pause).
+   * If undefined, the interpreter does not await anything here — zero overhead.
+   * If the returned promise rejects, the rejection is wrapped in a
+   * `NodeRunError` and the workflow halts per existing fail-fast semantics.
+   */
+  onBeforeNode?: (nodeId: string, input: Record<string, unknown>) => Promise<void>
+  /**
+   * Optional async hook called immediately after a node's `run()` returns,
+   * after the corresponding `after-node` lifecycle event has been emitted,
+   * before downstream nodes can consume the output. Not called when `run()`
+   * throws (use lifecycle `error` events for that). Not called for
+   * @core/response (which short-circuits without `outputs.set`).
+   */
+  onAfterNode?: (nodeId: string, output: Record<string, unknown>) => Promise<void>
 }
 
 /**
@@ -61,10 +77,16 @@ function computeExecutionSet(
   const depsOf = new Map<string, Set<string>>()
   for (const [id, inst] of Object.entries(workflow.nodes)) {
     const deps = new Set<string>()
-    if (inst.in) {
-      for (const raw of Object.values(inst.in)) {
-        const resolved = resolveInputValue(raw)
-        if (resolved.kind === "reference") deps.add(resolved.ref.nodeId)
+    if (inst.in !== undefined) {
+      if (typeof inst.in === "string") {
+        const ref = parseReference(inst.in)
+        if (ref) deps.add(ref.nodeId)
+      } else {
+        for (const raw of Object.values(inst.in)) {
+          if (typeof raw !== "string") continue
+          const ref = parseReference(raw)
+          if (ref) deps.add(ref.nodeId)
+        }
       }
     }
     if (inst.after) {
@@ -120,7 +142,21 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<WorkflowRun
       if (!execSet.has(nodeId)) continue
       if (nodeId === triggerNodeId) {
         lifecycle?.emit({ type: "before-node", nodeId, input: {} })
-        lifecycle?.emit({ type: "after-node", nodeId, output: triggerOutputs, durationMs: 0 })
+        if (opts.onBeforeNode) {
+          try {
+            await opts.onBeforeNode(nodeId, {})
+          } catch (err) {
+            throw new NodeRunError(nodeId, err)
+          }
+        }
+        lifecycle?.emit({ type: "after-node", nodeId, output: triggerOutputs as Record<string, unknown>, durationMs: 0 })
+        if (opts.onAfterNode) {
+          try {
+            await opts.onAfterNode(nodeId, triggerOutputs as Record<string, unknown>)
+          } catch (err) {
+            throw new NodeRunError(nodeId, err)
+          }
+        }
         continue
       }
       tasks.push(
@@ -166,28 +202,77 @@ async function runOneNode(
     throw new NodeRunError(nodeId, new Error(`unresolved \`uses\`: ${instance.uses}`))
   }
 
-  // Resolve inputs from references and literals.
-  const input: Record<string, unknown> = {}
-  for (const [field, raw] of Object.entries(instance.in ?? {})) {
-    const resolved = resolveInputValue(raw)
-    if (resolved.kind === "literal") {
-      input[field] = resolved.value
-    } else {
-      const upstream = outputs.get(resolved.ref.nodeId)
+  // Resolve inputs. The shape is:
+  //  - `values:` provides the literal floor (per-field, JSON-serializable).
+  //  - `in: "ref"`    → resolved value REPLACES the whole input bag (whole-object form).
+  //  - `in: {...}`    → per-field reference strings; each overrides values[field].
+  //
+  // Precedence for a given field, in order from lowest to highest:
+  //   instance.values[field] < instance.in[field] (reference, resolved)
+  // The whole-object form replaces everything, so `values` is ignored when
+  // `in` is a string.
+  let input: Record<string, unknown> = {}
+  if (typeof instance.in === "string") {
+    const ref = parseReference(instance.in)
+    if (!ref) {
+      throw new NodeRunError(
+        nodeId,
+        new Error(
+          `whole-object \`in\` must be a node reference, got: ${JSON.stringify(instance.in)}`,
+        ),
+      )
+    }
+    const upstream = outputs.get(ref.nodeId)
+    if (!upstream) {
+      throw new NodeRunError(
+        nodeId,
+        new Error(`upstream \`${ref.nodeId}\` produced no output`),
+      )
+    }
+    let v: unknown = upstream
+    for (const seg of ref.path) {
+      v = (v as Record<string, unknown> | null | undefined)?.[seg]
+    }
+    // The resolved value IS the input bag. If it's not an object, Zod will fail
+    // shortly — we don't want to coerce here.
+    input = (v ?? {}) as Record<string, unknown>
+    lifecycle?.emit({
+      type: "edge-fired",
+      from: `${ref.nodeId}.${ref.path.join(".")}`,
+      to: `${nodeId}.$`,
+      value: v,
+    })
+  } else {
+    // 1) Start with literal values from `values:` (the floor).
+    if (instance.values && typeof instance.values === "object") {
+      for (const [k, v] of Object.entries(instance.values)) {
+        input[k] = v
+      }
+    }
+    // 2) Overlay per-field references from `in:`.
+    for (const [field, raw] of Object.entries(instance.in ?? {})) {
+      const ref = parseReference(raw)
+      if (!ref) {
+        throw new NodeRunError(
+          nodeId,
+          new Error(`\`in.${field}\` must be a node reference, got: ${JSON.stringify(raw)}`),
+        )
+      }
+      const upstream = outputs.get(ref.nodeId)
       if (!upstream) {
         throw new NodeRunError(
           nodeId,
-          new Error(`upstream \`${resolved.ref.nodeId}\` produced no output`),
+          new Error(`upstream \`${ref.nodeId}\` produced no output`),
         )
       }
       let v: unknown = upstream
-      for (const seg of resolved.ref.path) {
+      for (const seg of ref.path) {
         v = (v as Record<string, unknown> | null | undefined)?.[seg]
       }
       input[field] = v
       lifecycle?.emit({
         type: "edge-fired",
-        from: `${resolved.ref.nodeId}.${resolved.ref.path.join(".")}`,
+        from: `${ref.nodeId}.${ref.path.join(".")}`,
         to: `${nodeId}.${field}`,
         value: v,
       })
@@ -197,6 +282,13 @@ async function runOneNode(
   // Special-case @core/response: collect status/body/headers and short-circuit.
   if (instance.uses === "@core/response") {
     lifecycle?.emit({ type: "before-node", nodeId, input })
+    if (opts.onBeforeNode) {
+      try {
+        await opts.onBeforeNode(nodeId, input)
+      } catch (err) {
+        throw new NodeRunError(nodeId, err)
+      }
+    }
     const response: WorkflowRunResult = {
       status: (input.status as number | undefined) ?? 200,
       body: input.body,
@@ -208,6 +300,7 @@ async function runOneNode(
       output: { sent: true },
       durationMs: 0,
     })
+    // onAfterNode is intentionally NOT called for @core/response — no outputs exposed downstream.
     return { kind: "response", value: response }
   }
 
@@ -216,14 +309,37 @@ async function runOneNode(
     return null
   }
 
-  lifecycle?.emit({ type: "before-node", nodeId, input })
+  // Validate the resolved input bag against the node's Zod schema before run().
+  let validatedInput: Record<string, unknown> = input
+  if (nodeDef.inputs) {
+    const result = (nodeDef as Node).inputs.safeParse(input)
+    if (!result.success) {
+      const issue = result.error.issues[0]
+      const path = issue?.path?.join(".") ?? "<root>"
+      const message = issue?.message ?? "validation failed"
+      throw new NodeRunError(
+        nodeId,
+        new Error(`input validation failed at \`${path}\`: ${message}`),
+      )
+    }
+    validatedInput = result.data as Record<string, unknown>
+  }
+
+  lifecycle?.emit({ type: "before-node", nodeId, input: validatedInput })
+  if (opts.onBeforeNode) {
+    try {
+      await opts.onBeforeNode(nodeId, validatedInput)
+    } catch (err) {
+      throw new NodeRunError(nodeId, err)
+    }
+  }
   const t0 = Date.now()
   let output: Record<string, unknown>
   try {
     output = (await (nodeDef as Node).run(
-      input as never,
+      validatedInput as never,
       opts.services,
-      (instance.config ?? undefined) as never,
+      undefined as never,
     )) as Record<string, unknown>
   } catch (err) {
     lifecycle?.emit({ type: "error", nodeId, error: err as Error })
@@ -235,6 +351,13 @@ async function runOneNode(
     output,
     durationMs: Date.now() - t0,
   })
+  if (opts.onAfterNode) {
+    try {
+      await opts.onAfterNode(nodeId, output)
+    } catch (err) {
+      throw new NodeRunError(nodeId, err)
+    }
+  }
   outputs.set(nodeId, output)
   return null
 }

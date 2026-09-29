@@ -1,9 +1,12 @@
+import { realpathSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { Command } from "commander"
 import { registerBuild } from "./commands/build.js"
 import { registerDev } from "./commands/dev.js"
 import { registerIde } from "./commands/ide.js"
 import { registerImportOpenapi } from "./commands/import-openapi.js"
 import { registerInit } from "./commands/init.js"
+import { registerTest } from "./commands/test.js"
 
 const VERSION = "0.0.0"
 
@@ -19,6 +22,7 @@ function createProgram(): Command {
   registerIde(program)
   registerInit(program)
   registerImportOpenapi(program)
+  registerTest(program)
 
   return program
 }
@@ -28,12 +32,22 @@ async function main(argv: string[] = process.argv): Promise<void> {
   await program.parseAsync(argv)
 }
 
-// Only execute when this module is the direct entry point (not when imported by tests)
-const isMain =
-  process.argv[1] != null &&
-  import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, "/")}`).href
+/**
+ * True when `moduleUrl` is the script node was asked to run. Compares real
+ * filesystem paths so it holds for relative invocations, POSIX absolute paths
+ * and bin symlinks (npm/pnpm link `lorien` → dist/cli.js), on every platform.
+ */
+export function isEntryPoint(moduleUrl: string, argv1: string | undefined): boolean {
+  if (!argv1) return false
+  try {
+    return realpathSync(argv1) === realpathSync(fileURLToPath(moduleUrl))
+  } catch {
+    return false
+  }
+}
 
-if (isMain) {
+// Only execute when this module is the direct entry point (not when imported by tests)
+if (isEntryPoint(import.meta.url, process.argv[1])) {
   main().catch((err) => {
     console.error(err)
     process.exit(1)

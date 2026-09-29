@@ -2,8 +2,22 @@ import { z } from "zod"
 
 export const NodeInstanceSchema = z.object({
   uses: z.string().min(1),
-  in: z.record(z.string(), z.unknown()).optional(),
-  config: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Inputs may be supplied in either of two shapes — both are REFERENCES ONLY:
+   *  - per-field object:  { fieldName: "ref-string", ... }
+   *    Each value is a reference string like "nodeId.path.to.field". Literals
+   *    must NOT appear here — they belong under `values:` instead.
+   *  - single reference string: "ref" — the whole resolved value is passed as
+   *    the node's input. The value must parse as a reference.
+   */
+  in: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
+  /**
+   * Per-field literal values. Any JSON-serializable value is allowed. Strings
+   * here are NEVER interpreted as references — they are user-typed literals
+   * (e.g. `{ method: "GET", status: 201 }`). At evaluation time, `values:`
+   * acts as the floor; `in:` references override per field.
+   */
+  values: z.record(z.string(), z.unknown()).optional(),
   after: z.array(z.string()).optional(),
   label: z.string().optional(),
 })

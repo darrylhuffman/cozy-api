@@ -1,7 +1,7 @@
 {
   "name": "@darrylondil/lorien-runtime",
   "version": "0.1.1",
-  "description": "Headless runtime for lorien workflows — dataflow interpreter, defineNode helper, typed testing primitives",
+  "description": "Headless runtime for lorien workflows \u2014 dataflow interpreter, defineNode helper, typed testing primitives",
   "license": "MIT",
   "author": "dyudabomb@gmail.com",
   "keywords": [
@@ -24,6 +24,18 @@
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "default": "./dist/testing/index.js"
+    },
+    "./requests": {
+      "types": "./dist/requests/index.d.ts",
+      "default": "./dist/requests/index.js"
+    },
+    "./cases": {
+      "types": "./dist/cases/index.d.ts",
+      "default": "./dist/cases/index.js"
+    },
+    "./agent-broker": {
+      "types": "./dist/agent-broker/index.d.ts",
+      "default": "./dist/agent-broker/index.js"
     }
   },
   "files": [
@@ -32,6 +44,9 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "ws": "^8.20.1"
   },
   "scripts": {
     "build": "tsup",
@@ -44,9 +59,12 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@hono/node-server": "^2.0.3",
     "@types/node": "^25.9.1",
+    "@types/ws": "^8.18.1",
     "hono": "^4.12.21",
     "tsup": "^8.5.1",
+    "tsx": "^4.22.3",
     "vitest": "^4.1.7",
     "zod": "^4.4.3"
   }
