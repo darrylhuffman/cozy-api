@@ -1,6 +1,7 @@
 import {
   applyNodeChanges,
   Background,
+  MiniMap,
   type Connection,
   Controls,
   type Edge,
@@ -17,13 +18,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent, MouseEvent as ReactMouseEvent } from "react";
 import "@xyflow/react/dist/style.css";
-import {
-  fetchWorkflowFile,
-  fetchWorkspaceSchemas,
-  type NodeSchemas,
-  saveFile,
-  type WorkflowFile,
-} from "@/lib/api";
+import { fetchWorkflowFile, saveFile, type WorkflowFile } from "@/lib/api";
+import { useSchemas, useSchemasStore } from "@/store/schemas";
 import {
   type ApplyOptions,
   isDraftDirty,
@@ -31,6 +27,11 @@ import {
   useWorkflowDrafts,
 } from "@/store/workflow-drafts";
 import { EditorNotice } from "@/components/editor-notice";
+import { CanvasToolbar, type SaveStatus } from "./canvas-toolbar";
+import { type Diagnostic, diagnoseWorkflow, diagnosticsByNode } from "./diagnose";
+import { duplicateNode, tidyLayout } from "./graph-ops";
+import { ShortcutsDialog } from "./shortcuts-dialog";
+import { confirmAction } from "@/store/confirm";
 import { subscribeToFileEvents } from "@/lib/events";
 import { useTabsStore } from "@/store/tabs";
 import { useThemeStore } from "@/store/theme";
@@ -116,11 +117,14 @@ function WorkflowEditorInner({ path, tabId }: Props) {
   const [nodes, setNodes] = useState<RFNode[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [schemas, setSchemas] = useState<Record<string, NodeSchemas>>({});
-  const [schemasError, setSchemasError] = useState<string | null>(null);
+  const schemas = useSchemas();
+  const schemasError = useSchemasStore((s) => s.error);
+  const schemasLoaded = useSchemasStore((s) => s.loaded);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [externalError, setExternalError] = useState<string | null>(null);
   const [deletedOnDisk, setDeletedOnDisk] = useState(false);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
   const [expansion, setExpansion] = useState<Map<string, NodeExpansion>>(
     () => new Map(),
   );
@@ -357,6 +361,39 @@ function WorkflowEditorInner({ path, tabId }: Props) {
     onNodesDelete([{ id } as RFNode]);
   }, [nodeMenu.nodeId, onNodesDelete]);
 
+  const duplicate = useCallback(
+    (id: string) => {
+      const wf = workflowRef.current;
+      if (!wf) return;
+      const pos = nodesRef.current.find((n) => n.id === id)?.position;
+      const result = duplicateNode(wf, id, pos);
+      if (!result) return;
+      applyWorkflow(result.workflow);
+      setSelected(result.id);
+    },
+    [applyWorkflow, setSelected],
+  );
+
+  const tidy = useCallback(() => {
+    const wf = workflowRef.current;
+    if (!wf || Object.keys(wf.nodes).length === 0) return;
+    const heights: Record<string, number> = {};
+    for (const n of nodesRef.current) {
+      if (n.measured?.height) heights[n.id] = n.measured.height;
+    }
+    applyWorkflow(tidyLayout(wf, { heights }));
+    // Let React Flow apply the new positions before framing them.
+    setTimeout(() => void fitView({ padding: 0.2, duration: 250 }), 50);
+  }, [applyWorkflow, fitView]);
+
+  const focusNode = useCallback(
+    (id: string) => {
+      setSelected(id);
+      void fitView({ nodes: [{ id }], padding: 0.6, maxZoom: 1.2, duration: 250 });
+    },
+    [fitView, setSelected],
+  );
+
   const handleViewSource = useCallback(() => {
     const id = nodeMenu.nodeId;
     if (!id) return;
@@ -447,21 +484,8 @@ function WorkflowEditorInner({ path, tabId }: Props) {
   }, []);
 
   const reloadSchemas = useCallback(() => {
-    fetchWorkspaceSchemas()
-      .then((s) => {
-        if (!aliveRef.current) return;
-        setSchemas(s);
-        setSchemasError(null);
-      })
-      .catch((e: Error) => {
-        // Keep the last good schemas; the canvas falls back to inference.
-        if (aliveRef.current) setSchemasError(e.message);
-      });
+    void useSchemasStore.getState().refresh();
   }, []);
-
-  useEffect(() => {
-    reloadSchemas();
-  }, [reloadSchemas]);
 
   /**
    * Called when the user edits a literal value in an inline input widget on a
@@ -515,6 +539,14 @@ function WorkflowEditorInner({ path, tabId }: Props) {
   // Derive ports once per (workflow, schemas) — shared by node init and edge
   // routing. Edge routing needs the port trees to know which handle ids are
   // actually mounted in the DOM.
+  // Live problems: bad references, unknown node types, missing required
+  // inputs, cycles. Recomputed on every edit — it's a cheap pass.
+  const diagnostics = useMemo<Diagnostic[]>(
+    () => (workflow ? diagnoseWorkflow(workflow, schemas, { schemasLoaded }) : []),
+    [workflow, schemas, schemasLoaded],
+  );
+  const issuesByNode = useMemo(() => diagnosticsByNode(diagnostics), [diagnostics]);
+
   const portsByNode = useMemo<Map<string, NodePorts>>(() => {
     if (!workflow) return new Map();
     return derivePorts(workflow, schemas);
@@ -581,6 +613,7 @@ function WorkflowEditorInner({ path, tabId }: Props) {
             onInputValueChange: (portId: string, value: unknown) =>
               onInputValueChange(id, portId, value),
             nodeStatus: nodeStatusesRef.current.get(id),
+            issues: issuesByNode.get(id),
             nodeBreakpoint: bp.nodeBreakpoint,
             portBreakpoints: bp.portBreakpoints,
           },
@@ -589,7 +622,7 @@ function WorkflowEditorInner({ path, tabId }: Props) {
     );
     setNodes(initial);
     nodesRef.current = initial;
-  }, [workflow, schemas, portsByNode, onTogglePort, onInputValueChange, path]);
+  }, [workflow, schemas, portsByNode, issuesByNode, onTogglePort, onInputValueChange, path]);
 
   // Push the latest expansion state into each node's data so React Flow
   // re-renders the node when expansion changes.  Separated from initialise
@@ -851,9 +884,20 @@ function WorkflowEditorInner({ path, tabId }: Props) {
   // typed inside the code editor or a text field keep their native meaning.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest(".monaco-editor")) return;
+      // Plain-key shortcuts, only while focus isn't in a text field.
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && !isTextEntry(target)) {
+        if (e.key === "?") {
+          e.preventDefault();
+          setShortcutsOpen(true);
+        } else if (e.shiftKey && (e.key === "!" || e.code === "Digit1")) {
+          e.preventDefault();
+          void fitView({ padding: 0.2, duration: 250 });
+        }
+        return;
+      }
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const key = e.key.toLowerCase();
       if (key === "s") {
         e.preventDefault();
@@ -867,11 +911,16 @@ function WorkflowEditorInner({ path, tabId }: Props) {
       } else if ((key === "z" && e.shiftKey) || key === "y") {
         e.preventDefault();
         redo();
+      } else if (key === "d") {
+        const selected = useSelectionStore.getState().selectedNodeId;
+        if (!selected) return;
+        e.preventDefault();
+        duplicate(selected);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [save, undo, redo]);
+  }, [save, undo, redo, duplicate, fitView]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -915,8 +964,8 @@ function WorkflowEditorInner({ path, tabId }: Props) {
    *  - targetHandle !== ROOT_HANDLE_ID  → per-field form: merge into the
    *    existing object. If `in:` is currently a string, switch to object form.
    */
-  const onConnect = useCallback(
-    (conn: Connection) => {
+  const connect = useCallback(
+    (conn: Connection, confirmed = false) => {
       const { source, sourceHandle, target, targetHandle } = conn;
       // sourceHandle is required (ROOT_HANDLE_ID not allowed as a source — source
       // ports always carry a real port id). targetHandle may be ROOT_HANDLE_ID
@@ -963,10 +1012,16 @@ function WorkflowEditorInner({ path, tabId }: Props) {
             typeof existing === "object" &&
             Object.keys(existing).length > 0
           ) {
-            const ok = window.confirm(
-              `\`${target}\` has existing input bindings. Replace them with per-field connections from \`${refString}\`?`,
-            );
-            if (!ok) return;
+            if (!confirmed) {
+              void confirmAction({
+                title: `Replace ${target}'s input bindings?`,
+                description: `Every input of ${target} will be connected field-by-field from ${refString}, replacing its current bindings.`,
+                confirmLabel: "Replace bindings",
+              }).then((ok) => {
+                if (ok) connectRef.current(conn, true);
+              });
+              return;
+            }
           }
           const expanded: Record<string, string> = {};
           for (const field of targetFields) {
@@ -983,10 +1038,16 @@ function WorkflowEditorInner({ path, tabId }: Props) {
             typeof existing === "object" &&
             Object.keys(existing).length > 0
           ) {
-            const ok = window.confirm(
-              `\`${target}\` currently has per-field input bindings. Replace them with the whole-object reference \`${refString}\`?`,
-            );
-            if (!ok) return;
+            if (!confirmed) {
+              void confirmAction({
+                title: `Replace ${target}'s input bindings?`,
+                description: `${target}'s per-field bindings will be replaced by the whole-object reference ${refString}.`,
+                confirmLabel: "Replace bindings",
+              }).then((ok) => {
+                if (ok) connectRef.current(conn, true);
+              });
+              return;
+            }
           }
           nextIn = refString;
           // Whole-object form replaces all per-field state — including any
@@ -1038,18 +1099,15 @@ function WorkflowEditorInner({ path, tabId }: Props) {
     },
     [applyWorkflow, schemas],
   );
+  const connectRef = useRef(connect);
+  connectRef.current = connect;
+  const onConnect = useCallback((conn: Connection) => connect(conn), [connect]);
 
   // Live file events. Changes to this workflow flow into the draft: a clean
   // tab reloads (as an undoable step), a dirty tab keeps its edits and shows
-  // a conflict notice. Node source changes refresh the port schemas.
+  // a conflict notice. (Node source changes refresh schemas via useSchemas.)
   useEffect(() => {
-    let schemaTimer: ReturnType<typeof setTimeout> | null = null;
-    const unsubscribe = subscribeToFileEvents((e) => {
-      if (e.path.startsWith("nodes/")) {
-        if (schemaTimer) clearTimeout(schemaTimer);
-        schemaTimer = setTimeout(reloadSchemas, 300);
-        return;
-      }
+    return subscribeToFileEvents((e) => {
       if (e.path !== path) return;
       if (e.type === "unlink") {
         setDeletedOnDisk(true);
@@ -1066,11 +1124,7 @@ function WorkflowEditorInner({ path, tabId }: Props) {
           if (aliveRef.current) setExternalError(err.message);
         });
     });
-    return () => {
-      if (schemaTimer) clearTimeout(schemaTimer);
-      unsubscribe();
-    };
-  }, [path, tabId, reloadSchemas]);
+  }, [path, tabId]);
 
   if (error && !workflow) {
     return (
@@ -1096,8 +1150,32 @@ function WorkflowEditorInner({ path, tabId }: Props) {
     );
   }
 
+  const saveStatus: SaveStatus =
+    saveState === "saving" || saveState === "saved" || saveState === "error"
+      ? saveState
+      : dirty
+        ? "dirty"
+        : "clean";
+  const isEmpty = Object.keys(workflow.nodes).length === 0;
+
   return (
-    <div className="relative h-full w-full" onDragOver={onDragOver} onDrop={onDrop}>
+    <div className="flex h-full w-full flex-col">
+      <CanvasToolbar
+        path={path}
+        status={saveStatus}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        diagnostics={diagnostics}
+        onUndo={undo}
+        onRedo={redo}
+        onSave={() => void save()}
+        onAddNode={() => setPaletteOpen(true)}
+        onFitView={() => void fitView({ padding: 0.2, duration: 250 })}
+        onTidy={tidy}
+        onFocusNode={focusNode}
+        onShowShortcuts={() => setShortcutsOpen(true)}
+      />
+    <div className="relative min-h-0 w-full flex-1" onDragOver={onDragOver} onDrop={onDrop}>
       <div ref={reactFlowRef} className="h-full w-full">
         <ReactFlow
           nodes={nodes}
@@ -1122,9 +1200,29 @@ function WorkflowEditorInner({ path, tabId }: Props) {
           proOptions={{ hideAttribution: true }}
         >
           <Background gap={20} size={1} />
-          <Controls />
+          <Controls showFitView={false} />
+          {!isEmpty && <MiniMap pannable zoomable className="!bg-card" maskColor="rgb(0 0 0 / 0.08)" />}
         </ReactFlow>
       </div>
+      {isEmpty && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card/80 p-6 text-center shadow-sm">
+            <div className="text-sm font-medium">This workflow is empty</div>
+            <p className="text-xs text-muted-foreground">
+              Start with an HTTP Request trigger, add the nodes that do the work, and finish with a
+              Response. Right-click the canvas or press Ctrl+K to add nodes, or drag them in from
+              the Files panel.
+            </p>
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Add a node
+            </button>
+          </div>
+        </div>
+      )}
       <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-col items-center gap-2">
         {diskConflict && (
           <EditorNotice
@@ -1181,41 +1279,10 @@ function WorkflowEditorInner({ path, tabId }: Props) {
           </EditorNotice>
         )}
       </div>
-      <div className="absolute bottom-3 right-3 flex items-center gap-2">
-        <div className="flex overflow-hidden rounded-md border border-border bg-card text-xs shadow-sm">
-          <button
-            type="button"
-            onClick={undo}
-            disabled={!canUndo}
-            aria-label="Undo"
-            title="Undo (Ctrl+Z)"
-            className="px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            onClick={redo}
-            disabled={!canRedo}
-            aria-label="Redo"
-            title="Redo (Ctrl+Shift+Z)"
-            className="border-l border-border px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-          >
-            Redo
-          </button>
-        </div>
-        {saveState === "saving" || saveState === "saved" ? (
-          <div className="rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-            {saveState === "saving" ? "Saving…" : "Saved"}
-          </div>
-        ) : dirty && saveState === "idle" ? (
-          <div className="rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-            Unsaved changes — Ctrl+S to save
-          </div>
-        ) : null}
-      </div>
       <CommandPalette
         schemas={schemas}
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
         onPick={(uses) => {
           const c = viewportCenter();
           addNodeAt(uses, c.x, c.y);
@@ -1246,6 +1313,7 @@ function WorkflowEditorInner({ path, tabId }: Props) {
         x={nodeMenu.x}
         y={nodeMenu.y}
         onDelete={handleDeleteFromMenu}
+        onDuplicate={() => nodeMenu.nodeId && duplicate(nodeMenu.nodeId)}
         onReset={handleResetConnections}
         onToggleBreakpointBefore={handleToggleBreakpointBefore}
         onToggleBreakpointAfter={handleToggleBreakpointAfter}
@@ -1254,6 +1322,8 @@ function WorkflowEditorInner({ path, tabId }: Props) {
           ? { onViewSource: handleViewSource }
           : {})}
       />
+      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+    </div>
     </div>
   );
 }

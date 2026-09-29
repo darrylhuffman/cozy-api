@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { CodeEditor } from "@/code/code-editor";
 import { cn } from "@/lib/utils";
+import { confirmAction } from "@/store/confirm";
 import { useCodeDrafts } from "@/store/code-drafts";
 import { useCodeTabs, useTabsStore } from "@/store/tabs";
 
@@ -20,12 +21,15 @@ export function CodeEditorPanel() {
 
   const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
 
-  function handleClose(tabId: string) {
+  async function handleClose(tabId: string) {
     const tab = tabs.find((t) => t.id === tabId);
     if (tab?.dirty) {
-      const confirmed = window.confirm(
-        `"${tab.title}" has unsaved changes. Close without saving?`,
-      );
+      const confirmed = await confirmAction({
+        title: `Close ${tab.title} without saving?`,
+        description: "Your unsaved changes will be lost.",
+        confirmLabel: "Close without saving",
+        destructive: true,
+      });
       if (!confirmed) return;
     }
     closeTab(tabId);
@@ -42,7 +46,7 @@ export function CodeEditorPanel() {
             onMouseDown={(e) => {
               if (e.button === 1) {
                 e.preventDefault();
-                handleClose(tab.id);
+                void handleClose(tab.id);
               }
             }}
             className={cn(
@@ -67,7 +71,7 @@ export function CodeEditorPanel() {
             </button>
             <button
               type="button"
-              onClick={() => handleClose(tab.id)}
+              onClick={() => void handleClose(tab.id)}
               className="rounded-sm p-0.5 text-muted-foreground opacity-60 hover:bg-accent hover:opacity-100"
               aria-label={`Close ${tab.title}`}
             >

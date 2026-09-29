@@ -1,10 +1,11 @@
 import { Handle, Position } from "@xyflow/react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, XCircle } from "lucide-react";
 import { useState } from "react";
 import type { JsonSchema, NodeInstance } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSelectionStore } from "@/store/selection";
 import { idFromUses } from "./add-node";
+import type { Diagnostic } from "./diagnose";
 import type { NodePorts, PortNode } from "./derive-ports";
 import { resolveAccentColor } from "./tailwind-colors";
 import { expandTemplate } from "./template";
@@ -52,6 +53,8 @@ export interface WorkflowNodeData {
    * rendered overlaid on the matching output port handle.
    */
   portBreakpoints?: Set<string>;
+  /** Validation problems attached to this node (see diagnose.ts). */
+  issues?: Diagnostic[];
 }
 
 // Using the xyflow NodeProps generic requires the data type to extend Node which
@@ -95,7 +98,10 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     workflowPath,
     nodeBreakpoint,
     portBreakpoints,
+    issues,
   } = data as unknown as WorkflowNodeData;
+  const errorCount = issues?.filter((i) => i.severity === "error").length ?? 0;
+  const warningCount = (issues?.length ?? 0) - errorCount;
 
   const isSelected = useSelectionStore((s) => s.selectedNodeId === id);
   const isCore = instance.uses.startsWith("@core/");
@@ -158,6 +164,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
       data-testid="node-card"
       className={cn(
         "rounded-md border border-border bg-card text-card-foreground shadow-sm hover:brightness-98 dark:hover:brightness-115",
+        errorCount > 0 ? "border-red-500/70" : warningCount > 0 && "border-amber-500/70",
         isSelected && "ring-2 ring-primary",
         statusClass,
       )}
@@ -187,8 +194,11 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
             aria-label="after-breakpoint"
           />
         )}
-        <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-          {kindLabel}
+        <div className="flex items-center justify-between gap-2">
+          <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+            {kindLabel}
+          </div>
+          {issues && issues.length > 0 && <IssueBadge issues={issues} errorCount={errorCount} />}
         </div>
         <div className="truncate font-medium">{displayName}</div>
       </div>
@@ -591,5 +601,28 @@ function InlineInputWidget({
       }}
       onClick={(e) => e.stopPropagation()}
     />
+  );
+}
+
+function IssueBadge({ issues, errorCount }: { issues: Diagnostic[]; errorCount: number }) {
+  const isError = errorCount > 0;
+  const Icon = isError ? XCircle : AlertTriangle;
+  const summary = issues.map((i) => i.message).join("\n");
+  return (
+    <span
+      data-testid="node-issue-badge"
+      role="img"
+      aria-label={`${issues.length} ${issues.length === 1 ? "problem" : "problems"}: ${summary}`}
+      title={summary}
+      className={cn(
+        "inline-flex items-center gap-0.5 rounded px-1 text-[10px] font-medium",
+        isError
+          ? "bg-red-500/15 text-red-600 dark:text-red-400"
+          : "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+      )}
+    >
+      <Icon className="h-3 w-3" aria-hidden />
+      {issues.length}
+    </span>
   );
 }

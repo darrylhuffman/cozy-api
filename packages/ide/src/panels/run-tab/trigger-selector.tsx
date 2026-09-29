@@ -1,11 +1,8 @@
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useDebugSessionStore } from "@/store/debug-session"
-import {
-  fetchWorkspaceSchemas,
-  type NodeSchemas,
-  type WorkflowFile,
-} from "@/lib/api"
+import type { NodeSchemas, WorkflowFile } from "@/lib/api"
+import { useSchemas } from "@/store/schemas"
 import {
   Select,
   SelectContent,
@@ -102,22 +99,9 @@ export function TriggerSelector() {
   const workflow = useLiveWorkflowStore((s) => s.workflow)
   const selected = useDebugSessionStore((s) => s.requestForm.triggerNodeId)
   const setRequestForm = useDebugSessionStore((s) => s.setRequestForm)
-  const [schemas, setSchemas] = useState<Record<string, NodeSchemas>>({})
+  const schemas = useSchemas()
 
   const triggers = discoverTriggers(workflow)
-
-  // Fetch schemas once on mount; cache locally
-  useEffect(() => {
-    let alive = true
-    fetchWorkspaceSchemas()
-      .then((s) => {
-        if (alive) setSchemas(s)
-      })
-      .catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [])
 
   // Auto-select / form-reset effect
   useEffect(() => {

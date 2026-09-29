@@ -61,7 +61,7 @@ export function buildDefaultLayout(api: DockviewApi): void {
     id: "files",
     component: "files",
     title: "Files",
-    initialWidth: 250,
+    initialWidth: FILES_WIDTH,
   })
   api.addPanel({
     id: "workflow",
@@ -82,7 +82,7 @@ export function buildDefaultLayout(api: DockviewApi): void {
     component: "inspector",
     title: "Inspector",
     position: { referencePanel: "code", direction: "right" },
-    initialWidth: 400,
+    initialWidth: INSPECTOR_WIDTH,
   })
   api.addPanel({
     id: "agents",
@@ -96,10 +96,18 @@ export function buildDefaultLayout(api: DockviewApi): void {
     title: "Debug",
     position: { referencePanel: "inspector", direction: "within" },
   })
-  // Inspector stays the default-visible tab in its group — dockview otherwise
-  // activates the most recently added panel.
+  // dockview only honours initialWidth for the first split, so pin the side
+  // columns explicitly; the editor group takes whatever is left.
+  api.getPanel("files")?.api.setSize({ width: FILES_WIDTH })
+  api.getPanel("inspector")?.api.setSize({ width: INSPECTOR_WIDTH })
+  // Workflow is the default editor tab and Inspector the default side tab —
+  // dockview otherwise activates the most recently added panel in each group.
+  api.getPanel("workflow")?.api.setActive()
   api.getPanel("inspector")?.api.setActive()
 }
+
+export const FILES_WIDTH = 250
+export const INSPECTOR_WIDTH = 400
 
 export { STORAGE_KEY }
 

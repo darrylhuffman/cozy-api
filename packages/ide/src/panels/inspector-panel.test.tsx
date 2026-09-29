@@ -31,7 +31,9 @@ vi.mock("@/components/ui/tabs", () => ({
 
 import { fetchWorkspaceSchemas } from "@/lib/api"
 import { useSelectionStore } from "@/store/selection"
+import { resetSchemasStore } from "@/store/schemas"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
+import { useWorkflowDrafts } from "@/store/workflow-drafts"
 import { InspectorPanel } from "./inspector-panel"
 
 const sampleWorkflow: WorkflowFile = {
@@ -48,8 +50,10 @@ const sampleWorkflow: WorkflowFile = {
 }
 
 function resetStores() {
+  resetSchemasStore()
   useSelectionStore.setState({ selectedNodeId: null })
   useLiveWorkflowStore.setState({ workflow: null, tabId: null })
+  useWorkflowDrafts.setState({ drafts: {} })
 }
 
 beforeEach(() => {
@@ -97,7 +101,7 @@ describe("InspectorPanel — InspectContent", () => {
 
     // Wait for async fetch to resolve
     await waitFor(() => {
-      expect(screen.getByText("save")).toBeInTheDocument()
+      expect(screen.getByLabelText("Node id")).toHaveValue("save")
     })
 
     // Node section
@@ -155,7 +159,7 @@ describe("InspectorPanel — InspectContent", () => {
     useSelectionStore.setState({ selectedNodeId: "response" })
     render(<InspectorPanel />)
     await waitFor(() => {
-      expect(screen.getByText("response")).toBeInTheDocument()
+      expect(screen.getByLabelText("Node id")).toHaveValue("response")
     })
     // Config section should not appear at all
     expect(screen.queryByText(/^config$/i)).not.toBeInTheDocument()
@@ -206,7 +210,7 @@ describe("InspectorPanel — InspectContent", () => {
 
     // Inspector should show the node details, NOT the "not found" error
     await waitFor(() => {
-      expect(screen.getByText("http-request")).toBeInTheDocument()
+      expect(screen.getByLabelText("Node id")).toHaveValue("http-request")
     })
     expect(screen.getByText("@core/http-request")).toBeInTheDocument()
     // "not found" error must NOT appear
@@ -247,7 +251,7 @@ describe("InspectorPanel — Description section (A1)", () => {
 
     // Wait for async schemas to load
     await waitFor(() => {
-      expect(screen.getByText("save")).toBeInTheDocument()
+      expect(screen.getByLabelText("Node id")).toHaveValue("save")
     })
     // "Description" section header should not appear when description is null
     // (it appears in uppercase so match case-insensitively)
@@ -265,7 +269,7 @@ describe("InspectorPanel — Description section (A1)", () => {
     render(<InspectorPanel />)
 
     await waitFor(() => {
-      expect(screen.getByText("save")).toBeInTheDocument()
+      expect(screen.getByLabelText("Node id")).toHaveValue("save")
     })
     expect(screen.queryByText(/^description$/i)).not.toBeInTheDocument()
   })
@@ -343,5 +347,52 @@ describe("InspectorPanel — Recursive SchemaTree (A2)", () => {
 
     // Chevron changes to ▸
     expect(screen.getByText("▸")).toBeInTheDocument()
+  })
+})
+
+describe("InspectorPanel — rename node", () => {
+  beforeEach(() => {
+    useWorkflowDrafts.getState().load("tab-1", "workflows/x.workflow", sampleWorkflow)
+    useSelectionStore.setState({ selectedNodeId: "save" })
+  })
+
+  it("renames the node, rewrites references and keeps it selected", () => {
+    render(<InspectorPanel />)
+    const input = screen.getByLabelText("Node id")
+    fireEvent.change(input, { target: { value: "saveUser" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    fireEvent.blur(input)
+    const wf = useWorkflowDrafts.getState().drafts["tab-1"]?.workflow
+    expect(Object.keys(wf?.nodes ?? {})).toEqual(["saveUser", "response"])
+    expect(wf?.nodes.response?.in).toEqual({ body: "saveUser.user" })
+    expect(useSelectionStore.getState().selectedNodeId).toBe("saveUser")
+  })
+
+  it("rejects ids that cannot be referenced", () => {
+    render(<InspectorPanel />)
+    const input = screen.getByLabelText("Node id")
+    fireEvent.change(input, { target: { value: "save-user" } })
+    expect(screen.getByRole("alert").textContent).toMatch(/letters, digits/)
+    fireEvent.blur(input)
+    expect(input).toHaveValue("save")
+    expect(Object.keys(useWorkflowDrafts.getState().drafts["tab-1"]?.workflow.nodes ?? {})).toContain(
+      "save",
+    )
+  })
+
+  it("rejects ids already in use", () => {
+    render(<InspectorPanel />)
+    fireEvent.change(screen.getByLabelText("Node id"), { target: { value: "response" } })
+    expect(screen.getByRole("alert").textContent).toBe('"response" is already used')
+  })
+
+  it("Escape cancels the edit", () => {
+    render(<InspectorPanel />)
+    const input = screen.getByLabelText("Node id")
+    fireEvent.change(input, { target: { value: "other" } })
+    fireEvent.keyDown(input, { key: "Escape" })
+    fireEvent.blur(input)
+    expect(input).toHaveValue("save")
+    expect(useWorkflowDrafts.getState().drafts["tab-1"]?.past).toHaveLength(0)
   })
 })

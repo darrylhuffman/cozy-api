@@ -1,15 +1,14 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RunTab } from "./run-tab"
-import {
-  fetchWorkspaceSchemas,
-  type JsonSchema,
-  type NodeInstance,
-  type NodeSchemas,
-} from "@/lib/api"
+import type { JsonSchema, NodeInstance } from "@/lib/api"
+import { useSchemas } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useTabsStore } from "@/store/tabs"
+import { useWorkflowDrafts } from "@/store/workflow-drafts"
+import { isValidNodeId } from "@/workflow/diagnose"
+import { renameNode } from "@/workflow/graph-ops"
 import { expandTemplate } from "@/workflow/template"
 
 export function InspectorPanel() {
@@ -42,19 +41,7 @@ function InspectContent() {
   const liveTabId = useLiveWorkflowStore((s) => s.tabId)
   const tabs = useTabsStore((s) => s.tabs)
   const workflowPath = tabs.find((t) => t.id === liveTabId)?.path ?? ""
-  const [schemas, setSchemas] = useState<Record<string, NodeSchemas>>({})
-
-  useEffect(() => {
-    let alive = true
-    fetchWorkspaceSchemas()
-      .then((s) => {
-        if (alive) setSchemas(s)
-      })
-      .catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [])
+  const schemas = useSchemas()
 
   if (!selectedId) {
     return (
@@ -78,7 +65,12 @@ function InspectContent() {
   return (
     <div className="flex flex-col gap-4">
       <Section label="Node">
-        <Row k="id" v={selectedId} />
+        <NodeIdField
+          key={selectedId}
+          id={selectedId}
+          tabId={liveTabId}
+          existing={Object.keys(workflow?.nodes ?? {})}
+        />
         <Row k="uses" v={instance.uses} />
         {schema?.color && (
           <Row
@@ -138,6 +130,72 @@ function effectiveInputValue(
     return { kind: "literal", value: expandTemplate(schema.default, { workflowPath }) }
   }
   return null
+}
+
+/**
+ * Editable node id. Renaming rewrites every reference to the node (`in`,
+ * `after`, `view`) through the tab's draft, so it is one undoable edit.
+ */
+function NodeIdField({
+  id,
+  tabId,
+  existing,
+}: {
+  id: string
+  tabId: string | null
+  existing: string[]
+}) {
+  const [text, setText] = useState(id)
+  const trimmed = text.trim()
+  const error =
+    trimmed === id
+      ? null
+      : !isValidNodeId(trimmed)
+        ? "Use letters, digits, _ or $, not starting with a digit"
+        : existing.includes(trimmed)
+          ? `"${trimmed}" is already used`
+          : null
+
+  const commit = () => {
+    if (error || trimmed === id || !tabId) {
+      setText(id)
+      return
+    }
+    const drafts = useWorkflowDrafts.getState()
+    const draft = drafts.drafts[tabId]
+    if (!draft) return
+    drafts.apply(tabId, renameNode(draft.workflow, id, trimmed))
+    useSelectionStore.getState().setSelected(trimmed)
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5 text-xs">
+      <label className="flex items-center gap-2">
+        <span className="text-muted-foreground">id:</span>
+        <input
+          aria-label="Node id"
+          aria-invalid={error ? true : undefined}
+          value={text}
+          disabled={!tabId}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur()
+            if (e.key === "Escape") {
+              setText(id)
+              e.currentTarget.blur()
+            }
+          }}
+          className="h-6 flex-1 rounded border border-border bg-background px-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary aria-[invalid]:border-red-500"
+        />
+      </label>
+      {error && (
+        <span role="alert" className="pl-6 text-[11px] text-red-600 dark:text-red-400">
+          {error}
+        </span>
+      )}
+    </div>
+  )
 }
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {

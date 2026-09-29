@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils"
 import { PANE_IDS, PANE_TITLES, type PaneId, reopenPanel } from "@/layout/default-layout"
 import { useDockviewApi } from "@/store/dockview-api"
+import { confirmAction } from "@/store/confirm"
 import { useThemeStore } from "@/store/theme"
 
 const LAYOUT_KEY = "lorien-ide-layout"
@@ -46,10 +47,13 @@ export function Topbar() {
     }
   }
 
-  const resetLayout = () => {
-    const confirmed = window.confirm(
-      "Reset layout to default?\nThis will clear your panel arrangement and open tabs.",
-    )
+  const resetLayout = async () => {
+    const confirmed = await confirmAction({
+      title: "Reset layout to default?",
+      description: "This clears your panel arrangement and open tabs.",
+      confirmLabel: "Reset layout",
+      destructive: true,
+    })
     if (!confirmed) return
     try {
       localStorage.removeItem(LAYOUT_KEY)
@@ -95,7 +99,7 @@ export function Topbar() {
                 </MenubarSubContent>
               </MenubarSub>
               <MenubarSeparator />
-              <MenubarItem className="text-xs" onClick={resetLayout}>
+              <MenubarItem className="text-xs" onClick={() => void resetLayout()}>
                 Reset to default view
               </MenubarItem>
             </MenubarContent>

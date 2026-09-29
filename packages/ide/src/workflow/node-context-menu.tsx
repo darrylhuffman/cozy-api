@@ -7,6 +7,8 @@ interface Props {
   y: number
   onDelete: () => void
   onReset: () => void
+  /** When provided, renders "Duplicate". */
+  onDuplicate?: () => void
   /** When provided, a "View source" button is rendered at the top of the menu. */
   onViewSource?: () => void
   /** When provided, renders "Toggle breakpoint (before)" and "Toggle breakpoint (after)" items. */
@@ -21,6 +23,7 @@ export function NodeContextMenu({
   y,
   onDelete,
   onReset,
+  onDuplicate,
   onViewSource,
   onToggleBreakpointBefore,
   onToggleBreakpointAfter,
@@ -43,6 +46,19 @@ export function NodeContextMenu({
             className="w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent"
           >
             View source
+          </button>
+        )}
+        {onDuplicate && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenChange(false)
+              onDuplicate()
+            }}
+            className="flex w-full items-center justify-between rounded px-3 py-1.5 text-left text-sm hover:bg-accent"
+          >
+            Duplicate
+            <span className="text-xs text-muted-foreground">Ctrl+D</span>
           </button>
         )}
         <button

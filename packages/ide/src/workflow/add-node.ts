@@ -9,8 +9,7 @@ export function addNode(
   uses: string,
   position: { x: number; y: number },
 ): WorkflowFile {
-  const baseId = idFromUses(uses)
-  const id = uniqueId(baseId, new Set(Object.keys(wf.nodes)))
+  const id = uniqueId(nodeIdFromUses(uses), new Set(Object.keys(wf.nodes)))
   return {
     ...wf,
     nodes: { ...wf.nodes, [id]: { uses } },
@@ -33,10 +32,28 @@ export function idFromUses(uses: string): string {
   return last.replace(/\.[tj]sx?$/, "").replace(/[^a-zA-Z0-9-]/g, "-")
 }
 
-function uniqueId(base: string, taken: Set<string>): string {
+/**
+ * The instance id for a freshly added node: `idFromUses` camel-cased into a
+ * JavaScript identifier, because ids are the first segment of references
+ * ("saveUser.user") and the reference grammar has no room for hyphens.
+ *
+ *   "@core/http-request"      → "httpRequest"
+ *   "./nodes/users/save-user" → "saveUser"
+ */
+export function nodeIdFromUses(uses: string): string {
+  const words = idFromUses(uses).split("-").filter(Boolean)
+  const camel = words
+    .map((w, i) => (i === 0 ? w.charAt(0).toLowerCase() + w.slice(1) : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join("")
+  if (camel.length === 0) return "node"
+  return /^[0-9]/.test(camel) ? `n${camel}` : camel
+}
+
+/** First free id among base, base2, base3, … */
+export function uniqueId(base: string, taken: Set<string>): string {
   if (!taken.has(base)) return base
   for (let i = 2; i < 10000; i++) {
-    const candidate = `${base}-${i}`
+    const candidate = `${base}${i}`
     if (!taken.has(candidate)) return candidate
   }
   throw new Error("failed to allocate unique node id")

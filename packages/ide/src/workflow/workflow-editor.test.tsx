@@ -113,9 +113,11 @@ vi.mock("@xyflow/react", () => ({
       x: p.x - flowOffset.x,
       y: p.y - flowOffset.y,
     }),
+    fitView: () => Promise.resolve(true),
   }),
   Background: () => <div data-testid="rf-background" />,
   Controls: () => <div data-testid="rf-controls" />,
+  MiniMap: () => <div data-testid="rf-minimap" />,
   Handle: () => null,
   Position: { Left: "left", Right: "right" },
   applyNodeChanges: (
@@ -206,6 +208,8 @@ import { useThemeStore } from "@/store/theme"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { useWorkflowDrafts } from "@/store/workflow-drafts"
+import { resetSchemasStore } from "@/store/schemas"
+import { useConfirmStore } from "@/store/confirm"
 import { defaultPathForWorkflow, WorkflowEditor } from "./workflow-editor.js"
 
 const sampleWorkflow: WorkflowFile = {
@@ -248,6 +252,7 @@ const createWorkflow: WorkflowFile = {
 function resetStore() {
   useTabsStore.setState({ tabs: [], activeWorkflowId: null, activeCodeId: null })
   useWorkflowDrafts.setState({ drafts: {} })
+  resetSchemasStore()
 }
 
 beforeEach(() => {
@@ -820,9 +825,7 @@ describe("WorkflowEditor", () => {
       expect(parsed.nodes.save!.in).toBe("request.body")
     })
 
-    it("connecting to root replaces per-field `in:` only after window.confirm", async () => {
-      // Stub confirm so jsdom doesn't throw on unimplemented dialogs.
-      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true)
+    it("connecting to root replaces per-field `in:` only after the user confirms", async () => {
       vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
       render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
       await waitFor(() => {
@@ -838,7 +841,12 @@ describe("WorkflowEditor", () => {
         })
       })
 
-      expect(confirmSpy).toHaveBeenCalledOnce()
+      // Nothing changes until the dialog is answered.
+      expect(useConfirmStore.getState().pending?.title).toBe("Replace save's input bindings?")
+      expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
+      await act(async () => {
+        useConfirmStore.getState().answer(true)
+      })
       await act(async () => {
         fireEvent.keyDown(window, { key: "s", ctrlKey: true })
       })
@@ -847,11 +855,9 @@ describe("WorkflowEditor", () => {
       const parsed = JSON.parse(savedContent) as WorkflowFile
       // Per-field entries are replaced with the whole-object string
       expect(parsed.nodes.save!.in).toBe("request.body")
-      confirmSpy.mockRestore()
     })
 
-    it("denying the confirm() leaves the existing per-field `in:` intact", async () => {
-      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false)
+    it("cancelling the confirmation leaves the existing per-field `in:` intact", async () => {
       vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
       render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
       await waitFor(() => {
@@ -867,10 +873,12 @@ describe("WorkflowEditor", () => {
         })
       })
 
-      expect(confirmSpy).toHaveBeenCalledOnce()
+      expect(useConfirmStore.getState().pending).not.toBeNull()
+      await act(async () => {
+        useConfirmStore.getState().answer(false)
+      })
       // No dirty mark, no save needed.
       expect(useTabsStore.getState().tabs.find((t) => t.id === "test-tab")?.dirty).toBe(false)
-      confirmSpy.mockRestore()
     })
 
     it("BUG REGRESSION: dropping a source onto the collapsed root input auto-expands to per-field references", async () => {
@@ -1950,4 +1958,75 @@ describe("WorkflowEditor", () => {
       expect((added as { position?: unknown })?.position).toEqual({ x: 150, y: 110 })
     })
   })
+
+  describe("canvas toolbar and actions", () => {
+    const PATH = "workflows/users/create.workflow"
+    const draft = () => useWorkflowDrafts.getState().drafts["test-tab"]?.workflow
+
+    async function renderLoaded() {
+      render(<WorkflowEditor path={PATH} tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+    }
+
+    it("Ctrl+D duplicates the selected node and selects the copy", async () => {
+      await renderLoaded()
+      act(() => useSelectionStore.setState({ selectedNodeId: "save" }))
+      fireEvent.keyDown(window, { key: "d", ctrlKey: true })
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("4")
+      })
+      expect(draft()?.nodes.save2).toEqual(draft()?.nodes.save)
+      expect(draft()?.view?.save2).toEqual({ x: 600, y: 80 })
+      expect(useSelectionStore.getState().selectedNodeId).toBe("save2")
+    })
+
+    it("Tidy layout arranges nodes left to right as one undoable edit", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue({
+        ...sampleWorkflow,
+        view: { parseBody: { x: 900, y: 0 }, validate: { x: 0, y: 500 }, save: { x: 10, y: 10 } },
+      })
+      await renderLoaded()
+      fireEvent.click(screen.getByRole("button", { name: "Tidy layout" }))
+      const view = draft()?.view ?? {}
+      expect(view.parseBody!.x).toBeLessThan(view.validate!.x)
+      expect(view.validate!.x).toBeLessThan(view.save!.x)
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }))
+      expect(draft()?.view?.parseBody).toEqual({ x: 900, y: 0 })
+    })
+
+    it("an empty workflow shows a call to action that opens the node palette", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue({ lorien: 1, nodes: {} })
+      render(<WorkflowEditor path={PATH} tabId="test-tab" />)
+      const cta = await screen.findByRole("button", { name: "Add a node" })
+      expect(screen.getByText("This workflow is empty")).toBeInTheDocument()
+      fireEvent.click(cta)
+      expect(await screen.findByPlaceholderText(/search/i)).toBeInTheDocument()
+    })
+
+    it("? opens the keyboard shortcuts list, but not while typing", async () => {
+      await renderLoaded()
+      const input = document.createElement("input")
+      document.body.appendChild(input)
+      input.focus()
+      fireEvent.keyDown(input, { key: "?" })
+      expect(screen.queryByText("Keyboard shortcuts", { selector: "h2" })).toBeNull()
+      input.remove()
+      fireEvent.keyDown(window, { key: "?" })
+      expect(await screen.findByText("Duplicate selected node")).toBeInTheDocument()
+    })
+
+    it("shows the problem count for the workflow", async () => {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue({
+        lorien: 1,
+        nodes: { save: { uses: "./saveUser", in: { data: "missing.value" } } },
+      })
+      render(<WorkflowEditor path={PATH} tabId="test-tab" />)
+      const btn = await screen.findByRole("button", { name: /^Problems:/ })
+      // Unknown reference target + unknown node type (no schema), plus a missing-trigger warning.
+      expect(btn.getAttribute("aria-label")).toBe("Problems: 2 errors, 1 warning")
+    })
+  })
 })
+

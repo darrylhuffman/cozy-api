@@ -1,5 +1,6 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { useConfirmStore } from "@/store/confirm"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkflowDrafts } from "@/store/workflow-drafts"
 import { WorkflowEditorPanel } from "./workflow-editor-panel.js"
@@ -67,25 +68,22 @@ describe("WorkflowEditorPanel", () => {
     expect(useTabsStore.getState().activeWorkflowId).toBeNull()
   })
 
-  it("closing a dirty tab prompts confirm — cancelling keeps the tab", () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false)
+  it("closing a dirty tab asks first — cancelling keeps the tab", async () => {
     useTabsStore.getState().openTab({ id: "x", title: "x.workflow", kind: "workflow" })
     useTabsStore.getState().setDirty("x", true)
     render(<WorkflowEditorPanel />)
     fireEvent.click(screen.getByRole("button", { name: /close x.workflow/i }))
-    // confirm was called
-    expect(window.confirm).toHaveBeenCalledOnce()
-    // tab still present
+    expect(useConfirmStore.getState().pending?.title).toBe("Close x.workflow without saving?")
+    await act(async () => useConfirmStore.getState().answer(false))
     expect(useTabsStore.getState().tabs).toHaveLength(1)
   })
 
-  it("closing a dirty tab prompts confirm — confirming closes the tab", () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true)
+  it("closing a dirty tab asks first — confirming closes the tab", async () => {
     useTabsStore.getState().openTab({ id: "x", title: "x.workflow", kind: "workflow" })
     useTabsStore.getState().setDirty("x", true)
     render(<WorkflowEditorPanel />)
     fireEvent.click(screen.getByRole("button", { name: /close x.workflow/i }))
-    expect(window.confirm).toHaveBeenCalledOnce()
+    await act(async () => useConfirmStore.getState().answer(true))
     expect(useTabsStore.getState().tabs).toHaveLength(0)
   })
 

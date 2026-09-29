@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { cleanup, render } from "@testing-library/react"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
+import { resetSchemasStore } from "@/store/schemas"
 import { TriggerSelector } from "./trigger-selector"
 import { fetchWorkspaceSchemas, type NodeSchemas, type WorkflowFile } from "@/lib/api"
 
@@ -15,6 +16,7 @@ vi.mock("@/lib/api", async () => {
 })
 
 const baseStoreReset = () => {
+  resetSchemasStore()
   useDebugSessionStore.setState(useDebugSessionStore.getState().getInitialState())
 }
 

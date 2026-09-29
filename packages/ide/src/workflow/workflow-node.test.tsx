@@ -872,4 +872,35 @@ describe("WorkflowNode", () => {
       expect(widget.parentElement).not.toBe(label.parentElement)
     })
   })
+
+  describe("validation issues", () => {
+    const base = () => ({ inputs: emptyInputRoot, outputs: [] })
+
+    it("shows no badge when the node has no issues", () => {
+      render(<WorkflowNode data={makeData("a", { uses: "./nodes/a" }, base())} />)
+      expect(screen.queryByTestId("node-issue-badge")).toBeNull()
+    })
+
+    it("shows an error badge with the count and messages, and a red border", () => {
+      const issues = [
+        { key: "1", severity: "error", nodeId: "a", message: "Missing required input email" },
+        { key: "2", severity: "warning", nodeId: "a", message: "user.id is not an output" },
+      ]
+      render(<WorkflowNode data={makeData("a", { uses: "./nodes/a" }, base(), { issues })} />)
+      const badge = screen.getByTestId("node-issue-badge")
+      expect(badge.textContent).toBe("2")
+      expect(badge.getAttribute("aria-label")).toContain("Missing required input email")
+      expect(badge.getAttribute("title")).toContain("user.id is not an output")
+      expect(screen.getByTestId("node-card").className).toContain("border-red-500")
+    })
+
+    it("uses the warning style when the node only has warnings", () => {
+      const issues = [{ key: "1", severity: "warning", nodeId: "a", message: "Unused" }]
+      render(<WorkflowNode data={makeData("a", { uses: "./nodes/a" }, base(), { issues })} />)
+      expect(screen.getByTestId("node-issue-badge").getAttribute("aria-label")).toBe(
+        "1 problem: Unused",
+      )
+      expect(screen.getByTestId("node-card").className).toContain("border-amber-500")
+    })
+  })
 })

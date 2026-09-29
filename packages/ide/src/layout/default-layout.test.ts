@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { loadSavedLayout, STORAGE_KEY, saveLayout, reopenPanel, type PaneId, PANE_IDS, PANE_TITLES } from "./default-layout.js"
+import { buildDefaultLayout, loadSavedLayout, STORAGE_KEY, saveLayout, reopenPanel, type PaneId, PANE_IDS, PANE_TITLES } from "./default-layout.js"
 
 describe("loadSavedLayout", () => {
   beforeEach(() => {
@@ -92,5 +92,33 @@ describe("reopenPanel for agents", () => {
     const opts = calls[0] as { position?: { referencePanel: string; direction: string }; initialWidth?: number }
     expect(opts.position).toEqual({ referencePanel: "code", direction: "right" })
     expect(opts.initialWidth).toBe(400)
+  })
+})
+
+describe("buildDefaultLayout", () => {
+  it("sizes the side columns and opens on the Workflow and Inspector tabs", () => {
+    const log: string[] = []
+    const added = new Set<string>()
+    const api = {
+      addPanel: (opts: { id: string }) => added.add(opts.id),
+      getPanel: (id: string) =>
+        added.has(id)
+          ? {
+              id,
+              api: {
+                setActive: () => log.push(`active:${id}`),
+                setSize: (s: { width: number }) => log.push(`size:${id}:${s.width}`),
+              },
+            }
+          : undefined,
+    } as unknown as Parameters<typeof buildDefaultLayout>[0]
+    buildDefaultLayout(api)
+    expect([...added]).toEqual(["files", "workflow", "code", "inspector", "agents", "debug"])
+    expect(log).toEqual([
+      "size:files:250",
+      "size:inspector:400",
+      "active:workflow",
+      "active:inspector",
+    ])
   })
 })

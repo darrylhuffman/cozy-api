@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import type { NodeSchemas } from "@/lib/api"
 import { AddNodePalette } from "./add-node-palette"
@@ -6,10 +6,24 @@ import { AddNodePalette } from "./add-node-palette"
 interface Props {
   schemas: Record<string, NodeSchemas>
   onPick: (uses: string) => void
+  /** Controlled mode — omit both to let Ctrl+K manage it internally. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function CommandPalette({ schemas, onPick }: Props) {
-  const [open, setOpen] = useState(false)
+export function CommandPalette({ schemas, onPick, open: openProp, onOpenChange }: Props) {
+  const [openState, setOpenState] = useState(false)
+  const open = openProp ?? openState
+  const openRef = useRef(open)
+  openRef.current = open
+  const setOpen = useCallback(
+    (next: boolean | ((o: boolean) => boolean)) => {
+      const value = typeof next === "function" ? next(openRef.current) : next
+      setOpenState(value)
+      onOpenChange?.(value)
+    },
+    [onOpenChange],
+  )
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -22,7 +36,7 @@ export function CommandPalette({ schemas, onPick }: Props) {
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [])
+  }, [setOpen])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

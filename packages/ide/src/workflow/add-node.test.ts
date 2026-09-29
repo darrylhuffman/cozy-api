@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { WorkflowFile } from "@/lib/api"
-import { addNode } from "./add-node"
+import { addNode, nodeIdFromUses } from "./add-node"
 
 const baseWorkflow: WorkflowFile = {
   lorien: 1,
@@ -17,20 +17,30 @@ describe("addNode", () => {
     expect(next.view![newId]).toEqual({ x: 200, y: 100 })
   })
 
-  it("derives the id from the last segment of `uses` slugified", () => {
+  it("derives a referenceable camelCase id from the last segment of `uses`", () => {
     const next = addNode(baseWorkflow, "./nodes/users/save-user", { x: 0, y: 0 })
     const newId = Object.keys(next.nodes).find((id) => id !== "request")!
-    expect(newId).toBe("save-user")
+    expect(newId).toBe("saveUser")
   })
 
   it("appends an integer suffix on collision", () => {
     const wf: WorkflowFile = {
       ...baseWorkflow,
-      nodes: { ...baseWorkflow.nodes, "save-user": { uses: "./x" } },
+      nodes: { ...baseWorkflow.nodes, saveUser: { uses: "./x" } },
     }
     const next = addNode(wf, "./nodes/users/save-user", { x: 0, y: 0 })
-    const newIds = Object.keys(next.nodes).filter((id) => id !== "request" && id !== "save-user")
-    expect(newIds).toEqual(["save-user-2"])
+    const newIds = Object.keys(next.nodes).filter((id) => id !== "request" && id !== "saveUser")
+    expect(newIds).toEqual(["saveUser2"])
+  })
+
+  it.each([
+    ["@core/http-request", "httpRequest"],
+    ["./nodes/users/save-user.ts", "saveUser"],
+    ["./nodes/Parse_Body", "parseBody"],
+    ["./nodes/2fa-check", "n2faCheck"],
+  ])("nodeIdFromUses(%s) → %s, always a valid identifier", (uses, id) => {
+    expect(nodeIdFromUses(uses)).toBe(id)
+    expect(/^[a-zA-Z_$][\w$]*$/.test(nodeIdFromUses(uses))).toBe(true)
   })
 
   it("strips the @core/ prefix for @core nodes", () => {
