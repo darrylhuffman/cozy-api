@@ -42,3 +42,31 @@ test("opens code in the bundled Monaco editor, without a CDN", async ({ ide }) =
   await expect(ide.locator(".view-lines").first()).toContainText("export")
   expect(cdn).toEqual([])
 })
+
+test("overflowing workflow tabs scroll with arrows instead of a scrollbar", async ({ ide }) => {
+  await ide.setViewportSize({ width: 1000, height: 800 })
+  await ide.getByRole("button", { name: "item", exact: true }).click()
+  await expect(ide.getByRole("button", { name: "add.workflow" })).toBeVisible()
+  const tree = ide.getByRole("button", { name: /\.workflow$/ })
+  const count = await tree.count()
+  for (let i = 0; i < count; i++) await tree.nth(i).click()
+
+  const right = ide.getByRole("button", { name: "Scroll tabs right" })
+  const left = ide.getByRole("button", { name: "Scroll tabs left" })
+  // The last opened tab is active and scrolled into view, so there is more to the left.
+  await expect(left).toBeVisible()
+  const strip = ide.getByTestId("editor-tab-strip").first()
+  expect(await strip.evaluate((el) => el.offsetHeight - el.clientHeight)).toBe(0)
+
+  const before = await strip.evaluate((el) => el.scrollLeft)
+  await left.click()
+  await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBeLessThan(before)
+  // Keep going until the start: the left arrow goes away.
+  for (let i = 0; i < 10 && (await left.isVisible()); i++) {
+    await left.click()
+    await ide.waitForTimeout(300)
+  }
+  await expect(left).toBeHidden()
+  expect(await strip.evaluate((el) => el.scrollLeft)).toBe(0)
+  await expect(right).toBeVisible()
+})

@@ -38,7 +38,7 @@ export function ProblemsPopover({
           type="button"
           aria-label={`Problems: ${label}`}
           className={cn(
-            "flex h-7 items-center gap-1.5 rounded-md px-2 text-xs hover:bg-accent",
+            "flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-xs hover:bg-accent",
             errors > 0
               ? "text-destructive"
               : warnings > 0
