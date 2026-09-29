@@ -40,7 +40,10 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe("lorien test", () => {
   it("passes and prints a summary", async () => {
-    const r = await runTest({ root: dir }, { startApp: async () => app(), log })
+    const r = await runTest(
+      { root: dir },
+      { startApp: async () => app(), runCases: async () => [], log },
+    )
     expect(r).toMatchObject({ exitCode: 0, passed: 1, failed: 0 })
     expect(lines[0]).toBe("workflows/create.requests.json")
     expect(lines[1]).toMatch(/^ {2}✓ creates a user \(\d+ms\)$/)
@@ -48,26 +51,88 @@ describe("lorien test", () => {
   })
 
   it("exits 1 and explains failures", async () => {
-    const r = await runTest({ root: dir }, { startApp: async () => app(200), log })
+    const r = await runTest(
+      { root: dir },
+      { startApp: async () => app(200), runCases: async () => [], log },
+    )
     expect(r.exitCode).toBe(1)
     expect(lines).toContain("      expected status equals 201, got 200")
   })
 
   it("prints JSON with --json", async () => {
-    await runTest({ root: dir, json: true }, { startApp: async () => app(), log })
+    await runTest(
+      { root: dir, json: true },
+      { startApp: async () => app(), runCases: async () => [], log },
+    )
     expect(JSON.parse(lines.join("\n"))).toMatchObject({ passed: 1, failed: 0 })
   })
 
   it("says how to create requests when there are none", async () => {
     rmSync(join(dir, "workflows/create.requests.json"))
-    const r = await runTest({ root: dir }, { startApp: async () => app(), log })
+    const r = await runTest(
+      { root: dir },
+      { startApp: async () => app(), runCases: async () => [], log },
+    )
     expect(r.exitCode).toBe(0)
-    expect(lines[0]).toMatch(/No saved requests found/)
+    expect(lines[0]).toMatch(/No tests found/)
   })
 
   it("reports setup errors instead of throwing", async () => {
-    const r = await runTest({ root: dir, env: "prod" }, { startApp: async () => app(), log })
+    const r = await runTest(
+      { root: dir, env: "prod" },
+      { startApp: async () => app(), runCases: async () => [], log },
+    )
     expect(r.exitCode).toBe(1)
     expect(lines[0]).toMatch(/Unknown environment "prod"/)
+  })
+
+  it("runs node cases first and counts them", async () => {
+    const r = await runTest(
+      { root: dir },
+      {
+        startApp: async () => app(),
+        runCases: async () => [
+          {
+            path: "nodes/save-user.cases.json",
+            uses: "./nodes/save-user",
+            results: [
+              { caseId: "a", name: "saves", passed: true, failures: [], durationMs: 1 },
+              {
+                caseId: "b",
+                name: "rejects",
+                passed: false,
+                failures: ["threw: boom"],
+                durationMs: 2,
+              },
+            ],
+          },
+        ],
+        log,
+      },
+    )
+    expect(r).toMatchObject({ exitCode: 1, passed: 2, failed: 1 })
+    expect(lines.slice(0, 4)).toEqual([
+      "nodes/save-user.cases.json",
+      "  ✓ saves (1ms)",
+      "  ✗ rejects (2ms)",
+      "      threw: boom",
+    ])
+  })
+
+  it("--no-nodes and --no-requests skip each kind", async () => {
+    let casesRan = false
+    const r = await runTest(
+      { root: dir, nodes: false, requests: false },
+      {
+        startApp: async () => app(),
+        runCases: async () => {
+          casesRan = true
+          return []
+        },
+        log,
+      },
+    )
+    expect(casesRan).toBe(false)
+    expect(r.runs).toEqual([])
   })
 })

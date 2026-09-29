@@ -32,6 +32,7 @@ import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
 import { introspectWorkspace, invalidateSchemaCache } from "./introspect-workspace.js"
+import { type NodeCasesRequest, type NodeCasesRun, runNodeCasesInWorker } from "./run-node-cases.js"
 
 // ── FileNode types (mirrors packages/ide/src/data/mock-files.ts) ─────────────
 export type FileKind = "workflow" | "node"
@@ -64,7 +65,7 @@ export interface IdeOptions {
 export const DEFAULT_IDE_PORT = 8188
 
 const WRITABLE_FILES_MESSAGE =
-  "Only .workflow, .ts, .requests.json and lorien.environments(.local).json files may be written"
+  "Only .workflow, .ts, .requests.json, .cases.json and lorien.environments(.local).json files may be written"
 
 /**
  * The IDE may only write files it owns: workflows, node sources, saved request
@@ -77,6 +78,7 @@ export function isWritableWorkspaceFile(abs: string): boolean {
     abs.endsWith(".workflow") ||
     abs.endsWith(".ts") ||
     abs.endsWith(".requests.json") ||
+    abs.endsWith(".cases.json") ||
     name === "lorien.environments.json" ||
     name === "lorien.environments.local.json"
   )
@@ -98,7 +100,12 @@ export function registerIde(program: Command): void {
  * Creates the Hono app for the IDE API routes.
  * Exported so tests can call `app.request(...)` without spinning up a real server.
  */
-export function createIdeApp(workspaceRoot: string): Hono {
+export interface IdeAppDeps {
+  /** Runs node test cases; defaults to a fresh tsx subprocess per request. */
+  runNodeCases?: (root: string, req: NodeCasesRequest) => Promise<NodeCasesRun>
+}
+
+export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono {
   const app = new Hono()
 
   // CORS for all routes — loopback-only so the IDE Vite dev server (e.g. :5173)
@@ -234,6 +241,21 @@ export function createIdeApp(workspaceRoot: string): Hono {
       return c.json({ path: rawPath })
     } catch (e) {
       return c.json({ error: (e as Error).message }, 500)
+    }
+  })
+
+  // ── Node test cases ────────────────────────────────────────────────────────
+
+  app.post("/api/tests/nodes", async (c) => {
+    const body = ((await c.req.json().catch(() => ({}))) ?? {}) as NodeCasesRequest
+    const req: NodeCasesRequest = {}
+    if (typeof body.filter === "string") req.filter = body.filter
+    if (body.only && typeof body.only === "object") req.only = body.only
+    try {
+      const run = await (deps.runNodeCases ?? runNodeCasesInWorker)(workspaceRoot, req)
+      return c.json(run, run.error ? 500 : 200)
+    } catch (e) {
+      return c.json({ files: [], logs: "", error: (e as Error).message }, 500)
     }
   })
 

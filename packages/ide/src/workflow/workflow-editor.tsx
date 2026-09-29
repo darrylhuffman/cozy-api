@@ -58,6 +58,8 @@ import { useLiveWorkflowStore } from "@/store/live-workflow";
 import type { Breakpoint } from "@darrylondil/lorien-runtime";
 import { useDebugSessionStore, type NodeStatus } from "@/store/debug-session";
 import { openCodeFile } from "@/lib/open-code-file";
+import { nodeFileForUses } from "@darrylondil/lorien-runtime/cases";
+import { caseSummary, useNodeCases } from "@/store/node-cases";
 
 interface Props {
   /** API path like "workflows/users/create.workflow" */
@@ -546,6 +548,20 @@ function WorkflowEditorInner({ path, tabId }: Props) {
     [workflow, schemas, schemasLoaded],
   );
   const issuesByNode = useMemo(() => diagnosticsByNode(diagnostics), [diagnostics]);
+  const caseFiles = useNodeCases((s) => s.byNode);
+  const caseResults = useNodeCases((s) => s.results);
+  const testsByUses = useMemo(() => {
+    const out = new Map<string, ReturnType<typeof caseSummary>>();
+    for (const inst of Object.values(workflow?.nodes ?? {})) {
+      const file = nodeFileForUses(inst.uses);
+      if (!file || out.has(inst.uses)) continue;
+      const summary = caseSummary({ byNode: caseFiles, results: caseResults }, file);
+      if (summary && summary.run > 0) out.set(inst.uses, summary);
+    }
+    return out;
+  }, [workflow, caseFiles, caseResults]);
+  const testsByUsesRef = useRef(testsByUses);
+  testsByUsesRef.current = testsByUses;
 
   const portsByNode = useMemo<Map<string, NodePorts>>(() => {
     if (!workflow) return new Map();
@@ -614,6 +630,7 @@ function WorkflowEditorInner({ path, tabId }: Props) {
               onInputValueChange(id, portId, value),
             nodeStatus: nodeStatusesRef.current.get(id),
             issues: issuesByNode.get(id),
+            tests: testsByUsesRef.current.get(instance.uses) ?? null,
             nodeBreakpoint: bp.nodeBreakpoint,
             portBreakpoints: bp.portBreakpoints,
           },
@@ -623,6 +640,24 @@ function WorkflowEditorInner({ path, tabId }: Props) {
     setNodes(initial);
     nodesRef.current = initial;
   }, [workflow, schemas, portsByNode, issuesByNode, onTogglePort, onInputValueChange, path]);
+
+  // Node test results (from the Tests tab) as pass/fail badges on the cards.
+  // Patched into existing nodes so a test run doesn't rebuild the canvas.
+  useEffect(() => {
+    setNodes((curr) => {
+      let changed = false;
+      const next = curr.map((n) => {
+        const data = n.data as { instance?: { uses: string }; tests?: unknown };
+        const t = data.instance ? (testsByUses.get(data.instance.uses) ?? null) : null;
+        if (JSON.stringify(data.tests ?? null) === JSON.stringify(t)) return n;
+        changed = true;
+        return { ...n, data: { ...n.data, tests: t } };
+      });
+      if (!changed) return curr;
+      nodesRef.current = next;
+      return next;
+    });
+  }, [testsByUses]);
 
   // Push the latest expansion state into each node's data so React Flow
   // re-renders the node when expansion changes.  Separated from initialise

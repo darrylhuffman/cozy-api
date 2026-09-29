@@ -1,0 +1,100 @@
+import { nodeFileForUses } from "@darrylondil/lorien-runtime/cases"
+import { Play } from "lucide-react"
+import { useMemo } from "react"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
+import { useNodeCases } from "@/store/node-cases"
+import { useSchemas } from "@/store/schemas"
+import { useSelectionStore } from "@/store/selection"
+import { useTabsStore } from "@/store/tabs"
+import { NodeCasesGroup } from "./node-cases-group"
+
+/**
+ * Test cases for every local node the active workflow uses. The selected
+ * node's group opens first. Saved API requests live in the Run tab.
+ */
+export function TestsTab() {
+  const workflow = useLiveWorkflowStore((s) => s.workflow)
+  const liveTabId = useLiveWorkflowStore((s) => s.tabId)
+  const workflowPath = useTabsStore((s) => s.tabs.find((t) => t.id === liveTabId)?.path ?? "")
+  const selectedId = useSelectionStore((s) => s.selectedNodeId)
+  const schemas = useSchemas()
+  const runError = useNodeCases((s) => s.runError)
+  const logs = useNodeCases((s) => s.lastLogs)
+  const anyRunning = useNodeCases((s) => Object.values(s.running).some(Boolean))
+
+  const nodes = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const inst of Object.values(workflow?.nodes ?? {})) {
+      const file = nodeFileForUses(inst.uses)
+      if (file && !seen.has(inst.uses)) seen.set(inst.uses, file)
+    }
+    return [...seen].map(([uses, file]) => ({ uses, file }))
+  }, [workflow])
+
+  if (!workflow) {
+    return (
+      <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+        Open a workflow to see and run its node tests.
+      </div>
+    )
+  }
+
+  const selectedUses = selectedId ? workflow.nodes[selectedId]?.uses : undefined
+  const ordered = [...nodes].sort(
+    (a, b) => Number(b.uses === selectedUses) - Number(a.uses === selectedUses),
+  )
+
+  return (
+    <div className="flex flex-col gap-2 text-xs" data-testid="tests-tab">
+      <div className="flex items-center gap-2">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Node tests</div>
+        <div className="flex-1" />
+        <button
+          type="button"
+          disabled={nodes.length === 0 || anyRunning}
+          onClick={() => void useNodeCases.getState().run(nodes.map((n) => n.file))}
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent disabled:opacity-40"
+        >
+          <Play className="h-3 w-3" />
+          {anyRunning ? "Running…" : "Run all"}
+        </button>
+      </div>
+      {runError && (
+        <div
+          role="alert"
+          className="whitespace-pre-wrap rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-red-700 dark:text-red-400"
+        >
+          {runError}
+        </div>
+      )}
+      {nodes.length === 0 ? (
+        <div className="rounded-md border border-dashed p-2 text-muted-foreground">
+          This workflow only uses built-in nodes. Cases are for your own nodes under{" "}
+          <code>nodes/</code>.
+        </div>
+      ) : (
+        ordered.map((n) => (
+          <NodeCasesGroup
+            key={n.file}
+            nodeFile={n.file}
+            uses={n.uses}
+            schema={schemas[n.uses]}
+            workflow={workflow}
+            workflowPath={workflowPath}
+            highlighted={n.uses === selectedUses}
+          />
+        ))
+      )}
+      <p className="text-[11px] text-muted-foreground">
+        Cases are saved next to each node as <code>.cases.json</code> and run in CI with{" "}
+        <code>lorien test</code>.
+      </p>
+      {logs && (
+        <details>
+          <summary className="text-muted-foreground">Output from the last run</summary>
+          <pre className="max-h-40 overflow-auto rounded bg-muted/40 p-2 text-[10px]">{logs}</pre>
+        </details>
+      )}
+    </div>
+  )
+}

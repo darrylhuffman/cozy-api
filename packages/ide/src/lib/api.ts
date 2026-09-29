@@ -1,3 +1,4 @@
+import type { NodeCaseResult } from "@darrylondil/lorien-runtime/cases"
 import type { FileFolder } from "@/data/mock-files"
 
 export interface WorkspaceInfo {
@@ -291,4 +292,40 @@ export function debugWsUrl(): string {
   const wsScheme = base.startsWith("https://") ? "wss://" : "ws://"
   const host = base.replace(/^https?:\/\//, "").replace(/\/+$/, "")
   return `${wsScheme}${host}/__lorien/debug/ws`
+}
+
+// ── Node test cases ───────────────────────────────────────────────────────────
+
+
+export interface NodeCaseFileRun {
+  /** `nodes/users/save-user.cases.json` */
+  path: string
+  /** `./nodes/users/save-user` */
+  uses: string
+  error?: string
+  results: NodeCaseResult[]
+}
+
+export interface NodeTestsRun {
+  files: NodeCaseFileRun[]
+  /** Anything the nodes printed while running. */
+  logs: string
+  error?: string
+}
+
+/**
+ * Runs node cases on the IDE server (in a fresh subprocess, so node edits
+ * apply). `only` maps a cases file to the case ids to run.
+ */
+export async function runNodeTests(req: { filter?: string; only?: Record<string, string[]> }): Promise<NodeTestsRun> {
+  const what = "Running node tests"
+  const res = await request(
+    "/api/tests/nodes",
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(req) },
+    what,
+  )
+  const body = (await res.json().catch(() => null)) as NodeTestsRun | null
+  if (!body) throw new ApiError(`${what} failed (HTTP ${res.status})`, res.status)
+  if (!res.ok) throw new ApiError(body.error ?? `${what} failed (HTTP ${res.status})`, res.status)
+  return body
 }

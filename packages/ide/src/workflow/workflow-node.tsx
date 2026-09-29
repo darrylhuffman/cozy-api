@@ -1,5 +1,5 @@
 import { Handle, Position } from "@xyflow/react";
-import { AlertTriangle, ChevronDown, ChevronRight, XCircle } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, FlaskConical, XCircle } from "lucide-react";
 import { useState } from "react";
 import type { JsonSchema, NodeInstance } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -55,6 +55,8 @@ export interface WorkflowNodeData {
   portBreakpoints?: Set<string>;
   /** Validation problems attached to this node (see diagnose.ts). */
   issues?: Diagnostic[];
+  /** Results of this node's test cases, once they have been run. */
+  tests?: { total: number; passed: number; failed: number; run: number } | null;
 }
 
 // Using the xyflow NodeProps generic requires the data type to extend Node which
@@ -99,6 +101,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     nodeBreakpoint,
     portBreakpoints,
     issues,
+    tests,
   } = data as unknown as WorkflowNodeData;
   const errorCount = issues?.filter((i) => i.severity === "error").length ?? 0;
   const warningCount = (issues?.length ?? 0) - errorCount;
@@ -198,7 +201,10 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
           <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
             {kindLabel}
           </div>
-          {issues && issues.length > 0 && <IssueBadge issues={issues} errorCount={errorCount} />}
+          <div className="flex items-center gap-1">
+            {tests && tests.run > 0 && <TestsBadge tests={tests} />}
+            {issues && issues.length > 0 && <IssueBadge issues={issues} errorCount={errorCount} />}
+          </div>
         </div>
         <div className="truncate font-medium">{displayName}</div>
       </div>
@@ -623,6 +629,30 @@ function IssueBadge({ issues, errorCount }: { issues: Diagnostic[]; errorCount: 
     >
       <Icon className="h-3 w-3" aria-hidden />
       {issues.length}
+    </span>
+  );
+}
+
+function TestsBadge({ tests }: { tests: NonNullable<WorkflowNodeData["tests"]> }) {
+  const ok = tests.failed === 0;
+  const label = ok
+    ? `Tests: ${tests.passed} of ${tests.run} passing`
+    : `Tests: ${tests.failed} of ${tests.run} failing`;
+  return (
+    <span
+      data-testid="node-tests-badge"
+      role="img"
+      aria-label={label}
+      title={label}
+      className={cn(
+        "inline-flex items-center gap-0.5 rounded px-1 text-[10px] font-medium",
+        ok
+          ? "bg-green-500/15 text-green-700 dark:text-green-400"
+          : "bg-red-500/15 text-red-600 dark:text-red-400",
+      )}
+    >
+      {ok ? <FlaskConical className="h-3 w-3" aria-hidden /> : <XCircle className="h-3 w-3" aria-hidden />}
+      {ok ? tests.passed : `${tests.failed}/${tests.run}`}
     </span>
   );
 }

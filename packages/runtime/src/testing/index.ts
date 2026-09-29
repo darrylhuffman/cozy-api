@@ -14,3 +14,5 @@ export {
   loadEnvironments,
   runRequestCollections,
 } from "./request-collections.js"
+export type { NodeCaseFileResult, RunNodeCaseOptions, RunNodeCasesOptions } from "./node-cases.js"
+export { findCaseFiles, loadConfiguredServices, runNodeCase, runNodeCases } from "./node-cases.js"

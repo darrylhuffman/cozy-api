@@ -5,6 +5,7 @@ export default defineConfig({
     cli: "src/cli.ts",
     "run-build": "src/build/run-build.ts",
     "introspect-worker": "src/commands/introspect-worker.ts",
+    "node-cases-worker": "src/commands/node-cases-worker.ts",
   },
   format: ["esm"],
   dts: true,

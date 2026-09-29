@@ -208,6 +208,7 @@ import { useThemeStore } from "@/store/theme"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { useWorkflowDrafts } from "@/store/workflow-drafts"
+import { useNodeCases } from "@/store/node-cases"
 import { resetSchemasStore } from "@/store/schemas"
 import { useConfirmStore } from "@/store/confirm"
 import { defaultPathForWorkflow, WorkflowEditor } from "./workflow-editor.js"
@@ -252,6 +253,7 @@ const createWorkflow: WorkflowFile = {
 function resetStore() {
   useTabsStore.setState({ tabs: [], activeWorkflowId: null, activeCodeId: null })
   useWorkflowDrafts.setState({ drafts: {} })
+  useNodeCases.setState({ byNode: {}, results: {} })
   resetSchemasStore()
 }
 
@@ -2028,5 +2030,35 @@ describe("WorkflowEditor", () => {
       expect(btn.getAttribute("aria-label")).toBe("Problems: 2 errors, 1 warning")
     })
   })
-})
 
+  describe("node test badges", () => {
+    it("passes node case results into the matching nodes without rebuilding them", async () => {
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3"))
+      const before = capturedNodes?.find((n) => n.id === "parseBody")
+      act(() => {
+        useNodeCases.setState({
+          byNode: {
+            "saveUser.ts": {
+              path: "saveUser.cases.json",
+              file: { lorien: 1, cases: [{ id: "a", name: "A", input: {}, expect: {} }] },
+              loaded: true,
+              error: null,
+              saving: false,
+            },
+          },
+          results: { "saveUser.cases.json#a": { caseId: "a", name: "A", passed: false, failures: ["x"], durationMs: 1 } },
+        })
+      })
+      await waitFor(() =>
+        expect(capturedNodes?.find((n) => n.id === "save")?.data.tests).toEqual({
+          total: 1,
+          run: 1,
+          passed: 0,
+          failed: 1,
+        }),
+      )
+      expect(capturedNodes?.find((n) => n.id === "parseBody")).toBe(before)
+    })
+  })
+})

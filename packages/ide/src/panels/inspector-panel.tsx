@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RunTab } from "./run-tab"
+import { TestsTab } from "./tests-tab"
 import type { JsonSchema, NodeInstance } from "@/lib/api"
 import { useSchemas } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
@@ -23,10 +24,7 @@ export function InspectorPanel() {
         <InspectContent />
       </TabsContent>
       <TabsContent value="tests" className="flex-1 overflow-auto p-3">
-        <PlaceholderCard
-          title="Tests"
-          body="Workflow + node test list, pass/fail status, run controls."
-        />
+        <TestsTab />
       </TabsContent>
       <TabsContent value="run" className="flex-1 overflow-auto p-3">
         <RunTab />
@@ -340,13 +338,4 @@ function describeType(s: JsonSchema): string {
   if (s.format) return `${s.type}:${s.format}`
   if (typeof s.type === "string") return s.type
   return "any"
-}
-
-function PlaceholderCard({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="rounded-md border bg-muted/20 p-3 text-sm">
-      <div className="mb-1 font-medium">{title}</div>
-      <p className="text-xs text-muted-foreground">{body}</p>
-    </div>
-  )
 }

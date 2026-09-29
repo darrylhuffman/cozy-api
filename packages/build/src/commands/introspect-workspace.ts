@@ -260,7 +260,7 @@ async function listNodeFiles(workspaceRoot: string): Promise<NodeFile[]> {
   return out
 }
 
-async function resolveTsx(workspaceRoot: string): Promise<string | null> {
+export async function resolveTsx(workspaceRoot: string): Promise<string | null> {
   try {
     const require_ = createRequire(join(workspaceRoot, "package.json"))
     const pkgPath = require_.resolve("tsx/package.json")

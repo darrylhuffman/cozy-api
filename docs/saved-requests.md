@@ -75,7 +75,7 @@ IDE is running. Values in `lorien.environments.local.json` win over the shared f
 ## In CI
 
 ```sh
-lorien test                 # runs every collection in-process, exits 1 on failure
+lorien test                 # runs node cases, then every collection in-process; exits 1 on failure
 lorien test users --env ci  # only collections whose path contains "users"
 lorien test --base-url http://localhost:3000   # against a running server
 lorien test --json

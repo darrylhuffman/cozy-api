@@ -903,4 +903,34 @@ describe("WorkflowNode", () => {
       expect(screen.getByTestId("node-card").className).toContain("border-amber-500")
     })
   })
+
+  describe("test results", () => {
+    const base = () => ({ inputs: emptyInputRoot, outputs: [] })
+
+    it("shows a passing badge once cases have run", () => {
+      render(
+        <WorkflowNode
+          data={makeData("a", { uses: "./nodes/a" }, base(), { tests: { total: 3, run: 3, passed: 3, failed: 0 } })}
+        />,
+      )
+      const badge = screen.getByTestId("node-tests-badge")
+      expect(badge.getAttribute("aria-label")).toBe("Tests: 3 of 3 passing")
+      expect(badge.textContent).toBe("3")
+    })
+
+    it("shows failures as failed/run", () => {
+      render(
+        <WorkflowNode
+          data={makeData("a", { uses: "./nodes/a" }, base(), { tests: { total: 3, run: 2, passed: 1, failed: 1 } })}
+        />,
+      )
+      expect(screen.getByTestId("node-tests-badge").textContent).toBe("1/2")
+      expect(screen.getByRole("img", { name: "Tests: 1 of 2 failing" })).toBeInTheDocument()
+    })
+
+    it("shows nothing when there are no results", () => {
+      render(<WorkflowNode data={makeData("a", { uses: "./nodes/a" }, base(), { tests: null })} />)
+      expect(screen.queryByTestId("node-tests-badge")).toBeNull()
+    })
+  })
 })

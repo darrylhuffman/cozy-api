@@ -24,9 +24,9 @@ vi.mock("@/components/ui/tabs", () => ({
   TabsTrigger: ({ value, children }: { value: string; children: React.ReactNode }) => (
     <button data-testid={`trigger-${value}`}>{children}</button>
   ),
-  TabsContent: ({ value, children }: { value: string; children: React.ReactNode }) => (
-    <div data-testid={`content-${value}`}>{children}</div>
-  ),
+  // Like Radix, only the active (default "inspect") tab's content is mounted.
+  TabsContent: ({ value, children }: { value: string; children: React.ReactNode }) =>
+    value === "inspect" ? <div data-testid={`content-${value}`}>{children}</div> : null,
 }))
 
 import { fetchWorkspaceSchemas } from "@/lib/api"

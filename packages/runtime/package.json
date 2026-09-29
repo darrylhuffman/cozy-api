@@ -29,6 +29,10 @@
       "types": "./dist/requests/index.d.ts",
       "default": "./dist/requests/index.js"
     },
+    "./cases": {
+      "types": "./dist/cases/index.d.ts",
+      "default": "./dist/cases/index.js"
+    },
     "./agent-broker": {
       "types": "./dist/agent-broker/index.d.ts",
       "default": "./dist/agent-broker/index.js"
