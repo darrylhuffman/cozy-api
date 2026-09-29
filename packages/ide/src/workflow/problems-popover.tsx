@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Sparkles, XCircle } from "lucide-react"
 import { useState } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
@@ -11,9 +11,12 @@ import type { Diagnostic } from "./diagnose"
 export function ProblemsPopover({
   diagnostics,
   onFocusNode,
+  onAskAi,
 }: {
   diagnostics: Diagnostic[]
   onFocusNode: (nodeId: string) => void
+  /** Renders "Fix with AI" under the list. */
+  onAskAi?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const errors = diagnostics.filter((d) => d.severity === "error").length
@@ -85,6 +88,18 @@ export function ProblemsPopover({
               </li>
             ))}
           </ul>
+        )}
+        {diagnostics.length > 0 && onAskAi && (
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              onAskAi()
+            }}
+            className="mt-1 flex w-full items-center gap-1.5 rounded border-t px-2 py-1.5 text-left text-xs text-violet-600 hover:bg-accent dark:text-violet-400"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> Fix these with AI
+          </button>
         )}
       </PopoverContent>
     </Popover>

@@ -1,3 +1,4 @@
+import { Sparkles } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface Props {
@@ -14,6 +15,10 @@ interface Props {
   /** When provided, renders "Toggle breakpoint (before)" and "Toggle breakpoint (after)" items. */
   onToggleBreakpointBefore?: () => void
   onToggleBreakpointAfter?: () => void
+  /** When provided, renders "Explain with AI". */
+  onExplain?: () => void
+  /** When provided (local nodes), renders "Write test cases with AI". */
+  onGenerateCases?: () => void
 }
 
 export function NodeContextMenu({
@@ -27,6 +32,8 @@ export function NodeContextMenu({
   onViewSource,
   onToggleBreakpointBefore,
   onToggleBreakpointAfter,
+  onExplain,
+  onGenerateCases,
 }: Props) {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -36,6 +43,31 @@ export function NodeContextMenu({
         />
       </PopoverTrigger>
       <PopoverContent align="start" className="w-56 p-1">
+        {onExplain && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenChange(false)
+              onExplain()
+            }}
+            className="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm hover:bg-accent"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-violet-500" /> Explain with AI
+          </button>
+        )}
+        {onGenerateCases && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenChange(false)
+              onGenerateCases()
+            }}
+            className="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm hover:bg-accent"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-violet-500" /> Write test cases with AI
+          </button>
+        )}
+        {(onExplain || onGenerateCases) && <div className="my-1 h-px bg-border" />}
         {onViewSource && (
           <button
             type="button"

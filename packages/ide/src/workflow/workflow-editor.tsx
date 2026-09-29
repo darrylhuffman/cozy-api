@@ -60,6 +60,8 @@ import { useDebugSessionStore, type NodeStatus } from "@/store/debug-session";
 import { openCodeFile } from "@/lib/open-code-file";
 import { nodeFileForUses } from "@darrylondil/lorien-runtime/cases";
 import { caseSummary, useNodeCases } from "@/store/node-cases";
+import { askAi } from "@/ai/ask";
+import { explainNode, fixProblems, freeform, generateCases } from "@/ai/prompts";
 
 interface Props {
   /** API path like "workflows/users/create.workflow" */
@@ -189,6 +191,7 @@ function WorkflowEditorInner({ path, tabId }: Props) {
   // Always-current ref so persist callbacks don't close over stale nodes
   const nodesRef = useRef<RFNode[]>([]);
   const workflowRef = useRef<WorkflowFile | null>(null);
+  const selectedNodeId = useSelectionStore((s) => s.selectedNodeId);
   // Track dirty in a ref too so the Ctrl+S handler always sees fresh value
   const dirtyRef = useRef(false);
   // Always-current ref for expansion so the node-init effect can read the
@@ -347,6 +350,44 @@ function WorkflowEditorInner({ path, tabId }: Props) {
       setNodeMenu({ open: true, x: event.clientX, y: event.clientY, nodeId: n.id });
     },
     [],
+  );
+
+  const aiForNode = useCallback(
+    (kind: "explain" | "cases") => {
+      const id = nodeMenu.nodeId;
+      const wf = workflowRef.current;
+      const inst = id ? wf?.nodes[id] : undefined;
+      if (!id || !wf || !inst) return;
+      const schema = useSchemasStore.getState().schemas[inst.uses];
+      if (kind === "explain") {
+        askAi(explainNode({ workflowPath: path, workflow: wf, nodeId: id, uses: inst.uses, schema }));
+      } else {
+        const file = nodeFileForUses(inst.uses);
+        const existing = file ? (useNodeCases.getState().byNode[file]?.file.cases ?? []) : [];
+        askAi(generateCases({ uses: inst.uses, schema, existing }));
+      }
+    },
+    [nodeMenu.nodeId, path],
+  );
+
+  const askAboutWorkflow = useCallback(
+    (question: string) => {
+      const wf = workflowRef.current;
+      const id = useSelectionStore.getState().selectedNodeId;
+      const inst = id ? wf?.nodes[id] : undefined;
+      askAi(
+        freeform({
+          ask: question,
+          workflowPath: path,
+          workflow: wf,
+          selected:
+            id && inst
+              ? { nodeId: id, uses: inst.uses, schema: useSchemasStore.getState().schemas[inst.uses] }
+              : null,
+        }),
+      );
+    },
+    [path],
   );
 
   const handleResetConnections = useCallback(() => {
@@ -1209,6 +1250,11 @@ function WorkflowEditorInner({ path, tabId }: Props) {
         onTidy={tidy}
         onFocusNode={focusNode}
         onShowShortcuts={() => setShortcutsOpen(true)}
+        onFixProblems={() =>
+          askAi(fixProblems({ workflowPath: path, workflow: workflowRef.current, diagnostics }))
+        }
+        onAskAi={askAboutWorkflow}
+        selectedNodeId={selectedNodeId}
       />
     <div className="relative min-h-0 w-full flex-1" onDragOver={onDragOver} onDrop={onDrop}>
       <div ref={reactFlowRef} className="h-full w-full">
@@ -1354,8 +1400,9 @@ function WorkflowEditorInner({ path, tabId }: Props) {
         onToggleBreakpointAfter={handleToggleBreakpointAfter}
         {...(nodeMenu.nodeId &&
           workflow?.nodes[nodeMenu.nodeId]?.uses.startsWith(".")
-          ? { onViewSource: handleViewSource }
+          ? { onViewSource: handleViewSource, onGenerateCases: () => aiForNode("cases") }
           : {})}
+        onExplain={() => aiForNode("explain")}
       />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>

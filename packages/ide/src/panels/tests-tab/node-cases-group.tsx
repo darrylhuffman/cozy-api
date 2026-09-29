@@ -1,5 +1,7 @@
 import { casesPathFor, type NodeCase } from "@darrylondil/lorien-runtime/cases"
-import { ChevronDown, ChevronRight, History, Play, Plus, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronRight, History, Play, Plus, Sparkles, Trash2 } from "lucide-react"
+import { askAi } from "@/ai/ask"
+import { fixFailingCase, generateCases } from "@/ai/prompts"
 import { useEffect, useMemo, useState } from "react"
 import type { NodeSchemas, WorkflowFile } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -198,6 +200,15 @@ export function NodeCasesGroup({
                       {r.failures.map((f) => (
                         <li key={f}>{f}</li>
                       ))}
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => askAi(fixFailingCase({ uses, testCase: c, result: r }))}
+                          className="mt-0.5 flex items-center gap-1 rounded px-1 text-violet-600 hover:bg-accent dark:text-violet-400"
+                        >
+                          <Sparkles className="h-3 w-3" /> Ask AI to fix
+                        </button>
+                      </li>
                     </ul>
                   )}
                   {isEditing && editing && (
@@ -237,6 +248,13 @@ export function NodeCasesGroup({
                 className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent disabled:opacity-40"
               >
                 <History className="h-3 w-3" /> From last run
+              </button>
+              <button
+                type="button"
+                onClick={() => askAi(generateCases({ uses, schema, existing: cases }))}
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-violet-600 hover:bg-accent dark:text-violet-400"
+              >
+                <Sparkles className="h-3 w-3" /> Write with AI
               </button>
             </div>
           )}

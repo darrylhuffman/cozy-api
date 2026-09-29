@@ -74,6 +74,12 @@ interface AgentChatsState {
   setError(chatId: string, error: string | null): void
   setTurnInFlight(chatId: string, inFlight: boolean): void
 
+  /**
+   * Opens a new Claude chat and sends `prompt` as its first message once the
+   * broker has created it. Used by the IDE's "Ask AI" actions.
+   */
+  startChatWith(opts: { title: string; prompt: string }): string
+
   // WS layer
   connect(): void
   disconnect(): void
@@ -90,7 +96,12 @@ let pickerCounter = 0
 // WS state is held outside the store to avoid serializing it via setState.
 interface WsContext {
   socket: WebSocket | null
-  pickerWaitingForId: string | null
+  /** Pickers waiting for `chat_created`, oldest first (the broker answers in order). */
+  pickersWaiting: string[]
+  /** Messages sent while the socket was connecting; flushed on open. */
+  outbox: string[]
+  /** First message (and title) to send when a picker's chat is created. */
+  pendingFirst: Map<string, { title: string; prompt: string }>
   reconnectDelay: number
   reconnectTimer: ReturnType<typeof setTimeout> | null
   closed: boolean
@@ -98,7 +109,9 @@ interface WsContext {
 
 const ws: WsContext = {
   socket: null,
-  pickerWaitingForId: null,
+  pickersWaiting: [],
+  outbox: [],
+  pendingFirst: new Map(),
   reconnectDelay: 1000,
   reconnectTimer: null,
   closed: false,
@@ -113,10 +126,19 @@ export const useAgentChats = create<AgentChatsState>((set, get) => {
       return
     }
     if (msg.type === "chat_created") {
-      const pickerId = ws.pickerWaitingForId
-      ws.pickerWaitingForId = null
+      const pickerId = ws.pickersWaiting.shift()
       if (pickerId) {
         get().setChatCreated(pickerId, msg.chatId, "claude")
+        const first = ws.pendingFirst.get(pickerId)
+        if (first) {
+          ws.pendingFirst.delete(pickerId)
+          get().sendMessage(msg.chatId, first.prompt)
+          set((s) => {
+            const tab = s.chats[msg.chatId]
+            if (!tab || tab.kind !== "chat") return s
+            return { chats: { ...s.chats, [msg.chatId]: { ...tab, title: first.title } } }
+          })
+        }
       }
       return
     }
@@ -163,6 +185,13 @@ export const useAgentChats = create<AgentChatsState>((set, get) => {
     })
     s.addEventListener("open", () => {
       ws.reconnectDelay = 1000
+      for (const queued of ws.outbox.splice(0)) {
+        try {
+          s.send(queued)
+        } catch {
+          /* dropped — the socket closed again */
+        }
+      }
       // Re-subscribe to active chat (no replay in v1 — re-fetch via REST).
       const active = get().activeChatId
       const tab = active ? get().chats[active] : undefined
@@ -204,12 +233,13 @@ export const useAgentChats = create<AgentChatsState>((set, get) => {
   }
 
   function safeSend(payload: object): void {
+    const data = JSON.stringify(payload)
     if (ws.socket && ws.socket.readyState === ws.socket.OPEN) {
-      ws.socket.send(JSON.stringify(payload))
+      ws.socket.send(data)
+      return
     }
-    // If the socket isn't open, we drop. Reconnect will not replay user
-    // messages — UX hardens in a follow-up. For v1, the button shouldn't
-    // be clickable when WS is disconnected (ChatView checks turnInFlight).
+    // Still connecting (or reconnecting): hold it and send on open.
+    ws.outbox.push(data)
   }
 
   return {
@@ -322,12 +352,23 @@ export const useAgentChats = create<AgentChatsState>((set, get) => {
       }
       ws.socket?.close()
       ws.socket = null
+      ws.outbox = []
+      ws.pickersWaiting = []
+      ws.pendingFirst.clear()
     },
 
     startClaudeChat(pickerId) {
       // The next `chat_created` message is routed to upgrade this picker.
-      ws.pickerWaitingForId = pickerId
+      ws.pickersWaiting.push(pickerId)
       safeSend({ type: "new_chat", agent: "claude" })
+    },
+
+    startChatWith(opts) {
+      const pickerId = get().newChat()
+      ws.pendingFirst.set(pickerId, opts)
+      get().connect()
+      get().startClaudeChat(pickerId)
+      return pickerId
     },
 
     sendMessage(chatId, text) {

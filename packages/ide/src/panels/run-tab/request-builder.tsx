@@ -1,4 +1,7 @@
 import { useState } from "react"
+import { askAi } from "@/ai/ask"
+import { explainRequestFailure } from "@/ai/prompts"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { activeEnvironment, useEnvironments } from "@/store/environments"
 import { requestIdFromName, useRequestCollections } from "@/store/request-collections"
@@ -93,6 +96,15 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
         <RequestResult
           result={lastResult}
           onAddChecks={(checks) => useRequestEditor.getState().setExpect([...expect, ...checks])}
+          onAskAi={() =>
+            askAi(
+              explainRequestFailure({
+                workflowPath,
+                workflow: useLiveWorkflowStore.getState().workflow,
+                result: lastResult,
+              }),
+            )
+          }
         />
       )}
     </div>

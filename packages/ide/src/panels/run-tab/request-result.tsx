@@ -1,5 +1,5 @@
 import type { Assertion, RequestRunResult } from "@darrylondil/lorien-runtime/requests"
-import { CheckCircle2, XCircle } from "lucide-react"
+import { CheckCircle2, Sparkles, XCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
@@ -33,9 +33,12 @@ export function assertionsFromResponse(r: RequestRunResult): Assertion[] {
 export function RequestResult({
   result,
   onAddChecks,
+  onAskAi,
 }: {
   result: RequestRunResult
   onAddChecks?: (checks: Assertion[]) => void
+  /** Shown on failures: hand the request, response and checks to Claude. */
+  onAskAi?: () => void
 }) {
   const res = result.response
   const bodyText =

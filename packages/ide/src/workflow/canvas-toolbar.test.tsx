@@ -93,4 +93,29 @@ describe("ProblemsPopover", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Problems:/ }))
     expect(screen.getByText("No Response node").closest("button")).toBeDisabled()
   })
+
+  it("offers Fix these with AI in the problems list when wired", () => {
+    const onFixProblems = vi.fn()
+    setup({ diagnostics: problems, onFixProblems })
+    fireEvent.click(screen.getByRole("button", { name: /Problems:/ }))
+    fireEvent.click(screen.getByRole("button", { name: /Fix these with AI/ }))
+    expect(onFixProblems).toHaveBeenCalled()
+  })
+
+  it("hides the AI entry points when they are not wired", () => {
+    setup({ diagnostics: problems })
+    expect(screen.queryByRole("button", { name: "Ask AI" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: /Problems:/ }))
+    expect(screen.queryByRole("button", { name: /Fix these with AI/ })).toBeNull()
+  })
+
+  it("passes the Ask AI question through", () => {
+    const onAskAi = vi.fn()
+    setup({ onAskAi, selectedNodeId: "save" })
+    fireEvent.click(screen.getByRole("button", { name: "Ask AI" }))
+    const box = screen.getByLabelText("Question for the AI")
+    fireEvent.change(box, { target: { value: "what does save do?" } })
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }))
+    expect(onAskAi).toHaveBeenCalledWith("what does save do?")
+  })
 })

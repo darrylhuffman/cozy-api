@@ -1,3 +1,6 @@
+import { askAi } from "@/ai/ask"
+import { fixFailedRun } from "@/ai/prompts"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useDebugSessionStore } from "@/store/debug-session"
 
 export function StatusBanner({ runId }: { runId: string | null }) {
@@ -34,7 +37,18 @@ export function StatusBanner({ runId }: { runId: string | null }) {
     return <BannerShell label={`✓ Completed (${out.status}, ${out.totalMs}ms)`} />
   }
   if (out.kind === "errored") {
-    return <BannerShell label={`✕ Errored: ${out.message}`} variant="error" />
+    return (
+      <BannerShell label={`✕ Errored: ${out.message}`} variant="error">
+        <ControlButton
+          onClick={() => {
+            const req = fixFailedRun({ run, workflow: useLiveWorkflowStore.getState().workflow })
+            if (req) askAi(req)
+          }}
+        >
+          Ask AI to fix
+        </ControlButton>
+      </BannerShell>
+    )
   }
   return null
 }

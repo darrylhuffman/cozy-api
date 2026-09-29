@@ -61,7 +61,7 @@ describe("scaffold", () => {
     );
     expect(skill.startsWith("---\nname: lorien-api\n")).toBe(true);
     expect(skill).toMatch(/# lorien-api project guide/);
-    expect(skill).toMatch(/<!-- lorien-skill-version: 1 -->/);
+    expect(skill).toMatch(/<!-- lorien-skill-version: 2 -->/);
   });
 
   it("writes AGENTS.md without frontmatter (just the canonical body)", async () => {
@@ -70,6 +70,6 @@ describe("scaffold", () => {
     const agents = readFileSync(join(target, "AGENTS.md"), "utf-8");
     expect(agents.startsWith("---")).toBe(false);
     expect(agents).toMatch(/# lorien-api project guide/);
-    expect(agents).toMatch(/<!-- lorien-skill-version: 1 -->/);
+    expect(agents).toMatch(/<!-- lorien-skill-version: 2 -->/);
   });
 });

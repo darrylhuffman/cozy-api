@@ -324,4 +324,41 @@ describe("useAgentChats WebSocket integration", () => {
       throw new Error("expected chat")
     }
   })
+
+  it("startChatWith opens a chat and sends the prompt once the broker creates it", async () => {
+    const pickerId = useAgentChats.getState().startChatWith({ title: "Explain SaveUser", prompt: "Explain it" })
+    expect(useAgentChats.getState().activeChatId).toBe(pickerId)
+    await Promise.resolve()
+    expect(constructed[0]!.sent.map((m) => JSON.parse(m).type)).toEqual(["new_chat"])
+    constructed[0]!.pushMessage({ type: "chat_created", chatId: "c-ai" })
+    const sent = constructed[0]!.sent.map((m) => JSON.parse(m))
+    expect(sent[1]).toEqual({ type: "user", chatId: "c-ai", text: "Explain it" })
+    const tab = useAgentChats.getState().chats["c-ai"]
+    expect(tab?.kind === "chat" && tab.title).toBe("Explain SaveUser")
+    expect(tab?.kind === "chat" && tab.turnInFlight).toBe(true)
+  })
+
+  it("holds messages sent while the socket is connecting and flushes them on open", async () => {
+    useAgentChats.getState().connect()
+    const sock = constructed[0]!
+    sock.readyState = 0
+    useAgentChats.getState().startClaudeChat(useAgentChats.getState().newChat())
+    expect(sock.sent).toEqual([])
+    sock.readyState = 1
+    await Promise.resolve()
+    expect(sock.sent.map((m) => JSON.parse(m).type)).toEqual(["new_chat"])
+  })
+
+  it("routes chat_created to pickers in the order they asked", async () => {
+    useAgentChats.getState().connect()
+    await Promise.resolve()
+    const a = useAgentChats.getState().startChatWith({ title: "A", prompt: "a" })
+    const b = useAgentChats.getState().startChatWith({ title: "B", prompt: "b" })
+    constructed[0]!.pushMessage({ type: "chat_created", chatId: "c-a" })
+    constructed[0]!.pushMessage({ type: "chat_created", chatId: "c-b" })
+    const s = useAgentChats.getState()
+    expect(s.chats[a]).toBeUndefined()
+    expect(s.chats[b]).toBeUndefined()
+    expect([s.chats["c-a"], s.chats["c-b"]].map((t) => t?.kind === "chat" && t.title)).toEqual(["A", "B"])
+  })
 })

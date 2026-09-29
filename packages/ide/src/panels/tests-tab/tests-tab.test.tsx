@@ -12,7 +12,9 @@ vi.mock("@/lib/api", async () => {
   }
 })
 vi.mock("@/lib/events", () => ({ subscribeToFileEvents: vi.fn(() => () => {}) }))
+vi.mock("@/ai/ask", () => ({ askAi: vi.fn() }))
 
+import { askAi } from "@/ai/ask"
 import { ApiError, fetchFile, fetchWorkspaceSchemas, runNodeTests, saveFile } from "@/lib/api"
 import { useConfirmStore } from "@/store/confirm"
 import { useDebugSessionStore } from "@/store/debug-session"
@@ -243,5 +245,16 @@ describe("Tests tab", () => {
     await act(async () => useConfirmStore.getState().answer(true))
     await waitFor(() => expect(saveFile).toHaveBeenCalled())
     expect(JSON.parse(vi.mocked(saveFile).mock.calls[0]![1]).cases).toHaveLength(1)
+  })
+
+  it("asks the AI to write cases, and to fix a failing one", async () => {
+    render(<TestsTab />)
+    await screen.findByText("Saves a user")
+    fireEvent.click(screen.getByRole("button", { name: /Write with AI/ }))
+    expect(vi.mocked(askAi).mock.calls[0]![0].headline).toContain(CASES)
+    fireEvent.click(screen.getByRole("button", { name: "Run Save User cases" }))
+    await screen.findByText("1/2 passed")
+    fireEvent.click(screen.getByRole("button", { name: /Ask AI to fix/ }))
+    expect(vi.mocked(askAi).mock.calls[1]![0].title).toBe('Fix "Rejects short passwords"')
   })
 })

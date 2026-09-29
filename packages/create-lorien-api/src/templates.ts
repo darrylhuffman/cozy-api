@@ -7,7 +7,7 @@ export interface TemplateContext {
  * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
  * (with frontmatter wrapper). Single source of truth — both renderers must use this.
  */
-export const SKILL_BODY = `<!-- lorien-skill-version: 1 -->
+export const SKILL_BODY = `<!-- lorien-skill-version: 2 -->
 
 # lorien-api project guide
 
@@ -117,6 +117,40 @@ npm run typecheck && npm run test
 \`\`\`
 
 Tests live next to nodes in \`*.test.ts\` files and use \`testWorkflow\` / \`traceWorkflow\` from \`@darrylondil/lorien-runtime/testing\`.
+
+## Node test cases and saved requests
+
+The IDE's Tests and Run tabs read two JSON files. Write them by hand or from the IDE; both are checked by \`lorien test\`.
+
+**Node cases**: \`nodes/<path>/<node>.cases.json\` next to \`<node>.ts\`:
+
+\`\`\`json
+{ "lorien": 1, "cases": [
+  { "id": "saves-user", "name": "saves a user", "input": { "email": "a@b.co" },
+    "mocks": { "db": { "insert": { "returns": { "id": "u1" } } } },
+    "expect": { "output": { "id": "u1" } } },
+  { "id": "rejects-bad-email", "name": "rejects a bad email", "input": { "email": "x" },
+    "expect": { "error": "email" } }
+] }
+\`\`\`
+
+\`expect.output\` matches as a subset unless \`"match": "equals"\`. \`expect.error\` passes when the message contains the text. \`mocks\` replace a service's methods with \`{ "returns": value }\` or \`{ "throws": "message" }\`.
+
+**Saved requests**: \`workflows/<path>/<workflow>.requests.json\` next to the \`.workflow\` file:
+
+\`\`\`json
+{ "lorien": 1, "requests": [
+  { "id": "create-user", "name": "create a user", "method": "POST", "path": "/users",
+    "body": { "kind": "json", "json": { "email": "{{userPrefix}}-{{$uuid}}@b.co" } },
+    "expect": [ { "target": "status", "op": "equals", "value": 201 },
+                { "target": "body", "path": "id", "op": "exists" } ],
+    "capture": { "userId": "body.id" } }
+] }
+\`\`\`
+
+Checks: \`target\` is \`status\`, \`header\`, \`body\` or \`duration\`; \`op\` is \`equals\`, \`notEquals\`, \`contains\`, \`exists\`, \`notExists\`, \`matches\`, \`lessThan\`, \`greaterThan\` or \`type\`. \`{{name}}\` reads variables from \`lorien.environments.json\` (\`lorien.environments.local.json\` overrides it and stays out of git), from earlier captures, or the built-ins \`$uuid\`, \`$timestamp\`, \`$isoTimestamp\`, \`$randomInt\`.
+
+Run everything with \`npx lorien test\` (\`--env <name>\`, \`--base-url <url>\` to hit a running server, \`--no-nodes\`, \`--no-requests\`, \`--json\`, and an optional name filter).
 
 ## What you should NOT do
 

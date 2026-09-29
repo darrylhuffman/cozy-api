@@ -2,6 +2,7 @@ import { Keyboard, LayoutGrid, Maximize, Plus, Redo2, Undo2 } from "lucide-react
 import type { ReactNode } from "react"
 import { cn } from "@/lib/utils"
 import type { Diagnostic } from "./diagnose"
+import { AskAiPopover } from "./ask-ai-popover"
 import { ProblemsPopover } from "./problems-popover"
 
 export type SaveStatus = "clean" | "dirty" | "saving" | "saved" | "error"
@@ -20,6 +21,11 @@ interface Props {
   onTidy: () => void
   onFocusNode: (nodeId: string) => void
   onShowShortcuts: () => void
+  /** Adds "Fix these with AI" to the problems list. */
+  onFixProblems?: () => void
+  /** Renders the "Ask AI" box. */
+  onAskAi?: (question: string) => void
+  selectedNodeId?: string | null
 }
 
 /**
@@ -42,7 +48,12 @@ export function CanvasToolbar(p: Props) {
         <span className="truncate font-medium text-foreground">{file}</span>
         <SaveBadge status={p.status} onSave={p.onSave} />
       </div>
-      <ProblemsPopover diagnostics={p.diagnostics} onFocusNode={p.onFocusNode} />
+      {p.onAskAi && <AskAiPopover selectedNodeId={p.selectedNodeId ?? null} onAsk={p.onAskAi} />}
+      <ProblemsPopover
+        diagnostics={p.diagnostics}
+        onFocusNode={p.onFocusNode}
+        {...(p.onFixProblems ? { onAskAi: p.onFixProblems } : {})}
+      />
       <Divider />
       <ToolButton label="Undo" hint="Undo (Ctrl+Z)" onClick={p.onUndo} disabled={!p.canUndo}>
         <Undo2 className="h-3.5 w-3.5" />

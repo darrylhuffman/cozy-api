@@ -1,15 +1,27 @@
 import { AlertCircle, FileEdit, FileText, Terminal, User } from "lucide-react"
 import Markdown from "react-markdown"
+import { splitPrompt } from "@/ai/prompts"
 
 export function UserMessage({ text }: { text: string }): React.ReactElement {
+  // IDE actions send a headline plus a block of context (paths, schemas,
+  // errors). Show the headline; fold the context so the chat stays readable.
+  const { headline, context } = splitPrompt(text)
   return (
     <div className="flex gap-2 rounded-md bg-muted/30 px-2 py-1.5">
       <User className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
           You
         </div>
-        <div className="whitespace-pre-wrap text-xs">{text}</div>
+        <div className="whitespace-pre-wrap text-xs">{headline}</div>
+        {context && (
+          <details className="mt-1 text-[11px] text-muted-foreground">
+            <summary>Context sent from the IDE</summary>
+            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted/40 p-2 text-[10px]">
+              {context}
+            </pre>
+          </details>
+        )}
       </div>
     </div>
   )
