@@ -1,5 +1,6 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
+import { configureMonacoLoader } from "@/lib/monaco-loader"
 import { applyTheme } from "@/store/theme"
 import { App } from "./app.js"
 import "./globals.css"
@@ -20,6 +21,8 @@ import "./globals.css"
     // ignore — store will handle it
   }
 })()
+
+configureMonacoLoader()
 
 const root = document.getElementById("root")
 if (!root) throw new Error("missing #root element")
