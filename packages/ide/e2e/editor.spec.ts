@@ -44,7 +44,7 @@ test("edits input values on the node card, one undo step per edit", async ({ ide
 })
 
 test("the Delete key removes the selected node, and undo brings it back", async ({ ide }) => {
-  await openCreateUser(ide)
+  await openAddPet(ide)
   const nodes = ide.locator('[data-testid="node-header"]')
   const before = await nodes.count()
   await nodes.first().click()
