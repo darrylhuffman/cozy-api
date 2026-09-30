@@ -1,87 +1,154 @@
+<div align="center">
+
+<img src="docs/images/logo.svg" alt="lorien" width="72" height="72" />
+
 # lorien
 
-**Build HTTP APIs as typed graphs you can see, test and debug, with AI agents working inside the same patterns you do.**
+**Typed, visual HTTP APIs that you and your AI agents can both see into.**
 
-lorien is a runtime, build tool and in-browser IDE for TypeScript APIs. Every route is a small `.workflow` graph of typed nodes. Every piece of business logic is one node file. Every shared dependency (a database, a logger, an API client) is one provider file. Because the shapes are fixed, a person or an agent can open any project and know where everything lives, what calls what, and what each step received and returned.
+Routes are graphs. Logic is nodes. Infrastructure is providers. Every edge is typed with [zod](https://zod.dev).
+<br />
+It ships as plain TypeScript with **zero lorien runtime dependency**.
 
-When you ship, `lorien build` compiles the graphs to plain TypeScript. Production code has **zero lorien runtime dependency**.
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)
+![zod 4](https://img.shields.io/badge/schemas-zod%204-3068b7?logo=zod&logoColor=white)
+![Hono](https://img.shields.io/badge/HTTP-Hono-e36002?logo=hono&logoColor=white)
+![Node](https://img.shields.io/badge/node-%E2%89%A520-5fa04e?logo=nodedotjs&logoColor=white)
+![License: MIT](https://img.shields.io/badge/license-MIT-7bd389)
+
+[Why lorien](#why-lorien) · [Typed end to end](#typed-end-to-end) · [The IDE](#a-tour-of-the-ide) · [Quickstart](#quickstart) · [Sample](#try-the-sample) · [Packages](#packages)
+
+</div>
+
+<br />
 
 ![A workflow on the lorien canvas: HTTP Request, Add Pet and Response nodes wired together, with the Inspector describing Add Pet and the Debug panel showing a completed 201 run](docs/images/workflow-canvas.png)
 
+<br />
+
 ## Why lorien
 
-AI agents write a lot of code quickly. The hard part is knowing what they changed, where it runs, and what it touches. Free-form codebases make that hard: logic hides in route handlers, a new database client appears in a helper, and the only way to review is to read every diff line by line.
+AI agents write code fast. The hard part is knowing **what they changed, where it runs, and what it touches**. In a free-form codebase, logic hides in route handlers, a second database client appears in some helper, and the only way to review is to read every diff line by line.
 
-lorien gives your infrastructure a shape that is easy to follow, for humans and agents alike:
+lorien gives your API a fixed shape that is easy to follow, for people and agents alike:
 
-- **Routes are graphs, not code.** A `.workflow` file is a short JSON dependency graph. You see the whole route at a glance on the canvas, and a change to it reads as "this node now feeds that one", not a wall of handler code.
-- **Logic lives in nodes, one per file.** A node declares its inputs and outputs with zod, so every edge in the graph is type-checked and every node can be tested alone.
-- **Dependencies are declared, not discovered.** Providers are the only way a node reaches a database, logger or client. Each node card shows which providers it reads, and each provider lists every node that reads it.
-- **The rules are written down for the agent.** New projects ship an `AGENTS.md` and a Claude Code skill that teach the same contract, so an agent adds a node where you would, not wherever it likes.
-- **Every step is observable.** The debugger records what each node received and returned for every request, and tests can check any step, not just the final response.
+| | Pattern | What you get |
+|---|---|---|
+| 🗺️ | **Routes are graphs.** A `.workflow` file is a short JSON dependency graph. | You see a whole route at a glance, and a change reads as "this node now feeds that one", not a wall of handler code. |
+| 🧩 | **Logic lives in nodes**, one `defineNode` per file. | Each node is small, typed and testable on its own. |
+| 🔌 | **Infrastructure lives in providers**, one `defineProvider` per file. | Nodes reach a database, logger or client only through a provider, so "what touches the database?" has a one-click answer. |
+| 📐 | **The rules are written down for agents.** New projects ship `AGENTS.md` and a Claude Code skill. | An agent adds a node where you would, not wherever it likes. |
+| 🔎 | **Every step is observable.** The debugger records each node's inputs and outputs per request. | Tests and reviews can check any step, not just the final response. |
 
-## A tour of the IDE
+## Typed end to end
 
-### Workflows you can read at a glance
-
-Open a `.workflow` and it becomes a canvas. Inputs are shown as value chips right on each node (`← Request.body.name`, `201`), wires are typed, and the Inspector describes the selected node from its own doc comment. Send a request and the Debug panel shows the timeline, node by node.
-
-### Nodes are plain TypeScript
-
-![The add-pet node open in the code editor, reading the db and logger providers](docs/images/node-code.png)
-
-A node is a `defineNode` call with a zod schema in and a zod schema out. The IDE's editor is Monaco with full TypeScript, and the bar above the code shows which providers the node reads.
+lorien uses **[zod](https://zod.dev) (v4)** as its schema language. A node's zod schemas are the single source of truth, and everything else is derived from them: the TypeScript types in your editor, the checks on the graph, the runtime validation, and the shapes the IDE shows.
 
 ```ts
+// nodes/pets/add-pet.ts
+import { defineNode } from "@darrylondil/lorien-runtime"
+import { z } from "zod"
+import { petSchema, petStatusSchema } from "../../lib/schemas.js"
+
 export default defineNode({
   name: "Add Pet",
-  inputs: z.object({ name: z.string(), species: z.string(), status: petStatusSchema.default("available") }),
+  inputs: z.object({
+    name: z.string().trim().min(1, "name is required"),
+    species: z.string().trim().min(1, "species is required"),
+    status: petStatusSchema.default("available"), // z.enum(["available", "pending", "sold"])
+  }),
   outputs: z.object({ pet: petSchema }),
+
+  //    ↓ z.infer<inputs>                  ↓ typed providers
   async run({ name, species, status }, { db, logger }) {
     const pet = await db.addPet({ name, species, status })
     logger.info("pet added", { id: pet.id, name: pet.name })
-    return { pet }
+    return { pet } // must match z.infer<outputs>
   },
 })
 ```
 
-### Providers make your infrastructure visible
+![Hovering status in the node's run function shows the type "available" | "pending" | "sold", inferred from the zod enum](docs/images/type-hover.png)
+
+Here is where those types go:
+
+| Layer | How it's typed |
+|---|---|
+| **Node inputs and outputs** | `run()` receives `z.infer<typeof inputs>` and must return `z.infer<typeof outputs>`. |
+| **Providers** | `lorien` generates `.lorien/types/providers.d.ts`, so `{ db, logger }` in `run()` are typed from each provider's `create()`. |
+| **Provider config** | A provider declares `env: z.object({ ... })`, and it's parsed with zod once at boot. |
+| **Graph wiring** | A reference like `Request.body.name` or `AddPet.pet` is checked against the source node's output schema. A typo shows up in the IDE's Problems list before you run anything. |
+| **Runtime** | Before `run()` is called, each node's inputs are parsed with its zod schema. This happens in the dev interpreter *and* in the compiled production code. |
+| **The IDE** | The Inspector, value chips and enum pickers all read the schemas. That's how the HTTP `method` gets a dropdown and `pet` expands to `id · name · species · status`. |
+
+> **Production is just TypeScript.** `lorien build` compiles each workflow into a plain [Hono](https://hono.dev) route that imports your nodes and calls `inputs.parse(...)` from zod directly. Your deployed server doesn't import lorien at all.
+
+## A tour of the IDE
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🗺️ Workflows at a glance
+
+Open a `.workflow` and it becomes a canvas. Inputs appear as value chips on each node (`← Request.body.name`, `201`), wires are typed, and the Inspector describes the selected node from its own doc comment. Send a request and the Debug panel shows the timeline, node by node.
+
+</td>
+<td width="50%" valign="top">
+
+### 🔌 Providers make infrastructure visible
+
+A provider card shows its **lifetime** (`singleton`, `scoped` per request, or `transient`), the **environment variables** it needs, and **every node that reads it**. Node cards show the providers they depend on as chips.
+
+</td>
+</tr>
+</table>
 
 ![The db provider: a card above its code showing its singleton lifetime, the PETSTORE_DB env var and every node that reads it](docs/images/provider.png)
 
-A provider is a `defineProvider` file under `providers/`, and its file name is the name nodes read it by. Lifetimes are `singleton` (created once at boot), `scoped` (once per request) or `transient`. The IDE shows each provider's lifetime, the environment variables it needs, and every node that depends on it, so "what touches the database?" has a one-click answer.
-
-### Tests next to the thing they test
+### ✅ Tests next to the thing they test
 
 ![The Tests tab: workflow tests with mocks and step checks, and node test cases, all passing](docs/images/tests.png)
 
 - **Node cases** (`*.cases.json`) run one node with given inputs, with providers mocked where it helps.
-- **Workflow tests** (`*.requests.json`) are saved requests that call a route over HTTP, can mock a node (say, to simulate "database is locked") and can check what any step received or returned.
-- `lorien test` runs all of them in CI, and the IDE badges each node and file with its pass count.
+- **Workflow tests** (`*.requests.json`) are saved requests that call a route over HTTP. They can mock a node (say, to simulate `database is locked`) and check what any step received or returned.
+- **`lorien test`** runs all of them in CI. The IDE badges each node and file with its pass count.
 
 When a request fails, the Debug panel names the node that failed and offers **Ask AI to fix** with the trace attached.
 
 ## Quickstart
 
 ```bash
-# Create a new project
 npx create-lorien my-app
 cd my-app
 pnpm install
+pnpm dev          # dev server + IDE in your browser
+```
 
-# Start the dev server and open the IDE
-pnpm dev
+When you're ready to ship:
 
-# Build for production (plain TypeScript, no lorien runtime)
-pnpm build
+```bash
+pnpm build        # plain TypeScript + Hono in dist/, no lorien runtime
 pnpm start
 ```
 
-Other commands: `pnpm dev:server` (dev server only), `pnpm exec lorien ide` (IDE only), `lorien test` (run every node case and workflow test), `lorien import-openapi` (generate client nodes from an OpenAPI 3.x spec), `lorien init` (add `AGENTS.md` to an existing project).
+<details>
+<summary><b>All CLI commands</b></summary>
+
+| Command | What it does |
+|---|---|
+| `lorien dev` | Start the dev server and open the IDE (`--no-ide` to skip the IDE) |
+| `lorien ide` | Open only the IDE |
+| `lorien build` | Generate `dist/` from `workflows/`, `nodes/` and `providers/` |
+| `lorien test` | Run every node case and saved request |
+| `lorien import-openapi` | Generate typed client nodes from an OpenAPI 3.x spec |
+| `lorien init` | Add `AGENTS.md` to an existing project |
+
+</details>
 
 ## Project layout
 
-```
+```text
 my-app/
 ├── lorien.config.ts        # build target
 ├── workflows/              # HTTP routes as JSON dependency graphs
@@ -93,10 +160,8 @@ my-app/
 ├── providers/              # injected dependencies (defineProvider): db, logger, clients
 │   └── <name>.ts           #   singleton, scoped (per request) or transient
 ├── lib/                    # plain shared code: zod schemas, helpers
-├── src/
-│   └── server.ts           # entrypoint, calls startLorienServer
-├── AGENTS.md               # the author's guide for humans and AI agents
-└── README.md
+├── src/server.ts           # entrypoint, calls startLorienServer
+└── AGENTS.md               # the author's guide for humans and AI agents
 ```
 
 A workflow is small enough to review in a diff:
@@ -113,31 +178,45 @@ A workflow is small enough to review in a diff:
 }
 ```
 
+And a provider is one file whose name is how nodes read it:
+
+```ts
+// providers/db.ts  →  nodes receive it as `db`
+export default defineProvider({
+  name: "Pet store database",
+  env: z.object({
+    PETSTORE_DB: z.string().default(join(import.meta.dirname, "..", "data", "petstore.db")),
+  }),
+  create: ({ env }) => openPetStoreDb(env.PETSTORE_DB),
+  dispose: (db) => db.close(),
+})
+```
+
 ## Try the sample
 
-[`examples/basic-api`](examples/basic-api) is a small pet store on Node's built-in SQLite, with six routes, a `db` and a `logger` provider, and tests at every layer. The screenshots above are that project in the IDE. To open it from this repo:
+[`examples/basic-api`](examples/basic-api) is a small pet store on Node's built-in SQLite (Node 22.13+). It has six routes, a `db` and a `logger` provider, and tests at every layer. The screenshots above show it in the IDE.
 
 ```bash
 git clone https://github.com/darrylhuffman/lorien.git
 cd lorien
 pnpm install
 pnpm -r build
-pnpm dev:demo      # IDE on http://localhost:5173, backed by examples/basic-api
+pnpm dev:demo     # IDE on http://localhost:5173, backed by examples/basic-api
 ```
 
 ## Packages
 
 | Package | What it is |
 |---|---|
-| `@darrylondil/lorien-runtime` | Headless interpreter, `defineNode` / `defineProvider`, testing primitives |
-| `@darrylondil/lorien-build` | The `lorien` CLI: build, dev, ide, test, init, import-openapi |
-| `@darrylondil/lorien-openapi` | OpenAPI 3.x to client-node generator |
-| `@darrylondil/lorien-ide` | Browser IDE: Vite, React 19, Tailwind v4, React Flow, Monaco |
-| `create-lorien` | `npx create-lorien <name>` scaffolder |
+| [`@darrylondil/lorien-runtime`](packages/runtime) | Headless interpreter, `defineNode` / `defineProvider`, testing primitives. Peer deps: `zod` 4, `hono` 4 |
+| [`@darrylondil/lorien-build`](packages/build) | The `lorien` CLI: build, dev, ide, test, init, import-openapi |
+| [`@darrylondil/lorien-openapi`](packages/openapi) | OpenAPI 3.x to typed client-node generator |
+| [`@darrylondil/lorien-ide`](packages/ide) | Browser IDE: Vite, React 19, Tailwind v4, React Flow, Monaco |
+| [`create-lorien`](packages/create-lorien-api) | `npx create-lorien <name>` scaffolder |
 
 ## Development
 
-This is a pnpm workspace. Common commands:
+This is a pnpm workspace.
 
 ```bash
 pnpm install              # install all workspaces
@@ -147,16 +226,9 @@ pnpm -r typecheck         # tsc across the workspace
 pnpm exec biome check .   # lint + format check
 ```
 
-To work on the IDE with live data from `examples/basic-api`, run `pnpm -r build` once, then `pnpm dev:demo`. It starts the backend (`lorien ide --no-open --root examples/basic-api --port 3737`, serving `/api/*`) and the Vite dev server on port 5173, which proxies `/api/*` to it with HMR enabled. For the IDE alone, run `pnpm dev` in `packages/ide`.
+To work on the IDE with live data from the sample, run `pnpm -r build` once, then `pnpm dev:demo`. It starts the backend (`lorien ide --no-open --root examples/basic-api --port 3737`, serving `/api/*`) and the Vite dev server on port 5173, which proxies `/api/*` to it with HMR. Browser tests for the IDE live in `packages/ide/e2e` and run against the real IDE server on the sample.
 
-Browser tests for the IDE live in `packages/ide/e2e` and run against the real IDE server on the sample project.
-
-## Documentation
-
-- Node tests: [`docs/node-tests.md`](docs/node-tests.md)
-- Saved requests and workflow tests: [`docs/saved-requests.md`](docs/saved-requests.md)
-- Design specs and plans: `docs/superpowers/`
-- Publishing guide: [`PUBLISHING.md`](PUBLISHING.md)
+**Docs:** [node tests](docs/node-tests.md) · [saved requests](docs/saved-requests.md) · design specs and plans in `docs/superpowers/` · [publishing](PUBLISHING.md)
 
 ## License
 
