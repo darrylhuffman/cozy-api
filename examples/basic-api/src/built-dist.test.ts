@@ -54,4 +54,29 @@ describe("built dist via lorien build", () => {
     expect(res.status).toBe(200)
     expect(res.headers.get("x-response-time")).toMatch(/^\d+ms$/)
   })
+
+  it("exports each route's logic as a run function that needs no Hono", async () => {
+    const generated = (await import(
+      pathToFileURL(join(distDir, "workflows", "pets", "get.gen.ts")).href
+    )) as {
+      run_Request: (
+        trigger: unknown,
+        services: unknown,
+      ) => Promise<{ status: number; headers: Record<string, string>; body: unknown }>
+    }
+    const { openScope } = (await import(pathToFileURL(join(distDir, "providers.gen.ts")).href)) as {
+      openScope: (r: unknown) => Promise<{ values: unknown; dispose(): Promise<void> }>
+    }
+    const context = { requestId: "direct", timestamp: Date.now() }
+    const scope = await openScope(context)
+    try {
+      const result = await generated.run_Request(
+        { body: null, params: { id: "99999" }, query: {}, headers: {}, context },
+        scope.values,
+      )
+      expect(result.status).toBe(404)
+    } finally {
+      await scope.dispose()
+    }
+  })
 })

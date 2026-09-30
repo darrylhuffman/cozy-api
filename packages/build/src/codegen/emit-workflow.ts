@@ -39,8 +39,10 @@ export interface EmitWorkflowOptions {
 }
 
 /**
- * Given a parsed workflow, emit the .gen.ts source string that exports
- * `function register(app: Hono): void`.
+ * Given a parsed workflow, emit the .gen.ts source string. It exports one
+ * `run_<trigger>(trigger, services)` per @core/http-request trigger, holding
+ * the workflow's logic with no Hono in it, and `register(app: Hono)`, which
+ * mounts a thin route per trigger that calls it.
  *
  * The emitted code has zero @darrylondil/lorien-runtime imports. Only hono and the
  * user's own node modules are imported.
@@ -110,7 +112,15 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
     lines.push(`import mw${i} from "${upPrefix}${path.replace(/\.([mc]?)ts$/, ".$1js")}"`)
   })
   lines.push("")
+  lines.push(renderTypes())
+  lines.push("")
   lines.push(renderReadJsonBodyHelper())
+
+  for (const trigger of triggers) {
+    lines.push("")
+    lines.push(...renderRun(workflow, trigger, usesToIdent))
+  }
+
   lines.push("")
   lines.push(`export function register(app: Hono): void {`)
   if (guarded) lines.push(...renderGuards(middleware.length, perRequest))
@@ -118,7 +128,7 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   for (let i = 0; i < triggers.length; i++) {
     const trigger = triggers[i]!
     if (i > 0) lines.push("")
-    lines.push(...renderHandler(workflow, trigger, usesToIdent, perRequest, guarded))
+    lines.push(...renderRoute(trigger, perRequest, guarded))
   }
 
   lines.push(`}`)
@@ -186,15 +196,36 @@ function renderReadJsonBodyHelper(): string {
   ].join("\n")
 }
 
-function renderHandler(
+function renderTypes(): string {
+  return [
+    `/** What an HTTP trigger hands the workflow: the parsed request. */`,
+    `export interface HttpTrigger {`,
+    `  body: unknown`,
+    `  params: Record<string, string>`,
+    `  query: Record<string, string>`,
+    `  headers: Record<string, string>`,
+    `  context: { requestId: string; timestamp: number }`,
+    `}`,
+    ``,
+    `/** A workflow's result; the HTTP route turns it into a JSON Response. */`,
+    `export interface WorkflowResult {`,
+    `  status: number`,
+    `  headers: Record<string, string>`,
+    `  body: unknown`,
+    `}`,
+  ].join("\n")
+}
+
+/**
+ * `run_<trigger>(trigger, services)`: the workflow's logic for one trigger,
+ * with no Hono in it. Callers own the request and the provider lifetimes.
+ */
+function renderRun(
   workflow: WorkflowFile,
   trigger: TriggerInfo,
   usesToIdent: Map<string, string>,
-  perRequest: boolean,
-  guarded: boolean,
 ): string[] {
   const lines: string[] = []
-  const triggerVar = outputsVar(trigger.nodeId)
 
   const depsByNode = buildDepsByNode(workflow)
   const sliceIds = computeTriggerSlice(workflow, trigger.nodeId, depsByNode)
@@ -210,6 +241,54 @@ function renderHandler(
   }
   const waves = computeWaves(slicedDeps)
   const hasResponse = hasResponseInSlice(workflow, sliceIds)
+
+  lines.push(`/** ${trigger.method} ${trigger.path} */`)
+  lines.push(
+    `export async function ${runFnName(trigger.nodeId)}(trigger: HttpTrigger, services: unknown): Promise<WorkflowResult> {`,
+  )
+  lines.push(`  const ${outputsVar(trigger.nodeId)} = trigger`)
+
+  let waveNum = 0
+  for (const wave of waves) {
+    const interesting = wave.filter((id) => id !== trigger.nodeId)
+    if (interesting.length === 0) continue
+    waveNum++
+
+    const responseIds = interesting.filter((id) => workflow.nodes[id]?.uses === "@core/response")
+    const computeIds = interesting.filter((id) => workflow.nodes[id]?.uses !== "@core/response")
+
+    if (computeIds.length === 1) {
+      lines.push("")
+      lines.push(`  // Wave ${waveNum}: ${computeIds[0]}`)
+      lines.push(...renderSingleNodeCall(workflow, computeIds[0]!, usesToIdent, "  "))
+    } else if (computeIds.length > 1) {
+      lines.push("")
+      lines.push(`  // Wave ${waveNum}: ${computeIds.join(", ")} (parallel)`)
+      lines.push(...renderParallelWave(workflow, computeIds, usesToIdent, "  "))
+    }
+
+    if (responseIds.length > 0) {
+      // First response in the wave wins (sorted ordering for determinism).
+      const responseId = responseIds[0]!
+      lines.push("")
+      lines.push(`  // Response`)
+      lines.push(...renderResponseReturn(workflow, responseId, "  "))
+      break
+    }
+  }
+
+  if (!hasResponse) {
+    lines.push("")
+    lines.push(`  return { status: 200, headers: {}, body: null }`)
+  }
+
+  lines.push(`}`)
+  return lines
+}
+
+/** The Hono route for one trigger: read the request, call its run function, send JSON. */
+function renderRoute(trigger: TriggerInfo, perRequest: boolean, guarded: boolean): string[] {
+  const lines: string[] = []
 
   // Hono runs every handler registered for a route in order, so the guards
   // registered first act as this route's middleware.
@@ -227,12 +306,7 @@ function renderHandler(
       ? `    const requestId = c.get("lorien.requestId" as never) as string`
       : `    const requestId = crypto.randomUUID()`,
   )
-  const bodyStart = lines.length
-  if (!perRequest) lines.push(`    const services = singletons`)
-  if (scopeFromGuard) lines.push(`    const services = c.get("lorien.providers" as never) as never`)
-  lines.push("")
-  lines.push(`    // Trigger outputs`)
-  lines.push(`    const ${triggerVar} = {`)
+  lines.push(`    const trigger: HttpTrigger = {`)
   lines.push(`      body: await readJsonBody(c),`)
   lines.push(`      params: c.req.param(),`)
   lines.push(`      query: Object.fromEntries(new URL(c.req.url).searchParams.entries()),`)
@@ -240,54 +314,28 @@ function renderHandler(
   lines.push(`      context: { requestId, timestamp: Date.now() },`)
   lines.push(`    }`)
 
-  let waveNum = 0
-  for (const wave of waves) {
-    const interesting = wave.filter((id) => id !== trigger.nodeId)
-    if (interesting.length === 0) continue
-    waveNum++
-
-    const responseIds = interesting.filter((id) => workflow.nodes[id]?.uses === "@core/response")
-    const computeIds = interesting.filter((id) => workflow.nodes[id]?.uses !== "@core/response")
-
-    if (computeIds.length === 1) {
-      lines.push("")
-      lines.push(`    // Wave ${waveNum}: ${computeIds[0]}`)
-      lines.push(...renderSingleNodeCall(workflow, computeIds[0]!, usesToIdent, "    "))
-    } else if (computeIds.length > 1) {
-      lines.push("")
-      lines.push(`    // Wave ${waveNum}: ${computeIds.join(", ")} (parallel)`)
-      lines.push(...renderParallelWave(workflow, computeIds, usesToIdent, "    "))
-    }
-
-    if (responseIds.length > 0) {
-      // First response in the wave wins (sorted ordering for determinism).
-      const responseId = responseIds[0]!
-      lines.push("")
-      lines.push(`    // Response`)
-      lines.push(...renderResponseReturn(workflow, responseId, "    "))
-      break
-    }
-  }
-
-  if (!hasResponse) {
-    lines.push("")
-    lines.push(`    return c.newResponse("null", 200, { "content-type": "application/json" })`)
-  }
-
-  if (perRequest && !scopeFromGuard) {
-    // Run the body in a provider scope, disposed once the response is built.
-    const body = lines.splice(bodyStart).map((l) => (l ? `    ${l}` : l))
+  const run = runFnName(trigger.nodeId)
+  if (!perRequest) {
+    lines.push(`    const result = await ${run}(trigger, singletons)`)
+  } else if (scopeFromGuard) {
+    lines.push(`    const result = await ${run}(trigger, c.get("lorien.providers" as never))`)
+  } else {
+    // Run in a provider scope, disposed once the workflow is done.
     lines.push(`    const scope = await openScope({ requestId, timestamp: Date.now() })`)
+    lines.push(`    let result: WorkflowResult`)
     lines.push(`    try {`)
-    lines.push(`      return await (async (): Promise<Response> => {`)
-    lines.push(`        const services = scope.values`)
-    lines.push(...body)
-    lines.push(`      })()`)
+    lines.push(`      result = await ${run}(trigger, scope.values)`)
     lines.push(`    } finally {`)
     lines.push(`      void scope.dispose()`)
     lines.push(`    }`)
   }
 
+  // c.newResponse keeps headers middleware set with c.header() before next().
+  lines.push(`    return c.newResponse(`)
+  lines.push(`      result.body === undefined ? "null" : JSON.stringify(result.body),`)
+  lines.push(`      result.status as never,`)
+  lines.push(`      { "content-type": "application/json", ...result.headers },`)
+  lines.push(`    )`)
   lines.push(`  })`)
   return lines
 }
@@ -458,16 +506,11 @@ function renderResponseReturn(workflow: WorkflowFile, nodeId: string, indent: st
   }
 
   return [
-    `${indent}const _bodyValue = ${bodyExpr}`,
-    // c.newResponse keeps headers middleware set with c.header() before next().
-    `${indent}return c.newResponse(`,
-    `${indent}  _bodyValue === undefined ? "null" : JSON.stringify(_bodyValue),`,
-    `${indent}  (((${statusExpr}) as number | undefined) ?? 200) as never,`,
-    `${indent}  {`,
-    `${indent}    "content-type": "application/json",`,
-    `${indent}    ...(((${headersExpr}) as Record<string, string> | undefined) ?? {}),`,
-    `${indent}  },`,
-    `${indent})`,
+    `${indent}return {`,
+    `${indent}  status: ((${statusExpr}) as number | undefined) ?? 200,`,
+    `${indent}  headers: ((${headersExpr}) as Record<string, string> | undefined) ?? {},`,
+    `${indent}  body: ${bodyExpr},`,
+    `${indent}}`,
   ]
 }
 
@@ -571,6 +614,10 @@ function importIdentForUses(uses: string): string {
   const ident = first! + rest.map((p) => p[0]!.toUpperCase() + p.slice(1)).join("")
   if (!/^[a-zA-Z_$]/.test(ident)) return `_${ident}`
   return ident
+}
+
+function runFnName(nodeId: string): string {
+  return `run_${nodeId.replace(/[^a-zA-Z0-9_$]/g, "_")}`
 }
 
 function outputsVar(nodeId: string): string {

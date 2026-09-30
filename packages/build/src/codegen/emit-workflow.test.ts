@@ -100,7 +100,8 @@ describe("emitWorkflow — handler shape", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/const req_outputs = \{/)
+    expect(source).toMatch(/const trigger: HttpTrigger = \{/)
+    expect(source).toMatch(/const req_outputs = trigger/)
     expect(source).toMatch(/body: await readJsonBody\(c\)/)
     expect(source).toMatch(/params: c\.req\.param\(\)/)
     expect(source).toMatch(/query: Object\.fromEntries\(new URL\(c\.req\.url\)\.searchParams/)
@@ -121,7 +122,7 @@ describe("emitWorkflow — handler shape", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/const services = singletons/)
+    expect(source).toMatch(/const result = await run_req\(trigger, singletons\)/)
     expect(source).not.toMatch(/openScope/)
   })
 
@@ -143,7 +144,7 @@ describe("emitWorkflow — handler shape", () => {
     expect(source).toMatch(
       /const scope = await openScope\(\{ requestId, timestamp: Date\.now\(\) \}\)/,
     )
-    expect(source).toMatch(/const services = scope\.values/)
+    expect(source).toMatch(/result = await run_req\(trigger, scope\.values\)/)
     expect(source).toMatch(/finally \{\n\s+void scope\.dispose\(\)/)
   })
 
@@ -346,9 +347,9 @@ describe("emitWorkflow — response", () => {
       relativePath: "users/create",
     })
     expect(source).toMatch(/return c\.newResponse\(/)
-    expect(source).toMatch(/JSON\.stringify\(_bodyValue\)/)
-    expect(source).toMatch(/_bodyValue = save_outputs\.user/)
-    expect(source).toMatch(/\(\(201\) as number \| undefined\) \?\? 200/)
+    expect(source).toMatch(/JSON\.stringify\(result\.body\)/)
+    expect(source).toMatch(/body: save_outputs\.user,/)
+    expect(source).toMatch(/status: \(\(201\) as number \| undefined\) \?\? 200/)
     expect(source).toMatch(/"content-type": "application\/json"/)
   })
 
@@ -366,8 +367,7 @@ describe("emitWorkflow — response", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/return c\.newResponse\("null"/)
-    expect(source).toMatch(/"null", 200,/)
+    expect(source).toMatch(/return \{ status: 200, headers: \{\}, body: null \}/)
   })
 })
 
@@ -477,7 +477,7 @@ describe("emitWorkflow — whole-object `in` (string form)", () => {
       relativePath: "x",
     })
     // body/status/headers are plucked off the whole-object base expression
-    expect(source).toMatch(/_bodyValue = \(shape_outputs\.result\)\?\.body/)
+    expect(source).toMatch(/body: \(shape_outputs\.result\)\?\.body/)
     expect(source).toMatch(/\(shape_outputs\.result\)\?\.status/)
     expect(source).toMatch(/\(shape_outputs\.result\)\?\.headers/)
   })
@@ -517,7 +517,7 @@ describe("emitWorkflow — full example matches the spec shape", () => {
     )
     expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/)
     expect(source).toMatch(/_saveInput as never/)
-    expect(source).toMatch(/_bodyValue = save_outputs\.user/)
+    expect(source).toMatch(/body: save_outputs\.user,/)
   })
 })
 
