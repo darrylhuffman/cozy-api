@@ -5,15 +5,16 @@ const STORAGE_KEY = "lorien-ide-layout"
 /** Bumped when the set of panes changes; older saved layouts reset to default. */
 const LAYOUT_VERSION = 2
 
-export type PaneId = "files" | "editor" | "inspector" | "debug"
+export type PaneId = "files" | "editor" | "inspector" | "debug" | "agents"
 
-export const PANE_IDS = ["files", "editor", "inspector", "debug"] as const
+export const PANE_IDS = ["files", "editor", "inspector", "debug", "agents"] as const
 
 export const PANE_TITLES: Record<PaneId, string> = {
   files: "Explorer",
   editor: "Editor",
   inspector: "Inspector",
   debug: "Debug",
+  agents: "Agents",
 }
 
 export interface SavedLayout {
@@ -56,7 +57,10 @@ export function saveLayout(api: DockviewApi): void {
  * Explorer: left column
  * Editor:   centre (workflows and code share one tab strip)
  * Debug:    under the editor
- * Inspector: right column (Inspect · Tests · Run · Agents)
+ * Inspector: right column (Inspect · Tests · Run)
+ *
+ * Agents is its own pane, closed until the top-bar button or an "Ask AI"
+ * action opens it between the editor and the Inspector.
  */
 export function buildDefaultLayout(api: DockviewApi): void {
   api.addPanel({
@@ -96,6 +100,7 @@ export function buildDefaultLayout(api: DockviewApi): void {
 export const FILES_WIDTH = 248
 export const INSPECTOR_WIDTH = 380
 export const DEBUG_HEIGHT = 240
+export const AGENTS_WIDTH = 380
 
 export { STORAGE_KEY }
 
@@ -120,6 +125,13 @@ export function reopenPanel(api: DockviewApi, id: PaneId): void {
     const ref = api.getPanel("editor") ?? api.getPanel("debug") ?? api.getPanel("files")
     if (ref) options.position = { referencePanel: ref.id, direction: "right" }
     options.initialWidth = INSPECTOR_WIDTH
+  } else if (id === "agents") {
+    // Between the editor and the Inspector, so the space comes out of the editor.
+    const editor = api.getPanel("editor")
+    const inspector = api.getPanel("inspector")
+    if (editor) options.position = { referencePanel: editor.id, direction: "right" }
+    else if (inspector) options.position = { referencePanel: inspector.id, direction: "left" }
+    options.initialWidth = AGENTS_WIDTH
   } else if (id === "debug") {
     const ref = api.getPanel("editor") ?? api.getPanel("files") ?? api.getPanel("inspector")
     if (ref) options.position = { referencePanel: ref.id, direction: "below" }
@@ -134,7 +146,11 @@ export function reopenPanel(api: DockviewApi, id: PaneId): void {
   }
 
   api.addPanel(options)
-  api.getPanel(id)?.api.setActive()
+  const panel = api.getPanel(id)
+  // dockview ignores initialWidth when splitting an existing column.
+  if (panel && options.initialWidth) panel.api.setSize({ width: options.initialWidth })
+  if (id === "agents") api.getPanel("inspector")?.api.setSize({ width: INSPECTOR_WIDTH })
+  panel?.api.setActive()
 }
 
 /** Opens (or focuses) a pane. */

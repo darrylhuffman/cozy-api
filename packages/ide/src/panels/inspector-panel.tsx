@@ -18,7 +18,6 @@ import { useWorkflowDrafts } from "@/store/workflow-drafts"
 import { isValidNodeId } from "@/workflow/diagnose"
 import { renameNode } from "@/workflow/graph-ops"
 import { expandTemplate } from "@/workflow/template"
-import { AgentsPanel } from "./agents/agents-panel"
 import { RunTab } from "./run-tab"
 import { TestsTab } from "./tests-tab"
 
@@ -32,17 +31,13 @@ export function InspectorPanel() {
       className="flex h-full flex-col gap-0 bg-card"
     >
       <div className="border-b border-border p-2">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="inspect">Inspect</TabsTrigger>
           <TabsTrigger value="tests" className="gap-1">
             Tests
             <TestsCount />
           </TabsTrigger>
           <TabsTrigger value="run">Run</TabsTrigger>
-          <TabsTrigger value="agents" className="gap-1">
-            <Sparkles aria-hidden className="h-3 w-3 text-ai" />
-            Agents
-          </TabsTrigger>
         </TabsList>
       </div>
       <TabsContent value="inspect" className="flex-1 overflow-auto p-3">
@@ -53,9 +48,6 @@ export function InspectorPanel() {
       </TabsContent>
       <TabsContent value="run" className="flex-1 overflow-auto p-3">
         <RunTab />
-      </TabsContent>
-      <TabsContent value="agents" className="min-h-0 flex-1 overflow-hidden">
-        <AgentsPanel />
       </TabsContent>
     </Tabs>
   )

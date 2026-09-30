@@ -69,8 +69,9 @@ describe("saveLayout", () => {
 })
 
 describe("PANE_IDS and PANE_TITLES", () => {
-  it("has one editor pane; Agents lives in the Inspector", () => {
-    expect([...PANE_IDS].sort()).toEqual(["debug", "editor", "files", "inspector"])
+  it("has one editor pane and Agents as its own pane", () => {
+    expect([...PANE_IDS].sort()).toEqual(["agents", "debug", "editor", "files", "inspector"])
+    expect(PANE_TITLES.agents).toBe("Agents")
     expect(PANE_TITLES.files).toBe("Explorer")
     expect(PANE_TITLES.editor).toBe("Editor")
   })
@@ -92,6 +93,20 @@ describe("reopenPanel", () => {
     }
     expect(opts.position).toEqual({ referencePanel: "editor", direction: "right" })
     expect(opts.initialWidth).toBe(380)
+  })
+
+  it("opens Agents between the editor and the Inspector", () => {
+    const calls: unknown[] = []
+    const api = {
+      getPanel: (id: string) =>
+        id === "inspector" || id === "editor"
+          ? { id, api: { setActive: () => {}, setSize: () => {} } }
+          : undefined,
+      addPanel: (opts: unknown) => calls.push(opts),
+    } as unknown as Parameters<typeof reopenPanel>[0]
+    reopenPanel(api, "agents")
+    const opts = calls[0] as { position?: { referencePanel: string; direction: string } }
+    expect(opts.position).toEqual({ referencePanel: "editor", direction: "right" })
   })
 
   it("puts Debug below the editor", () => {
