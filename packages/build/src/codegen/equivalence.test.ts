@@ -10,6 +10,8 @@ import { runBuild } from "../build/run-build.js"
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const basicApiRoot = join(__dirname, "..", "..", "..", "..", "examples", "basic-api")
 const distDir = join(basicApiRoot, "dist-test")
+// Both sides open the example's pet store; keep it in memory, not data/petstore.db.
+process.env.PETSTORE_DB = ":memory:"
 
 beforeAll(async () => {
   await runBuild({ root: basicApiRoot, outDir: distDir, skipTypes: true })
@@ -19,83 +21,40 @@ afterAll(async () => {
   await rm(distDir, { recursive: true, force: true })
 })
 
-// TODO(workflow-format-migration): This test references the basic-api example
-// workflow at examples/basic-api/workflows/users/create.workflow, which still
-// uses the OLD `config: { path, method }` shape for @core/http-request. The
-// workflow format changed to use `values:` (literals) and reference-only `in:`,
-// and `config:` was dropped. The example file has uncommitted user edits and
-// cannot be touched here — once the user migrates create.workflow to the new
-// format (move `config: { path, method }` → `values: { path, method }`, and
-// `status: 201` from `in:` to `values:`), remove this `.skip` and the test
-// should pass again.
-describe.skip("equivalence: interpreter == codegen", () => {
-  it("POST /users with valid credentials produces identical responses", async () => {
-    // --- Load the workflow file & user nodes (shared between both sides) ---
-    const wfPath = join(basicApiRoot, "workflows", "users", "create.workflow")
-    const wfSource = await readFile(wfPath, "utf-8")
-    const workflow = parseWorkflowFromString(wfSource)
-
-    const saveUser = (
-      await import(pathToFileURL(join(basicApiRoot, "nodes", "users", "save-user.ts")).href)
+describe("equivalence: interpreter == codegen", () => {
+  it("GET /pets/:id produces identical responses", async () => {
+    // --- Load the workflow file & node (shared between both sides) ---
+    const wfPath = join(basicApiRoot, "workflows", "pets", "get.workflow")
+    const workflow = parseWorkflowFromString(await readFile(wfPath, "utf-8"))
+    const findPet = (
+      await import(pathToFileURL(join(basicApiRoot, "nodes", "pets", "find-pet.ts")).href)
     ).default
 
-    // Deterministic services so both sides return the same id.
-    const services = {
-      db: {
-        async createUser(email: string) {
-          return { id: "equivalence-id", email }
-        },
-      },
-      logger: { info: () => {} },
-    }
-
-    const requestBody = { email: "ada@example.com", password: "hunter2" }
-
-    // --- Interpreter side ---
-    const interpreterRes = await testWorkflow(workflow, {
-      request: { body: requestBody },
-      nodes: {
-        "./nodes/users/save-user": saveUser,
-      },
-      services,
-    })
-
-    // --- Codegen side ---
-    // The generated .gen.ts imports `../../../lorien.config.js` and uses
-    // its services directly. To keep the two sides comparable, monkey-patch
-    // the example's in-memory db so it returns the same id as the interpreter.
+    // The generated .gen.ts uses the example's lorien.config services directly,
+    // so the interpreter gets the same ones: both read the seeded pet store.
     const configMod = await import(pathToFileURL(join(basicApiRoot, "lorien.config.ts")).href)
-    const config = configMod.default as {
-      services: {
-        db: { createUser: (e: string, p: string) => Promise<unknown> }
-      }
-    }
-    const originalCreateUser = config.services.db.createUser
-    config.services.db.createUser = async (email: string) => ({
-      id: "equivalence-id",
-      email,
-    })
+    const services = (configMod.default as { services: Record<string, unknown> }).services
 
-    let codegenRes: Response
-    try {
-      const genPath = join(distDir, "workflows", "users", "create.gen.ts")
+    for (const id of ["1", "99999"]) {
+      // --- Interpreter side ---
+      const interpreterRes = await testWorkflow(workflow, {
+        request: { params: { id } },
+        nodes: { "./nodes/pets/find-pet": findPet },
+        services: { ...services, logger: { info: () => {} } },
+      })
+
+      // --- Codegen side ---
+      const genPath = join(distDir, "workflows", "pets", "get.gen.ts")
       const genMod = await import(pathToFileURL(genPath).href)
       const app = new Hono()
       genMod.register(app)
-      codegenRes = await app.request("/users", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(requestBody),
-      })
-    } finally {
-      config.services.db.createUser = originalCreateUser
-    }
+      const codegenRes = await app.request(`/pets/${id}`)
 
-    // --- Assertions ---
-    expect(codegenRes.status).toBe(interpreterRes.status)
-    const codegenBody = await codegenRes.json()
-    expect(codegenBody).toEqual(interpreterRes.body)
-    // (Headers diverge by design — interpreter returns a plain object, codegen
-    // returns a real Response with hono-injected headers. Skip.)
+      // --- Assertions ---
+      expect(codegenRes.status).toBe(interpreterRes.status)
+      expect(await codegenRes.json()).toEqual(interpreterRes.body)
+      // (Headers diverge by design — interpreter returns a plain object, codegen
+      // returns a real Response with hono-injected headers. Skip.)
+    }
   })
 })

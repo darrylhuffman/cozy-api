@@ -1,7 +1,7 @@
-import { expect, openCreateUser, test } from "./fixtures.js"
+import { expect, openAddPet, test } from "./fixtures.js"
 
 test("Ask AI opens an agent chat with the question and the IDE context", async ({ ide }) => {
-  await openCreateUser(ide)
+  await openAddPet(ide)
   await ide.getByRole("button", { name: "Ask AI" }).click()
   await ide.getByLabel("Question for the AI").fill("What does this workflow do?")
   await ide.getByRole("button", { name: "Ask", exact: true }).click()

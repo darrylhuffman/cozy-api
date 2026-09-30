@@ -1,6 +1,25 @@
-# basic-api example
+# basic-api example: a pet store
 
-A minimal lorien-api project demonstrating workflows + nodes + services.
+A small lorien-api project demonstrating workflows, nodes and services, backed by
+a SQLite database (Node's built-in `node:sqlite`, so there is nothing to install).
+
+## Routes
+
+| Method  | Path               | Workflow                              |
+| ------- | ------------------ | ------------------------------------- |
+| `GET`   | `/pets`            | `workflows/pets/list.workflow` (`?status=`, `?species=`) |
+| `POST`  | `/pets`            | `workflows/pets/add.workflow`         |
+| `GET`   | `/pets/:id`        | `workflows/pets/get.workflow`         |
+| `PATCH` | `/pets/:id`        | `workflows/pets/update.workflow`      |
+| `GET`   | `/store/inventory` | `workflows/store/inventory.workflow`  |
+| `POST`  | `/store/orders`    | `workflows/store/orders/place.workflow` |
+
+## Database
+
+The `db` service in `lorien.config.ts` opens `data/petstore.db` (git-ignored),
+creating and seeding it with a few pets the first time. Delete the file to start
+over, or set `PETSTORE_DB` to another path. Tests use `PETSTORE_DB=:memory:`, so
+each run gets a fresh, seeded database. Needs Node 22.13 or newer.
 
 ## Scripts
 
@@ -12,7 +31,8 @@ A minimal lorien-api project demonstrating workflows + nodes + services.
 
 ## Layout
 
-- `workflows/` — HTTP routes as `.workflow` JSON files
-- `nodes/` — typed compute units
+- `workflows/` — HTTP routes as `.workflow` JSON files, with saved requests in `*.requests.json`
+- `nodes/` — typed compute units, with test cases in `*.cases.json`
+- `src/db.ts` — the SQLite pet store behind the `db` service
 - `lorien.config.ts` — service registry
 - `src/server.ts` — dev entry (uses `startLorienServer`)

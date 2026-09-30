@@ -1,0 +1,53 @@
+{
+  "lorien": 1,
+  "cases": [
+    {
+      "id": "ordersAnAvailablePet",
+      "name": "Orders an available pet",
+      "input": { "petId": 7 },
+      "mocks": {
+        "db": {
+          "getPet": {
+            "returns": { "id": 7, "name": "Nori", "species": "cat", "status": "available" }
+          },
+          "placeOrder": {
+            "returns": {
+              "id": 1,
+              "petId": 7,
+              "quantity": 1,
+              "status": "placed",
+              "placedAt": "2026-09-30T00:00:00.000Z"
+            }
+          }
+        }
+      },
+      "expect": { "output": { "status": 201, "body": { "petId": 7, "status": "placed" } } }
+    },
+    {
+      "id": "refusesASoldPet",
+      "name": "Refuses a pet that is already sold",
+      "input": { "petId": 4 },
+      "mocks": {
+        "db": {
+          "getPet": {
+            "returns": { "id": 4, "name": "Captain", "species": "parrot", "status": "sold" }
+          }
+        }
+      },
+      "expect": { "output": { "status": 409, "body": { "error": "Captain is sold" } } }
+    },
+    {
+      "id": "returns404ForAnUnknownPet",
+      "name": "Returns 404 for a pet that does not exist",
+      "input": { "petId": 999 },
+      "mocks": { "db": { "getPet": { "returns": null } } },
+      "expect": { "output": { "status": 404 } }
+    },
+    {
+      "id": "rejectsAZeroQuantity",
+      "name": "Rejects a quantity under 1",
+      "input": { "petId": 1, "quantity": 0 },
+      "expect": { "error": "quantity" }
+    }
+  ]
+}

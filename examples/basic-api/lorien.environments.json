@@ -2,6 +2,6 @@
   "lorien": 1,
   "default": "local",
   "environments": {
-    "local": { "userPrefix": "dev" }
+    "local": { "petPrefix": "dev" }
   }
 }

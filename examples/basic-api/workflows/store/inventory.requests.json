@@ -1,0 +1,31 @@
+{
+  "lorien": 1,
+  "requests": [
+    {
+      "id": "countsPetsByStatus",
+      "name": "Counts pets by status",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/store/inventory",
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 200
+        },
+        {
+          "target": "body",
+          "path": "available",
+          "op": "type",
+          "value": "number"
+        },
+        {
+          "target": "body",
+          "path": "sold",
+          "op": "greaterThan",
+          "value": 0
+        }
+      ]
+    }
+  ]
+}
