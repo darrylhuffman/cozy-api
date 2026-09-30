@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises"
+import { readFile, stat } from "node:fs/promises"
 import { join, relative } from "node:path"
-import { planProviders, scanProviderFiles } from "@darrylondil/lorien-runtime"
+import { loadWorkspace, planProviders, scanProviderFiles } from "@darrylondil/lorien-runtime"
 import * as ts from "typescript"
 import { introspectProviders, toPosix, walkTs } from "../commands/introspect-providers.js"
 
@@ -154,6 +154,21 @@ export async function runCheck(root: string): Promise<CheckResult> {
     visit(sf)
   }
 
+  // A renamed or moved node file leaves workflows pointing at nothing.
+  const ws = await loadWorkspace(root)
+  for (const wf of ws.workflows) {
+    for (const [id, inst] of Object.entries(wf.file.nodes)) {
+      if (inst.uses.startsWith("@") || (await nodeFileExists(root, inst.uses))) continue
+      findings.push({
+        rule: "workflow-uses",
+        severity: "error",
+        file: wf.relativePath,
+        message: `${id} uses \`${inst.uses}\`, but there is no such node file.`,
+        fix: "If you renamed or moved the node, update `uses` to its new path (no extension).",
+      })
+    }
+  }
+
   findings.sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0))
   return {
     findings,
@@ -222,4 +237,15 @@ function exportedFunctions(source: string, fileName: string): { name: string; li
     }
   }
   return out
+}
+
+async function nodeFileExists(root: string, uses: string): Promise<boolean> {
+  for (const ext of [".ts", ".mts", ".js", ".mjs"]) {
+    try {
+      if ((await stat(join(root, `${uses}${ext}`))).isFile()) return true
+    } catch {
+      // Try the next extension.
+    }
+  }
+  return false
 }

@@ -36,6 +36,29 @@ export default defineNode({ run: async (i, { db }) => db.query("select 1") })
     expect((await runCheck(root)).findings).toEqual([])
   })
 
+  it("flags a workflow whose node file was renamed or moved", async () => {
+    const root = project({
+      "nodes/books/find-book.ts": "export default defineNode({})\n",
+      "workflows/books/get.workflow": JSON.stringify({
+        lorien: 1,
+        nodes: {
+          Request: { uses: "@core/http-request", values: { path: "/books/:id" } },
+          Find: { uses: "./nodes/books/find-book", after: ["Request"] },
+          Load: { uses: "./nodes/books/get-book", after: ["Find"] },
+        },
+      }),
+    })
+    const { findings } = await runCheck(root)
+    expect(findings.map((f) => [f.rule, f.severity, f.file, f.message])).toEqual([
+      [
+        "workflow-uses",
+        "error",
+        "workflows/books/get.workflow",
+        "Load uses `./nodes/books/get-book`, but there is no such node file.",
+      ],
+    ])
+  })
+
   it("points a node's driver import at the provider that wraps it", async () => {
     const root = project({
       "providers/db.ts": DB,

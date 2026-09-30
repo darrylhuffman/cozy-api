@@ -124,5 +124,7 @@ export type {
 } from "./workflow/types.js"
 export type { ValidationError, ValidationResult } from "./workflow/validate.js"
 export { validateWorkflow } from "./workflow/validate.js"
+export type { WiringIssue } from "./workflow/wiring.js"
+export { checkWiring } from "./workflow/wiring.js"
 
 export const VERSION = "0.0.0"

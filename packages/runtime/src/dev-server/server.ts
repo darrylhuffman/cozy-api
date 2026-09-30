@@ -17,6 +17,7 @@ import {
 import type { AnyNodeOrTrigger, Services } from "../types.js"
 import { findRouteConflicts, workflowRoutes } from "../workflow/routes.js"
 import { validateWorkflow } from "../workflow/validate.js"
+import { checkWiring } from "../workflow/wiring.js"
 import { withRunContext } from "./console-capture.js"
 import type { RequestEnvelope } from "./debug-protocol.js"
 import type { LoadedWorkflow } from "./load.js"
@@ -129,7 +130,12 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
   }
 
   for (const wf of workflows) {
-    const { errors, depsByNode } = validateWorkflow(wf.file)
+    const { errors: shapeErrors, depsByNode } = validateWorkflow(wf.file)
+    // Wiring needs the shape to be valid first (references to real nodes).
+    const errors =
+      shapeErrors.length > 0
+        ? shapeErrors
+        : checkWiring(wf.file, (uses) => resolveCoreNode(uses) ?? opts.nodes[uses] ?? null)
     if (errors.length > 0) {
       console.error(`Skipping ${wf.relativePath}: ${errors.length} validation error(s)`)
       for (const e of errors) console.error(`  - ${e.nodeId}.${e.field}: ${e.message}`)
