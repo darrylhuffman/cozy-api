@@ -39,6 +39,7 @@ import { mountGitRoutes } from "./git.js"
 import { introspectProviders } from "./introspect-providers.js"
 import { introspectWorkspace, invalidateSchemaCache } from "./introspect-workspace.js"
 import { type NodeCasesRequest, type NodeCasesRun, runNodeCasesInWorker } from "./run-node-cases.js"
+import { attachTerminal, mountTerminalRoutes } from "./terminal.js"
 import {
   deleteWorkspaceItem,
   renameWorkspaceItem,
@@ -339,6 +340,7 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
   // ── Schemas (Zod -> JSON Schema for each node) ─────────────────────────────
 
   mountGitRoutes(app, workspaceRoot)
+  mountTerminalRoutes(app, workspaceRoot)
 
   app.get("/api/workspace/schemas", async (c) => {
     try {
@@ -658,6 +660,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
       projectContext: () => agentProjectContext(workspaceRoot),
     })
     attachDebugWebSocket({ app: currentApp, server: httpServer, session: debugSession })
+    attachTerminal(httpServer, workspaceRoot)
   })
 }
 

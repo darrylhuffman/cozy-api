@@ -3,11 +3,19 @@ import type { AddPanelOptions, DockviewApi } from "dockview-react"
 const STORAGE_KEY = "lorien-ide-layout"
 
 /** Bumped when the set of panes changes; older saved layouts reset to default. */
-const LAYOUT_VERSION = 3
+const LAYOUT_VERSION = 4
 
-export type PaneId = "files" | "git" | "editor" | "inspector" | "debug" | "agents"
+export type PaneId = "files" | "git" | "editor" | "inspector" | "debug" | "terminal" | "agents"
 
-export const PANE_IDS = ["files", "git", "editor", "inspector", "debug", "agents"] as const
+export const PANE_IDS = [
+  "files",
+  "git",
+  "editor",
+  "inspector",
+  "debug",
+  "terminal",
+  "agents",
+] as const
 
 export const PANE_TITLES: Record<PaneId, string> = {
   files: "Explorer",
@@ -15,6 +23,7 @@ export const PANE_TITLES: Record<PaneId, string> = {
   editor: "Editor",
   inspector: "Inspector",
   debug: "Debug",
+  terminal: "Terminal",
   agents: "Agents",
 }
 
@@ -57,7 +66,7 @@ export function saveLayout(api: DockviewApi): void {
  *
  * Explorer: left column, with Source Control as a second tab
  * Editor:   centre (workflows and code share one tab strip)
- * Debug:    under the editor
+ * Debug:    under the editor, with Terminal as a second tab
  * Inspector: right column (Inspect · Tests · Run)
  *
  * Agents is its own pane, closed until the top-bar button or an "Ask AI"
@@ -96,6 +105,13 @@ export function buildDefaultLayout(api: DockviewApi): void {
     title: PANE_TITLES.debug,
     position: { referencePanel: "editor", direction: "below" },
     initialHeight: DEBUG_HEIGHT,
+  })
+  api.addPanel({
+    id: "terminal",
+    component: "terminal",
+    title: PANE_TITLES.terminal,
+    position: { referencePanel: "debug", direction: "within" },
+    inactive: true,
   })
   // dockview only honours initial sizes for the first split, so pin the side
   // columns and the bottom panel explicitly; the editor takes what is left.
@@ -149,13 +165,17 @@ export function reopenPanel(api: DockviewApi, id: PaneId): void {
     if (editor) options.position = { referencePanel: editor.id, direction: "right" }
     else if (inspector) options.position = { referencePanel: inspector.id, direction: "left" }
     options.initialWidth = AGENTS_WIDTH
-  } else if (id === "debug") {
+  } else if (id === "debug" || id === "terminal") {
+    // The bottom panel: a tab beside the other one, else under the editor.
+    const sibling = api.getPanel(id === "debug" ? "terminal" : "debug")
     const ref = api.getPanel("editor") ?? api.getPanel("files") ?? api.getPanel("inspector")
-    if (ref) options.position = { referencePanel: ref.id, direction: "below" }
+    if (sibling) options.position = { referencePanel: sibling.id, direction: "within" }
+    else if (ref) options.position = { referencePanel: ref.id, direction: "below" }
     options.initialHeight = DEBUG_HEIGHT
   } else {
     // editor
-    if (api.getPanel("debug")) options.position = { referencePanel: "debug", direction: "above" }
+    const bottom = api.getPanel("debug") ?? api.getPanel("terminal")
+    if (bottom) options.position = { referencePanel: bottom.id, direction: "above" }
     else if (api.getPanel("files"))
       options.position = { referencePanel: "files", direction: "right" }
     else if (api.getPanel("inspector"))

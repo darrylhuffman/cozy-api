@@ -33,7 +33,7 @@ describe("loadSavedLayout", () => {
   })
 
   it("returns the parsed layout when valid", () => {
-    const fake = { version: 3, state: { panels: {} } }
+    const fake = { version: 4, state: { panels: {} } }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(fake))
     const out = loadSavedLayout()
     expect(out).toEqual(fake)
@@ -53,7 +53,7 @@ describe("saveLayout", () => {
       version: number
       state: unknown
     }
-    expect(stored.version).toBe(3)
+    expect(stored.version).toBe(4)
     expect(stored.state).toEqual(fakeJson)
   })
 
@@ -70,7 +70,16 @@ describe("saveLayout", () => {
 
 describe("PANE_IDS and PANE_TITLES", () => {
   it("has one editor pane, and Agents and Source Control as their own panes", () => {
-    expect([...PANE_IDS].sort()).toEqual(["agents", "debug", "editor", "files", "git", "inspector"])
+    expect([...PANE_IDS].sort()).toEqual([
+      "agents",
+      "debug",
+      "editor",
+      "files",
+      "git",
+      "inspector",
+      "terminal",
+    ])
+    expect(PANE_TITLES.terminal).toBe("Terminal")
     expect(PANE_TITLES.git).toBe("Source Control")
     expect(PANE_TITLES.agents).toBe("Agents")
     expect(PANE_TITLES.files).toBe("Explorer")
@@ -122,6 +131,21 @@ describe("reopenPanel", () => {
     expect(opts.position).toEqual({ referencePanel: "editor", direction: "below" })
   })
 
+  it("puts the Terminal beside Debug, else below the editor", () => {
+    const open = (ids: string[]) => {
+      const calls: unknown[] = []
+      const api = {
+        getPanel: (id: string) =>
+          ids.includes(id) ? { id, api: { setActive: () => {} } } : undefined,
+        addPanel: (opts: unknown) => calls.push(opts),
+      } as unknown as Parameters<typeof reopenPanel>[0]
+      reopenPanel(api, "terminal")
+      return (calls[0] as { position?: unknown }).position
+    }
+    expect(open(["editor", "debug"])).toEqual({ referencePanel: "debug", direction: "within" })
+    expect(open(["editor"])).toEqual({ referencePanel: "editor", direction: "below" })
+  })
+
   it("does nothing when the pane is already open", () => {
     const addPanel = vi.fn()
     const api = {
@@ -134,7 +158,7 @@ describe("reopenPanel", () => {
 })
 
 describe("buildDefaultLayout", () => {
-  it("lays out Explorer (with Source Control), editor, Inspector and Debug and sizes the edges", () => {
+  it("lays out Explorer (with Source Control), editor, Inspector and Debug (with Terminal) and sizes the edges", () => {
     const log: string[] = []
     const added = new Set<string>()
     const api = {
@@ -152,7 +176,7 @@ describe("buildDefaultLayout", () => {
           : undefined,
     } as unknown as Parameters<typeof buildDefaultLayout>[0]
     buildDefaultLayout(api)
-    expect([...added]).toEqual(["files", "editor", "git", "inspector", "debug"])
+    expect([...added]).toEqual(["files", "editor", "git", "inspector", "debug", "terminal"])
     expect(log).toEqual(["size:files:248", "size:inspector:380", "size:debug:240", "active:editor"])
   })
 })
