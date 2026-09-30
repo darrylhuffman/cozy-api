@@ -439,9 +439,14 @@ describe("providers in the workspace API", () => {
     mkdirSync(join(dir, "nodes"), { recursive: true })
     writeFileSync(
       join(dir, "providers", "db.ts"),
-      `export default defineProvider({ create: () => ({}) })\n`,
+      `export default defineProvider({ selector: "db", create: () => ({}) })\n`,
     )
     writeFileSync(join(dir, "providers", "db", "open.ts"), "export {}\n")
+    mkdirSync(join(dir, "providers", "aws"))
+    writeFileSync(
+      join(dir, "providers", "aws", "s3.ts"),
+      `export default defineProvider({ selector: "s3", create: () => ({}) })\n`,
+    )
     writeFileSync(join(dir, "lib", "schemas.ts"), "export {}\n")
     writeFileSync(
       join(dir, "nodes", "list.ts"),
@@ -453,7 +458,7 @@ describe("providers in the workspace API", () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it("lists providers (top level only) and lib in the tree", async () => {
+  it("marks the files that define a provider, in any folder, and lists lib", async () => {
     const { createIdeApp } = await import("./ide.js")
     const res = await createIdeApp(dir).request("/api/workspace/tree")
     const tree = (await res.json()) as Record<string, { children: unknown[] }>
@@ -465,6 +470,7 @@ describe("providers in the workspace API", () => {
     }
     expect(flat(tree.providers).sort()).toEqual([
       "code:providers/db/open.ts",
+      "provider:providers/aws/s3.ts",
       "provider:providers/db.ts",
     ])
     expect(flat(tree.lib)).toEqual(["code:lib/schemas.ts"])
@@ -474,7 +480,10 @@ describe("providers in the workspace API", () => {
     const { createIdeApp } = await import("./ide.js")
     const res = await createIdeApp(dir).request("/api/workspace/providers")
     const json = (await res.json()) as { providers: { name: string; usedBy: string[] }[] }
-    expect(json.providers).toMatchObject([{ name: "db", usedBy: ["nodes/list.ts"] }])
+    expect(json.providers).toMatchObject([
+      { name: "s3", path: "providers/aws/s3.ts", usedBy: [] },
+      { name: "db", usedBy: ["nodes/list.ts"] },
+    ])
   })
 
   it("creates the first file of a folder that does not exist yet", async () => {

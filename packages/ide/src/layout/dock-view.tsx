@@ -13,12 +13,14 @@ import { DebugPanel } from "@/panels/debug-panel"
 import { EditorPanel } from "@/panels/editor-panel"
 import { FilesPanel } from "@/panels/files-panel"
 import { InspectorPanel } from "@/panels/inspector-panel"
+import { SourceControlPanel } from "@/panels/source-control/source-control-panel"
 import { useDockviewApi } from "@/store/dockview-api"
 import { useActiveTheme } from "@/store/theme"
 import { buildDefaultLayout, loadSavedLayout, saveLayout } from "./default-layout"
 
 const components = {
   files: (_props: IDockviewPanelProps) => <FilesPanel />,
+  git: (_props: IDockviewPanelProps) => <SourceControlPanel />,
   editor: (_props: IDockviewPanelProps) => <EditorPanel />,
   inspector: (_props: IDockviewPanelProps) => <InspectorPanel />,
   debug: (_props: IDockviewPanelProps) => <DebugPanel />,

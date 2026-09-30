@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils"
 import { deleteItem, type WorkspaceItem } from "@/lib/workspace-items"
 import { useCommands } from "@/store/commands"
 import { useDockviewApi } from "@/store/dockview-api"
+import { fileChange, GIT_LABEL, useGitStore } from "@/store/git"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
 import { useProvidersStore, useWorkspaceProviders } from "@/store/providers"
 import { useTabsStore } from "@/store/tabs"
@@ -327,6 +328,8 @@ export function FilesPanel() {
           void useProvidersStore.getState().refresh()
           openCodeFile(path)
         }}
+        defaultFolder={menu.tree === "providers" ? menu.folder : "providers"}
+        providersTree={providers}
       />
       <NewNodeDialog
         open={dialog === "new-lib-file"}
@@ -618,7 +621,28 @@ function Leaf({
       <span className="min-w-0 flex-1 truncate">{node.name}</span>
       {node.kind === "provider" && node.path && <ProviderTag path={node.path} />}
       {node.kind === "node" && node.path && <NodeTestCount nodeFile={node.path} />}
+      {node.path && <GitBadge path={node.path} />}
     </button>
+  )
+}
+
+/** M / A / D / U beside a file that differs from the last commit. */
+function GitBadge({ path }: { path: string }) {
+  const change = useGitStore((s) => fileChange(s.status, path))
+  if (!change) return null
+  const label = GIT_LABEL[change.status]
+  return (
+    <span
+      role="img"
+      title={label.title}
+      aria-label={label.title}
+      className={cn(
+        "mr-1 w-3 shrink-0 text-center font-mono text-[10.5px] font-semibold",
+        label.className,
+      )}
+    >
+      {change.status}
+    </span>
   )
 }
 

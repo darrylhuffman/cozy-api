@@ -68,6 +68,8 @@ export interface WorkflowNodeData {
   issues?: Diagnostic[]
   /** Results of this node's test cases, once they have been run. */
   tests?: { total: number; passed: number; failed: number; run: number } | null
+  /** Set when the node was added or changed since the last commit. */
+  gitChange?: "added" | "changed" | undefined
 }
 
 // Using the xyflow NodeProps generic requires the data type to extend Node which
@@ -113,6 +115,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     portBreakpoints,
     issues,
     tests,
+    gitChange,
   } = data as unknown as WorkflowNodeData
   const providers = useProvidersStore((s) => s.nodes[instance.uses])
   const errorCount = issues?.filter((i) => i.severity === "error").length ?? 0
@@ -212,6 +215,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
           {kindLabel}
         </span>
         <span className="min-w-0 flex-1 truncate font-semibold text-[13px]">{displayName}</span>
+        {gitChange && <GitChangeMark change={gitChange} />}
         {tests && tests.run > 0 && <TestsBadge tests={tests} />}
         {issues && issues.length > 0 && <IssueBadge issues={issues} errorCount={errorCount} />}
       </div>
@@ -687,5 +691,22 @@ function TestsBadge({ tests }: { tests: NonNullable<WorkflowNodeData["tests"]> }
       )}
       {ok ? tests.passed : `${tests.failed}/${tests.run}`}
     </span>
+  )
+}
+
+/** A dot on the header of a node that differs from the last commit. */
+export function GitChangeMark({ change }: { change: "added" | "changed" }) {
+  const label = change === "added" ? "Added since the last commit" : "Changed since the last commit"
+  return (
+    <span
+      data-testid="node-git-mark"
+      role="img"
+      aria-label={label}
+      title={label}
+      className={cn(
+        "h-2 w-2 shrink-0 rounded-full",
+        change === "added" ? "bg-success" : "bg-warning",
+      )}
+    />
   )
 }

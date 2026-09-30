@@ -21,7 +21,7 @@ workflows/**/*.requests.json     ← saved requests for that route (tests)
 workflows/**/_middleware.ts      ← middleware for every route in that folder and below
 nodes/**/*.ts                    ← typed compute units, one defineNode per file; ALL business logic
 nodes/**/*.cases.json            ← test cases for the node next to it
-providers/<name>.ts              ← injected dependencies (db, logger, cache, clients), one defineProvider per file
+providers/**/<name>.ts           ← injected dependencies (db, logger, cache, clients), one defineProvider per file, read by its selector
 providers/<name>/                ← code private to one provider (migrations, SQL, client setup)
 lib/                             ← plain shared code: zod schemas, helpers
 src/server.ts                    ← dev server entry (lorien dev runs it); not part of the build
@@ -64,7 +64,7 @@ export default defineNode({
 \`\`\`
 
 Rules:
-- \`inputs\` and \`outputs\` are Zod object schemas. \`run\` receives the parsed input and the providers (destructure the ones you need; each is typed from \`providers/<name>.ts\`).
+- \`inputs\` and \`outputs\` are Zod object schemas. \`run\` receives the parsed input and the providers (destructure the ones you need, by selector; each is typed from its provider).
 - Path params, query values and headers are always strings: use \`z.coerce.number()\` / \`z.coerce.boolean()\` for them.
 - \`await\` provider calls, even synchronous ones: test mocks may stand in for them.
 - Expected failures (not found, conflict, forbidden) are outputs, not throws: return a flag like \`found\` or a \`status\`, and branch on it in the workflow (see "Status codes and branching"). A throw is a bug and answers 500.
@@ -173,7 +173,7 @@ What lorien answers for you:
 
 ## Providers (db, logger, cache, API client)
 
-1. Create \`providers/<name>.ts\` exporting \`defineProvider({ name, color, lifetime, env, uses, create, dispose })\`. The file name is the name nodes read it by (\`http-client.ts\` → \`httpClient\`).
+1. Create \`providers/<name>.ts\` (folders are fine: \`providers/aws/s3.ts\`) exporting \`defineProvider({ selector, color, lifetime, env, uses, create, dispose })\`. \`selector\` is required and is the name nodes read it by: a string literal, starting with a letter, then letters, digits, \`_\` or \`-\`. Use camelCase (\`httpClient\`): a dashed selector must be quoted everywhere (\`{ "http-client": http }\`, \`providers["http-client"]\`). Name the file after the selector, and put a one-sentence doc comment above \`defineProvider\` to describe it (the IDE shows it on the provider's card).
 2. \`lifetime\`: \`singleton\` (default, created once at boot: pools, clients), \`scoped\` (once per request: a logger tagged with the request id), or \`transient\` (every read). A singleton may only \`uses\` other singletons.
 3. \`env\` is a zod object of env vars, checked at boot with a clear error. Set them in \`.env\` (loaded by \`lorien dev\`) or the shell. Don't read \`process.env\` in nodes.
 4. \`create({ env, providers, request })\` returns the value nodes receive. \`providers\` holds the ones listed in \`uses\`; \`request\` (\`requestId\`, \`timestamp\`) is set for scoped and transient providers. \`dispose(value)\` runs at shutdown (or at the end of the request, for scoped).
@@ -185,8 +185,9 @@ import { defineProvider } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
 import { openBookingsDb } from "./db/open.js"
 
+/** The bookings database, opened once at boot and shared by every request. */
 export default defineProvider({
-  name: "Bookings database",
+  selector: "db",
   env: z.object({ BOOKINGS_DB: z.string().default("data/bookings.db") }),
   create: ({ env }) => openBookingsDb(env.BOOKINGS_DB),
   dispose: (db) => db.close(),
@@ -221,7 +222,7 @@ Use middleware for checks that stop a request before any node runs; use \`when\`
 
 | You're adding | Put it in |
 | --- | --- |
-| A database, cache, queue, logger or third-party API client | \`providers/<name>.ts\` |
+| A database, cache, queue, logger or third-party API client | \`providers/<name>.ts\` with a \`selector\` |
 | Anything that decides, validates, transforms or queries data for a route | a node in \`nodes/\` |
 | A zod schema or helper shared by several nodes | \`lib/\` |
 | A new HTTP route | \`workflows/<path>.workflow\` |
@@ -454,7 +455,7 @@ export function renderHelloRequests(): string {
 export function renderLorienConfig(): string {
   return `import { defineConfig } from "@darrylondil/lorien-runtime"
 
-// Databases, loggers and clients go in providers/<name>.ts, one defineProvider each.
+// Databases, loggers and clients go in providers/, one defineProvider each.
 export default defineConfig({
   target: "hono",
 })

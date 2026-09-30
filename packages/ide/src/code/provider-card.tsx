@@ -9,9 +9,8 @@ import {
   useProvidersStore,
   useWorkspaceProviders,
 } from "@/store/providers"
+import { selectorRead } from "@/workflow/provider-template"
 import { resolveAccentColor } from "@/workflow/tailwind-colors"
-
-const PROVIDER_FILE = /^providers\/[^/]+\.[mc]?ts$/
 
 /**
  * What the code editor shows above a provider or node file: for a provider,
@@ -20,7 +19,8 @@ const PROVIDER_FILE = /^providers\/[^/]+\.[mc]?ts$/
  */
 export function FileContextBar({ path }: { path: string }) {
   useWorkspaceProviders()
-  if (PROVIDER_FILE.test(path)) return <ProviderCard path={path} />
+  // Any file under providers/ that defines one; helper code gets no card.
+  if (path.startsWith("providers/")) return <ProviderCard path={path} />
   if (path.startsWith("nodes/")) return <NodeProvidersBar path={path} />
   if (/^workflows\/(.+\/)?_middleware\.[mc]?[jt]s$/.test(path)) return <MiddlewareBar path={path} />
   return null
@@ -66,11 +66,10 @@ function ProviderCard({ path }: { path: string }) {
     >
       <div className="flex min-w-0 items-center gap-2">
         <Plug aria-hidden className="h-3.5 w-3.5 shrink-0" style={{ color: tint }} />
-        <span className="truncate font-semibold text-[13px]">
-          {provider.label ?? provider.name}
-        </span>
-        <span className="text-muted-foreground">
-          nodes read it as <code className="font-mono text-foreground">{provider.name}</code>
+        <code className="truncate font-mono font-semibold text-[13px]">{provider.name}</code>
+        <span className="truncate text-muted-foreground">
+          nodes and middleware read it as{" "}
+          <code className="font-mono">{selectorRead(provider.name)}</code>
         </span>
         <span
           title={LIFETIME_HELP[provider.lifetime]}
@@ -80,6 +79,7 @@ function ProviderCard({ path }: { path: string }) {
           {provider.lifetime}
         </span>
       </div>
+      {provider.description && <div className="text-foreground/85">{provider.description}</div>}
       <div className="text-muted-foreground">
         {LIFETIME_HELP[provider.lifetime]}
         {provider.hasDispose && " Cleaned up by its dispose."}

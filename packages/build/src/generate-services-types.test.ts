@@ -9,12 +9,16 @@ describe("renderProvidersDts", () => {
     const out = renderProvidersDts([
       { name: "db", path: "providers/db.ts" },
       { name: "httpClient", path: "providers/http-client.ts" },
+      { name: "s3-bucket", path: "providers/aws/s3.ts" },
     ])
     expect(out).toMatch(/declare module "@darrylondil\/lorien-runtime"/)
     expect(out).toMatch(/interface Services \{/)
     expect(out).toContain(`db: ProvidedValue<typeof import("../../providers/db.js").default>`)
     expect(out).toContain(
       `httpClient: ProvidedValue<typeof import("../../providers/http-client.js").default>`,
+    )
+    expect(out).toContain(
+      `"s3-bucket": ProvidedValue<typeof import("../../providers/aws/s3.js").default>`,
     )
   })
 
@@ -43,7 +47,10 @@ describe("generateServicesTypes", () => {
 
   it("writes providers.d.ts from providers/ and lorien.config.ts, replacing services.d.ts", async () => {
     mkdirSync(join(dir, "providers", "db"), { recursive: true })
-    writeFileSync(join(dir, "providers", "db.ts"), "export default {}\n")
+    writeFileSync(
+      join(dir, "providers", "db.ts"),
+      `export default defineProvider({ selector: "db", create: () => 1 })\n`,
+    )
     writeFileSync(join(dir, "providers", "db", "open.ts"), "export {}\n")
     writeFileSync(join(dir, "providers", "db.test.ts"), "export {}\n")
     writeFileSync(

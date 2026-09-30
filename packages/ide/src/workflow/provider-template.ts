@@ -1,20 +1,27 @@
 import type { ProviderLifetime } from "@/lib/api"
 
-/** `http-client` → `httpClient`: the name nodes read a provider by. */
-export function providerName(fileBase: string): string {
-  return fileBase.replace(/[-_]+([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase())
+/** What a selector may be; mirrors the runtime's `SELECTOR_PATTERN`. */
+export const SELECTOR_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
+
+/** How a node reads a provider: `{ db }`, or quoted when the selector has a dash. */
+export function selectorRead(selector: string): string {
+  return /^[A-Za-z_$][\w$]*$/.test(selector) ? `{ ${selector} }` : `providers["${selector}"]`
 }
 
-/** Starter source for `providers/<fileBase>.ts`. */
-export function providerTemplate(fileBase: string, lifetime: ProviderLifetime): string {
+/** Starter source for a provider read as `selector`. */
+export function providerTemplate(selector: string, lifetime: ProviderLifetime): string {
   const head = `import { defineProvider } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
 `
-  const read = `Nodes read it as \`${providerName(fileBase)}\`.`
+  // The doc comment is the description on the provider's card in the IDE.
+  const doc = `/** What ${selector} holds, in a sentence. */`
+  const sel = `  selector: ${JSON.stringify(selector)},`
   if (lifetime === "scoped") {
     return `${head}
-/** Created once per request and disposed when it ends. ${read} */
+${doc}
 export default defineProvider({
+${sel}
+  // Created once per request and disposed when it ends.
   lifetime: "scoped",
   create({ request }) {
     return { requestId: request?.requestId }
@@ -25,8 +32,10 @@ export default defineProvider({
   }
   if (lifetime === "transient") {
     return `${head}
-/** Created fresh every time a node reads it, so \`create\` must be synchronous. ${read} */
+${doc}
 export default defineProvider({
+${sel}
+  // Created fresh every time a node reads it, so \`create\` must be synchronous.
   lifetime: "transient",
   create() {
     return {}
@@ -35,8 +44,10 @@ export default defineProvider({
 `
   }
   return `${head}
-/** Created once at startup and shared by every request. ${read} */
+${doc}
 export default defineProvider({
+${sel}
+  // Created once at startup and shared by every request.
   // Environment variables, validated at startup.
   env: z.object({}),
   create({ env }) {
