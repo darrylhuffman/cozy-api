@@ -3,6 +3,13 @@
   "version": "0.1.1",
   "description": "OpenAPI 3.x → lorien defineNode client generator",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/darrylhuffman/lorien.git",
+    "directory": "packages/openapi"
+  },
+  "homepage": "https://github.com/darrylhuffman/lorien#readme",
+  "bugs": "https://github.com/darrylhuffman/lorien/issues",
   "author": "dyudabomb@gmail.com",
   "keywords": [
     "lorien",

@@ -3,6 +3,13 @@
   "version": "0.1.1",
   "description": "Compiler and CLI for lorien projects: lorien build (codegen), lorien dev (interpreter), lorien init, lorien import-openapi",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/darrylhuffman/lorien.git",
+    "directory": "packages/build"
+  },
+  "homepage": "https://github.com/darrylhuffman/lorien#readme",
+  "bugs": "https://github.com/darrylhuffman/lorien/issues",
   "author": "dyudabomb@gmail.com",
   "keywords": [
     "lorien",
