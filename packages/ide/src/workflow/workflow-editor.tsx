@@ -64,7 +64,7 @@ import { extractReferences } from "./parse-references"
 import { PathEdge, type PathMapping } from "./path-edge"
 import { resetNodeConnections } from "./reset-node-connections"
 import { ShortcutsDialog } from "./shortcuts-dialog"
-import { ROOT_HANDLE_ID, WorkflowNode } from "./workflow-node"
+import { nodeTint, ROOT_HANDLE_ID, WorkflowNode, type WorkflowNodeData } from "./workflow-node"
 
 interface Props {
   /** API path like "workflows/users/create.workflow" */
@@ -84,6 +84,14 @@ interface Props {
 // at runtime with what React Flow passes, but TypeScript's strict generics
 // can't verify that without the full Node extension. The cast is safe.
 /** Delete or Backspace removes the selected nodes and edges. */
+function minimapTint(node: RFNode): string {
+  const data = node.data as Partial<WorkflowNodeData>
+  return data.instance ? nodeTint(data.instance.uses, data.color) : "var(--muted-foreground)"
+}
+/** Minimap nodes wear their card colour: a soft fill with a solid outline. */
+const minimapFill = (node: RFNode) => `color-mix(in srgb, ${minimapTint(node)} 45%, var(--popover))`
+const minimapStroke = (node: RFNode) => minimapTint(node)
+
 const DELETE_KEYS = ["Delete", "Backspace"]
 
 const nodeTypes: NodeTypes = { workflow: WorkflowNode as NodeTypes[string] }
@@ -1312,6 +1320,10 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
                 pannable
                 zoomable
                 className="!rounded-lg !border !border-border !bg-card"
+                nodeColor={minimapFill}
+                nodeStrokeColor={minimapStroke}
+                nodeStrokeWidth={2}
+                nodeBorderRadius={4}
                 maskColor="color-mix(in srgb, var(--background) 55%, transparent)"
               />
             )}

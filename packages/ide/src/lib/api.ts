@@ -251,6 +251,48 @@ export async function createWorkspaceFolder(path: string): Promise<void> {
   if (!res.ok) throw await errorFromResponse(res, what)
 }
 
+/**
+ * Renames a workflow or node file. Its saved requests / test cases move with
+ * it, and a renamed node's `uses` are rewritten in every workflow.
+ */
+export async function renameWorkspaceItem(
+  from: string,
+  to: string,
+): Promise<{ moved: Array<[string, string]>; updatedWorkflows: string[] }> {
+  const what = `Renaming ${from}`
+  const res = await request(
+    "/api/workspace/rename",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ from, to }),
+    },
+    what,
+  )
+  if (!res.ok) throw await errorFromResponse(res, what)
+  return res.json()
+}
+
+/** Deletes a workflow or node file along with its saved requests / test cases. */
+export async function deleteWorkspaceItem(path: string): Promise<{ deleted: string[] }> {
+  const what = `Deleting ${path}`
+  const res = await request(
+    `/api/workspace/file?path=${encodeURIComponent(path)}`,
+    { method: "DELETE" },
+    what,
+  )
+  if (!res.ok) throw await errorFromResponse(res, what)
+  return res.json()
+}
+
+/** Workflows that use the node at `path`. */
+export async function fetchItemUsage(path: string): Promise<{ usedBy: string[] }> {
+  const what = `Checking where ${path} is used`
+  const res = await request(`/api/workspace/usage?path=${encodeURIComponent(path)}`, {}, what)
+  if (!res.ok) throw await errorFromResponse(res, what)
+  return res.json()
+}
+
 // ── Agent broker base URLs ────────────────────────────────────────────────────
 
 /**

@@ -49,43 +49,43 @@
 
 :root {
   --radius: 0.5rem;
-  --background: #f3f5f8;
-  --foreground: #161a21;
+  --background: #f3f6f3;
+  --foreground: #141a16;
   --card: #ffffff;
-  --card-foreground: #161a21;
+  --card-foreground: #141a16;
   --popover: #ffffff;
-  --popover-foreground: #161a21;
-  --primary: #8a5f0a;
+  --popover-foreground: #141a16;
+  --primary: #2e7d3c;
   --primary-foreground: #ffffff;
-  --secondary: #eceff4;
-  --secondary-foreground: #161a21;
-  --muted: #eceff4;
-  --muted-foreground: #5e6878;
-  --accent: #e4e8ee;
-  --accent-foreground: #161a21;
+  --secondary: #eaf0eb;
+  --secondary-foreground: #141a16;
+  --muted: #eaf0eb;
+  --muted-foreground: #59665d;
+  --accent: #e0e8e2;
+  --accent-foreground: #141a16;
   --destructive: #c0392b;
   --destructive-foreground: #ffffff;
-  --border: #dfe3ea;
-  --input: #cdd3dd;
-  --ring: #8a5f0a;
-  --success: #1d7a45;
-  --warning: #b4530f;
+  --border: #dae2dc;
+  --input: #c7d2ca;
+  --ring: #2e7d3c;
+  --success: #0f7a64;
+  --warning: #a8560c;
   --info: #1e5fc9;
   --ai: #6b46d6;
-  --canvas-dot: #d6dbe3;
+  --canvas-dot: #d2dcd5;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
   --sidebar: #ffffff;
-  --sidebar-foreground: #161a21;
-  --sidebar-primary: #8a5f0a;
+  --sidebar-foreground: #141a16;
+  --sidebar-primary: #2e7d3c;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eceff4;
-  --sidebar-accent-foreground: #161a21;
-  --sidebar-border: #dfe3ea;
-  --sidebar-ring: #8a5f0a;
+  --sidebar-accent: #eaf0eb;
+  --sidebar-accent-foreground: #141a16;
+  --sidebar-border: #dae2dc;
+  --sidebar-ring: #2e7d3c;
 }
 
 /* Dark: cool blue-grey neutrals, gold accent. Scoped to <html> because React
@@ -93,43 +93,43 @@
  * tokens there. These are the pre-JS defaults; the theme store (lib/themes.ts)
  * sets the active theme's tokens inline on <html>. */
 :root.dark {
-  --background: #0e1116;
-  --foreground: #e8ecf2;
-  --card: #14181f;
-  --card-foreground: #e8ecf2;
-  --popover: #1a1f27;
-  --popover-foreground: #e8ecf2;
-  --primary: #e3b95e;
-  --primary-foreground: #1b1406;
-  --secondary: #222833;
-  --secondary-foreground: #e8ecf2;
-  --muted: #1a1f27;
-  --muted-foreground: #8a94a3;
-  --accent: #222833;
-  --accent-foreground: #e8ecf2;
+  --background: #0d110f;
+  --foreground: #e6ede8;
+  --card: #121714;
+  --card-foreground: #e6ede8;
+  --popover: #171d19;
+  --popover-foreground: #e6ede8;
+  --primary: #7bd389;
+  --primary-foreground: #08170c;
+  --secondary: #1f2722;
+  --secondary-foreground: #e6ede8;
+  --muted: #171d19;
+  --muted-foreground: #8b978f;
+  --accent: #1f2722;
+  --accent-foreground: #e6ede8;
   --destructive: #f4776a;
   --destructive-foreground: #1b0a08;
-  --border: #232a34;
-  --input: #313946;
-  --ring: #e3b95e;
-  --success: #63cb8d;
-  --warning: #f7944a;
+  --border: #212a24;
+  --input: #2f3a33;
+  --ring: #7bd389;
+  --success: #4cc9a8;
+  --warning: #f2b45a;
   --info: #74adff;
   --ai: #bba2ff;
-  --canvas-dot: #242b36;
+  --canvas-dot: #222b25;
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: #14181f;
-  --sidebar-foreground: #e8ecf2;
-  --sidebar-primary: #e3b95e;
-  --sidebar-primary-foreground: #1b1406;
-  --sidebar-accent: #222833;
-  --sidebar-accent-foreground: #e8ecf2;
-  --sidebar-border: #232a34;
-  --sidebar-ring: #e3b95e;
+  --sidebar: #121714;
+  --sidebar-foreground: #e6ede8;
+  --sidebar-primary: #7bd389;
+  --sidebar-primary-foreground: #08170c;
+  --sidebar-accent: #1f2722;
+  --sidebar-accent-foreground: #e6ede8;
+  --sidebar-border: #212a24;
+  --sidebar-ring: #7bd389;
 }
 
 @layer base {
