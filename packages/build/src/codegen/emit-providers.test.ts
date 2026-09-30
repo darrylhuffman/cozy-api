@@ -57,8 +57,9 @@ describe("emitProviders — generated module", () => {
        create: ({ providers }) => ({ url: providers.url, closed: false }),
        dispose: (db) => { db.closed = true }`,
     )
+    mkdirSync(join(dir, "providers", "obs"))
     w(
-      "log",
+      "obs/log",
       `lifetime: "scoped", uses: ["db"],
        create: ({ request, providers }) => ({ id: request.requestId, db: providers.db }),
        dispose: (log) => { log.disposed = true }`,
@@ -73,9 +74,10 @@ describe("emitProviders — generated module", () => {
       providers: [
         info({ name: "url", path: "providers/url.js", hasEnv: true }),
         info({ name: "db", path: "providers/db.js", uses: ["url"], hasDispose: true }),
+        // A dashed selector, in a folder.
         info({
-          name: "log",
-          path: "providers/log.js",
+          name: "request-log",
+          path: "providers/obs/log.js",
           lifetime: "scoped",
           uses: ["db"],
           hasDispose: true,
@@ -89,11 +91,12 @@ describe("emitProviders — generated module", () => {
 
     expect(gen.singletons).toMatchObject({ url: "mem", db: { url: "mem" }, flag: true })
     const scope = await gen.openScope({ requestId: "r1", timestamp: 0 })
-    expect(scope.values.log).toMatchObject({ id: "r1", db: gen.singletons.db })
+    expect(source).toContain(`const scoped_request_log = await`)
+    expect(scope.values["request-log"]).toMatchObject({ id: "r1", db: gen.singletons.db })
     expect(scope.values.perReq).toBe("r1")
     expect(scope.values.clock).not.toBe(scope.values.clock)
     await scope.dispose()
-    expect(scope.values.log.disposed).toBe(true)
+    expect(scope.values["request-log"].disposed).toBe(true)
     await gen.disposeSingletons()
     expect(gen.singletons.db.closed).toBe(true)
   })

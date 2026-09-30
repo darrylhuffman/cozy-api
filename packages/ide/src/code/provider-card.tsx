@@ -9,9 +9,8 @@ import {
   useProvidersStore,
   useWorkspaceProviders,
 } from "@/store/providers"
+import { selectorRead } from "@/workflow/provider-template"
 import { resolveAccentColor } from "@/workflow/tailwind-colors"
-
-const PROVIDER_FILE = /^providers\/[^/]+\.[mc]?ts$/
 
 /**
  * What the code editor shows above a provider or node file: for a provider,
@@ -20,7 +19,8 @@ const PROVIDER_FILE = /^providers\/[^/]+\.[mc]?ts$/
  */
 export function FileContextBar({ path }: { path: string }) {
   useWorkspaceProviders()
-  if (PROVIDER_FILE.test(path)) return <ProviderCard path={path} />
+  // Any file under providers/ that defines one; helper code gets no card.
+  if (path.startsWith("providers/")) return <ProviderCard path={path} />
   if (path.startsWith("nodes/")) return <NodeProvidersBar path={path} />
   if (/^workflows\/(.+\/)?_middleware\.[mc]?[jt]s$/.test(path)) return <MiddlewareBar path={path} />
   return null
@@ -69,7 +69,7 @@ function ProviderCard({ path }: { path: string }) {
         <code className="truncate font-mono font-semibold text-[13px]">{provider.name}</code>
         <span className="truncate text-muted-foreground">
           nodes and middleware read it as{" "}
-          <code className="font-mono">providers.{provider.name}</code>
+          <code className="font-mono">{selectorRead(provider.name)}</code>
         </span>
         <span
           title={LIFETIME_HELP[provider.lifetime]}

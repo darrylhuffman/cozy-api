@@ -56,7 +56,7 @@ files define HTTP endpoints as dependency graphs of typed nodes.
 
 - \`workflows/**/*.workflow\` — HTTP routes as JSON dependency graphs
 - \`nodes/**/*.ts\` — typed compute units (via \`defineNode\` from \`@darrylondil/lorien-runtime\`)
-- \`providers/<name>.ts\` — injected dependencies (db, logger, clients), one \`defineProvider\` each; business logic stays in nodes
+- \`providers/\` — injected dependencies (db, logger, clients), one \`defineProvider\` per file, read by its \`selector\`; business logic stays in nodes
 - \`lib/\` — plain shared code (zod schemas, helpers)
 - \`lorien.config.ts\` — build target
 

@@ -35,7 +35,15 @@ export function emitProviders(opts: EmitProvidersOptions): EmitProvidersResult {
   const legacyValues = opts.legacy?.values ?? []
   const legacyFactories = opts.legacy?.factories ?? []
   const hasLegacy = legacyValues.length + legacyFactories.length > 0
-  const ident = (name: string) => `provider_${name}`
+  // Selectors may hold dashes: `my-db` becomes `provider_my_db`, numbered if
+  // that clashes with a `my_db`.
+  const safe = new Map<string, string>()
+  for (const [i, p] of providers.entries()) {
+    const base = p.name.replace(/-/g, "_")
+    const taken = [...safe.values()].includes(base)
+    safe.set(p.name, taken ? `${base}_${i}` : base)
+  }
+  const ident = (name: string) => `provider_${safe.get(name)}`
   const perRequestProviders = providers.filter((p) => p.lifetime !== "singleton")
   const perRequest = perRequestProviders.length > 0 || legacyFactories.length > 0
 
@@ -67,7 +75,9 @@ export function emitProviders(opts: EmitProvidersOptions): EmitProvidersResult {
     lines.push(`  return undefined`)
     lines.push(`}`)
     for (const p of withEnv) {
-      lines.push(`const env_${p.name} = readEnv("${p.name}", ${ident(p.name)}.env)`)
+      lines.push(
+        `const env_${safe.get(p.name)} = readEnv(${JSON.stringify(p.name)}, ${ident(p.name)}.env)`,
+      )
     }
     lines.push(`if (envProblems.length > 0) {`)
     lines.push(
@@ -75,7 +85,7 @@ export function emitProviders(opts: EmitProvidersOptions): EmitProvidersResult {
     )
     lines.push(`}`)
   }
-  const envOf = (p: EmitProviderInfo) => (p.hasEnv ? `env_${p.name}` : "undefined")
+  const envOf = (p: EmitProviderInfo) => (p.hasEnv ? `env_${safe.get(p.name)}` : "undefined")
   const depsOf = (p: EmitProviderInfo, from: string) =>
     p.uses.length === 0
       ? "{}"
@@ -130,7 +140,7 @@ export function emitProviders(opts: EmitProvidersOptions): EmitProvidersResult {
     }
     for (const p of providers) {
       if (p.lifetime === "scoped") {
-        const v = `scoped_${p.name}`
+        const v = `scoped_${safe.get(p.name)}`
         lines.push(`  const ${v} = await ${createCall(p, "values", "request")}`)
         lines.push(`  values[${JSON.stringify(p.name)}] = ${v}`)
         if (p.hasDispose) {

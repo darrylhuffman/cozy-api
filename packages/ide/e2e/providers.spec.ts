@@ -53,18 +53,19 @@ test("shows the providers a node reads on its card", async ({ ide }) => {
 })
 
 test("creates a provider from the explorer", async ({ ide }) => {
-  const file = join(EXAMPLE, "providers", "e2e-cache.ts")
+  const file = join(EXAMPLE, "providers", "e2eCache.ts")
   const typings = join(EXAMPLE, ".lorien", "types", "providers.d.ts")
   try {
     await ide.getByText("PROVIDERS").hover()
     await ide.getByRole("button", { name: "New provider" }).click()
-    await ide.getByLabel("Name").fill("e2e-cache")
-    await expect(ide.getByRole("dialog")).toContainText("e2eCache")
+    await ide.getByLabel("Selector").fill("e2eCache")
+    await expect(ide.getByRole("dialog")).toContainText("Nodes read it as { e2eCache }")
+    await expect(ide.getByRole("dialog")).toContainText("Creates providers/e2eCache.ts")
     await ide.getByText("Scoped", { exact: true }).click()
     await ide.screenshot({ path: "test-results/new-provider.png" })
     await ide.getByRole("button", { name: "Create" }).click()
 
-    await expect(ide.getByRole("button", { name: "e2e-cache.ts scoped" })).toBeVisible()
+    await expect(ide.getByRole("button", { name: "e2eCache.ts scoped" })).toBeVisible()
     const card = ide.getByRole("region", { name: "Provider e2eCache" })
     await expect(card).toContainText("No nodes yet")
     expect(existsSync(file)).toBe(true)

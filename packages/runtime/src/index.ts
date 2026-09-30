@@ -65,14 +65,24 @@ export type {
   ProviderCreateContext,
   ProviderLifetime,
 } from "./providers/define-provider.js"
-export { defineProvider, isProvider } from "./providers/define-provider.js"
-export type { ImportProvidersResult, LoadProvidersOptions, ProviderFile } from "./providers/load.js"
+export {
+  defineProvider,
+  isProvider,
+  SELECTOR_PATTERN,
+  selectorProblem,
+} from "./providers/define-provider.js"
+export type {
+  ImportProvidersResult,
+  LoadProvidersOptions,
+  ProviderFile,
+  ScanProvidersResult,
+} from "./providers/load.js"
 export {
   findProviderFiles,
   importLegacyServices,
   importProviders,
   loadProviders,
-  providerName,
+  scanProviderFiles,
 } from "./providers/load.js"
 export type { ProviderPlan, ProviderPlanEntry } from "./providers/plan.js"
 export { planProviders } from "./providers/plan.js"

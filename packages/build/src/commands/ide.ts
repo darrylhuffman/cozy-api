@@ -9,6 +9,7 @@ import {
   attachDebugWebSocket,
   type DebugIntegration,
   DebugSession,
+  findProviderFiles,
   importMiddleware,
   importNodes,
   installConsoleCapture,
@@ -45,7 +46,7 @@ import { collectWorkspaceTypes } from "./workspace-types.js"
 
 // ── FileNode types (mirrors packages/ide/src/data/mock-files.ts) ─────────────
 /**
- * "provider" is a top-level `providers/*.ts`, "middleware" a `workflows/**\/_middleware.ts`;
+ * "provider" is a file under `providers/` that calls `defineProvider`, "middleware" a `workflows/**\/_middleware.ts`;
  * "code" is any other TypeScript file.
  */
 export type FileKind = "workflow" | "node" | "provider" | "middleware" | "code"
@@ -164,6 +165,7 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
         "p",
         "provider",
         "**/*.ts",
+        new Set((await findProviderFiles(workspaceRoot)).map((f) => f.path)),
       )
       const lib = await buildFileTree(
         workspaceRoot,
@@ -603,7 +605,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
   })
   const watcherReady = new Promise<void>((r) => workflowWatcher.once("ready", r))
 
-  // Adding or removing a provider changes what nodes can read: regenerate
+  // Adding, removing or re-selecting a provider changes what nodes can read: regenerate
   // .lorien/types/providers.d.ts so the editor types it straight away. The
   // running container picks new providers up on the next `lorien ide`.
   const regenerateProviderTypes = debounce(() => {
@@ -615,11 +617,11 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     ignored: onlyWorkspaceDirs(workspaceRoot, ["providers"]),
     ignoreInitial: true,
     persistent: true,
-    depth: 1,
     usePolling: process.platform === "win32",
     interval: 50,
   })
   providersWatcher.on("add", regenerateProviderTypes)
+  providersWatcher.on("change", regenerateProviderTypes)
   providersWatcher.on("unlink", regenerateProviderTypes)
 
   return new Promise((resolveStarted) => {
@@ -674,6 +676,8 @@ async function buildFileTree(
   idPrefix: string,
   kind: FileKind,
   _pattern: string,
+  /** For the providers tree: the files that define a provider; the rest is their code. */
+  providerPaths?: ReadonlySet<string>,
 ): Promise<FileFolder> {
   const name = basename(dir)
 
@@ -710,12 +714,11 @@ async function buildFileTree(
           type: "file",
           id,
           name: entry.name,
-          // Only top-level files in providers/ are providers; the rest is
+          // Only files that define a provider are providers; the rest is
           // private code for one of them.
           kind: isMiddleware
             ? "middleware"
-            : kind === "provider" &&
-                (absDir !== dir || /\.(test|spec|d)\.[mc]?ts$/.test(entry.name))
+            : kind === "provider" && !providerPaths?.has(relPath.replace(/\\/g, "/"))
               ? "code"
               : kind,
           path: relPath.replace(/\\/g, "/"),

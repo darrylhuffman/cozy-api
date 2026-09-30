@@ -21,7 +21,36 @@ export interface ProviderCreateContext<E, U extends string> {
   request: ServiceContext | null
 }
 
+/**
+ * What a selector may be: a letter, then letters, digits, `_` or `-`, up to 64
+ * characters (`db`, `PetStore`, `rate_limiter`, `http-client`).
+ */
+export const SELECTOR_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
+
+/** Keys every object already has, which a selector must not shadow. */
+const RESERVED_SELECTORS = new Set([
+  ...Object.getOwnPropertyNames(Object.prototype),
+  "then",
+  "prototype",
+])
+
+/** Why `selector` can't name a provider, or null when it can. */
+export function selectorProblem(selector: unknown): string | null {
+  if (typeof selector !== "string" || selector === "") return "selector is required"
+  if (!SELECTOR_PATTERN.test(selector)) {
+    return `selector "${selector}" must start with a letter and use only letters, digits, _ or - (64 at most)`
+  }
+  if (RESERVED_SELECTORS.has(selector)) return `selector "${selector}" is reserved`
+  return null
+}
+
 export interface DefineProviderInput<T, S extends EnvSchema | undefined, U extends string> {
+  /**
+   * The name nodes and middleware read this provider by: `selector: "db"` is
+   * `run(input, { db })`. Letters, digits, `_` and `-`, starting with a letter;
+   * prefer camelCase, since a dashed selector needs quotes (`providers["my-db"]`).
+   */
+  selector: string
   /** IDE accent color. No runtime effect. */
   color?: TailwindColor
   /** Defaults to `singleton`. */
@@ -42,6 +71,7 @@ export interface Provider<
   U extends string = string,
 > {
   readonly kind: "provider"
+  readonly selector: string
   readonly color?: TailwindColor
   readonly lifetime: ProviderLifetime
   readonly env?: S
@@ -60,15 +90,15 @@ export type ProvidedValue<P> = P extends { create(...args: never[]): infer T } ?
 
 /**
  * Declares a provider: a dependency injected into every node and middleware,
- * like a registration in an ASP.NET `Program.cs`. Put one per file in
- * `providers/`; the file name is the name nodes read it by (`providers/db.ts`
- * becomes `db`).
+ * like a registration in an ASP.NET `Program.cs`. Put one per file anywhere
+ * under `providers/`; its `selector` is the name nodes read it by.
  *
  * Providers hold connections and clients, never business logic: that belongs
  * in nodes.
  *
  * @example
  * export default defineProvider({
+ *   selector: "db",
  *   env: z.object({ DATABASE_URL: z.string() }),
  *   create: ({ env }) => new Pool({ connectionString: env.DATABASE_URL }),
  *   dispose: (pool) => pool.end(),
@@ -79,8 +109,11 @@ export function defineProvider<
   S extends EnvSchema | undefined = undefined,
   U extends string = never,
 >(def: DefineProviderInput<T, S, U>): Provider<T, S, U> {
+  const problem = selectorProblem(def.selector)
+  if (problem) throw new Error(`defineProvider: ${problem}`)
   return {
     kind: "provider",
+    selector: def.selector,
     color: def.color,
     lifetime: def.lifetime ?? "singleton",
     env: def.env,

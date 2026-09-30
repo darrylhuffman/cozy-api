@@ -48,7 +48,7 @@ export interface ProvidersIntrospection {
 }
 
 /**
- * Reads `providers/*.ts` and `nodes/**` statically (TypeScript's parser, no
+ * Reads the providers under `providers/` and `nodes/**` statically (TypeScript's parser, no
  * import), so the IDE always sees the files as they are on disk: each
  * provider's lifetime, deps, env vars and packages, and which providers each
  * node's `run` reads.
@@ -77,7 +77,9 @@ export async function introspectProviders(
       f.path.replace(/^providers\//, "").replace(/\.[mc]?[jt]s$/, ""),
     )
     const packages = new Set(info.packages)
+    const providerPaths = new Set(files.map((p) => p.path))
     for (const abs of await walkTs(privateDir)) {
+      if (providerPaths.has(toPosix(relative(root, abs)))) continue
       for (const p of importedPackages(await readFile(abs, "utf-8"))) packages.add(p)
     }
     providers.push({
@@ -210,7 +212,8 @@ function envVars(expr: ts.Expression, env: Record<string, string | undefined>): 
 
 /**
  * Provider names a node's `run` reads: destructured from its second
- * parameter (`run(input, { db })`) or accessed on it (`providers.db`).
+ * parameter (`run(input, { db })`, `{ "my-db": myDb }`) or accessed on it
+ * (`providers.db`, `providers["my-db"]`).
  */
 export function providersReadByNode(source: string, known: ReadonlySet<string>): string[] {
   const sf = ts.createSourceFile("node.ts", source, ts.ScriptTarget.Latest, true)
@@ -251,6 +254,14 @@ function readsFromRun(def: ts.ObjectLiteralExpression, paramIndex: number): stri
         n.expression.text === id
       ) {
         used.add(n.name.text)
+      }
+      if (
+        ts.isElementAccessExpression(n) &&
+        ts.isIdentifier(n.expression) &&
+        n.expression.text === id &&
+        ts.isStringLiteralLike(n.argumentExpression)
+      ) {
+        used.add(n.argumentExpression.text)
       }
       if (ts.isVariableDeclaration(n) && ts.isObjectBindingPattern(n.name) && n.initializer) {
         const init = ts.isAsExpression(n.initializer) ? n.initializer.expression : n.initializer

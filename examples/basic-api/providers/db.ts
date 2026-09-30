@@ -9,6 +9,7 @@ import { openPetStoreDb } from "./db/open.js"
  * throwaway database.
  */
 export default defineProvider({
+  selector: "db",
   color: "sky",
   env: z.object({
     PETSTORE_DB: z.string().default(join(import.meta.dirname, "..", "data", "petstore.db")),

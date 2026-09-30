@@ -19,7 +19,7 @@ This is a lorien-api project. HTTP endpoints are defined as \`.workflow\` files:
 workflows/**/*.workflow   ← HTTP routes (you author these)
 workflows/**/_middleware.ts ← middleware for every route in that folder and below
 nodes/**/*.ts             ← typed compute units, one defineNode per file; ALL business logic
-providers/<name>.ts       ← injected dependencies (db, logger, cache, clients), one defineProvider per file
+providers/**/<name>.ts    ← injected dependencies (db, logger, cache, clients), one defineProvider per file, named by its selector
 providers/<name>/         ← code private to one provider (migrations, SQL, client setup)
 lib/                      ← plain shared code: zod schemas, helpers
 lorien.config.ts          ← build target only
@@ -53,7 +53,7 @@ export default defineNode({
 
 Rules:
 - \`inputs\` and \`outputs\` are Zod object schemas.
-- \`run\` is \`async\`; receives the typed input and the providers (destructure the ones you need; each is typed from its \`providers/<name>.ts\`).
+- \`run\` is \`async\`; receives the typed input and the providers (destructure the ones you need; each is typed from its provider, by selector).
 - Don't throw. Return shaped errors via the output schema if needed.
 - One node per file. Filename kebab-case. Export default.
 
@@ -106,7 +106,7 @@ Rules:
 2. In its \`in\` block, reference upstream outputs as \`<id>.<field>\`.
 
 **Add a provider (db, logger, cache, API client)**
-1. Create \`providers/<name>.ts\` exporting \`defineProvider({ lifetime, env, uses, create, dispose })\`. The file name is the name nodes read it by (\`http-client.ts\` → \`httpClient\`). It has no other name: put a one-sentence doc comment above it to describe it (the IDE shows it on the provider's card).
+1. Create \`providers/<name>.ts\` (folders are fine: \`providers/aws/s3.ts\`) exporting \`defineProvider({ selector, lifetime, env, uses, create, dispose })\`. \`selector\` is required and is the name nodes read it by: a string literal, starting with a letter, then letters, digits, \`_\` or \`-\`. Use camelCase (\`httpClient\`): a dashed selector must be quoted everywhere (\`{ "http-client": http }\`, \`providers["http-client"]\`). Name the file after the selector, and put a one-sentence doc comment above \`defineProvider\` to describe it (the IDE shows it on the provider's card).
 2. Pick a lifetime: \`singleton\` (default, once at boot: pools, clients), \`scoped\` (once per request: a logger tagged with the request id), or \`transient\` (every read). A singleton may only \`uses\` other singletons.
 3. Declare env vars in \`env\` (a zod object); boot fails with a clear message when one is missing. Don't read \`process.env\` in nodes.
 4. Destructure it from the second argument of \`run()\` in any node that needs it.
@@ -117,7 +117,9 @@ import { defineProvider } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
 import { Pool } from "pg"
 
+/** The Postgres connection pool, shared by every request. */
 export default defineProvider({
+  selector: "db",
   env: z.object({ DATABASE_URL: z.string() }),
   create: ({ env }) => new Pool({ connectionString: env.DATABASE_URL }),
   dispose: (pool) => pool.end(),
@@ -147,7 +149,7 @@ export default defineMiddleware({
 
 | You're adding | Put it in |
 | --- | --- |
-| A database, cache, queue, logger or third-party API client | \`providers/<name>.ts\` |
+| A database, cache, queue, logger or third-party API client | \`providers/<name>.ts\` with a \`selector\` |
 | Anything that decides, validates, transforms or queries data for a route | a node in \`nodes/\` |
 | A zod schema or helper shared by several nodes | \`lib/\` |
 | A new HTTP route | \`workflows/<path>.workflow\` |
@@ -314,7 +316,7 @@ export function renderGitignore(): string {
 export function renderLorienConfig(): string {
   return `import { defineConfig } from "@darrylondil/lorien-runtime"
 
-// Databases, loggers and clients go in providers/<name>.ts, one defineProvider each.
+// Databases, loggers and clients go in providers/, one defineProvider each.
 export default defineConfig({
   target: "hono",
 })

@@ -76,7 +76,7 @@ describe("mountWorkflows with middleware", () => {
 
   function mount(middleware: Record<string, ReturnType<typeof defineMiddleware>[]>) {
     const container = createProviderContainer({
-      log: defineProvider({ lifetime: "scoped", create: (): string[] => [] }),
+      log: defineProvider({ selector: "log", lifetime: "scoped", create: (): string[] => [] }),
     })
     const app = new Hono()
     mountWorkflows(
