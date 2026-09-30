@@ -43,6 +43,46 @@
           "value": "cat"
         }
       ]
+    },
+    {
+      "id": "filtersByStatus",
+      "name": "Filters by status",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/pets",
+      "query": {
+        "status": "sold"
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 200
+        },
+        {
+          "target": "body",
+          "path": "[0].status",
+          "op": "equals",
+          "value": "sold"
+        }
+      ]
+    },
+    {
+      "id": "rejectsAnUnknownStatus",
+      "name": "Rejects an unknown status",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/pets",
+      "query": {
+        "status": "lost"
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "greaterThan",
+          "value": 399
+        }
+      ]
     }
   ]
 }

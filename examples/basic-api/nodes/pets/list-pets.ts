@@ -1,7 +1,6 @@
 import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
-import type { PetStoreDb } from "../../src/db.js"
-import { petSchema, petStatusSchema } from "../../src/schemas.js"
+import { petSchema, petStatusSchema } from "../../lib/schemas.js"
 
 export default defineNode({
   name: "List Pets",
@@ -19,8 +18,7 @@ export default defineNode({
    * @param input - Optional `status` and `species` filters, usually from the query string.
    * @returns Every matching pet, oldest first.
    */
-  async run({ status, species }, services) {
-    const { db } = services as { db: PetStoreDb }
+  async run({ status, species }, { db }) {
     const pets = await db.listPets({
       ...(status ? { status } : {}),
       ...(species ? { species } : {}),

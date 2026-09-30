@@ -7,16 +7,16 @@ import { pathToFileURL } from "node:url"
 import {
   type AnyNodeOrTrigger,
   attachDebugWebSocket,
-  createServiceResolver,
   type DebugIntegration,
   DebugSession,
   importNodes,
   installConsoleCapture,
   isLoopbackOriginString,
   type LoadedWorkflow,
+  loadProviders,
   loadWorkspace,
   mountWorkflows,
-  type Services,
+  type ProviderContainer,
 } from "@darrylondil/lorien-runtime"
 import { attachAgentBroker, mountAgentBroker } from "@darrylondil/lorien-runtime/agent-broker"
 import { serve } from "@hono/node-server"
@@ -26,6 +26,7 @@ import type { Command } from "commander"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
+import { generateServicesTypes } from "../generate-services-types.js"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
 import { makeDebugIntegration } from "./debug-integration.js"
 import { introspectWorkspace, invalidateSchemaCache } from "./introspect-workspace.js"
@@ -399,13 +400,13 @@ function buildAppForWorkspace(params: {
   ideDistRoot: string
   loadedWorkflows: LoadedWorkflow[]
   loadedNodes: Record<string, AnyNodeOrTrigger>
-  loadedServices: Services
+  loadedProviders: ProviderContainer
   debug: DebugIntegration
 }): Hono {
   const app = createIdeApp(params.workspaceRoot)
   mountWorkflows(app, params.loadedWorkflows, {
     nodes: params.loadedNodes,
-    services: params.loadedServices,
+    providers: params.loadedProviders,
     debug: params.debug,
   })
   // Static SPA — must be inside the build helper so it survives hot-reload.
@@ -452,33 +453,17 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
   }
   const loadedNodes = { ...importResult.nodes }
 
-  // ── Load services from lorien.config.ts (mirrors startLorienServer) ───────
+  // ── Load providers (mirrors startLorienServer) and type them for the editor ──
 
-  const loadedServices = await (async () => {
-    const configPath = join(workspaceRoot, "lorien.config.ts")
-    let configServices: Record<string, unknown> = {}
-    try {
-      await stat(configPath)
-      try {
-        const mod = (await import(pathToFileURL(configPath).href)) as {
-          default?: { services?: Record<string, unknown> }
-        }
-        if (mod.default?.services) {
-          configServices = mod.default.services
-        }
-      } catch {
-        // Config failed to load — proceed with empty services
-      }
-    } catch {
-      // No lorien.config.ts — services will be empty
-    }
-    const resolver = createServiceResolver(configServices)
-    const resolved = await resolver.resolve({
-      requestId: `ide-boot-${Math.random().toString(36).slice(2)}`,
-      timestamp: Date.now(),
-    })
-    return resolved as Services
-  })()
+  const loadedProviders = await loadProviders(workspaceRoot)
+  try {
+    await loadedProviders.init()
+  } catch (e) {
+    console.error(`[lorien] ${(e as Error).message}`)
+  }
+  await generateServicesTypes(workspaceRoot).catch((e: unknown) => {
+    console.error(`[lorien] generating provider types failed: ${(e as Error).message}`)
+  })
 
   // ── DebugSession + console capture + DebugIntegration ────────────────────
 
@@ -505,7 +490,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     ideDistRoot,
     loadedWorkflows,
     loadedNodes,
-    loadedServices,
+    loadedProviders,
     debug,
   })
 
@@ -538,7 +523,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
         ideDistRoot,
         loadedWorkflows: ws.workflows,
         loadedNodes,
-        loadedServices,
+        loadedProviders,
         debug,
       })
       console.log(`lorien IDE: reloaded ${ws.workflows.length} workflow(s)`)

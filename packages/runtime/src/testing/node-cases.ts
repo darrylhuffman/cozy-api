@@ -1,6 +1,5 @@
-import { readdir, readFile, stat } from "node:fs/promises"
+import { readdir, readFile } from "node:fs/promises"
 import { join, relative, sep } from "node:path"
-import { pathToFileURL } from "node:url"
 import {
   CASES_SUFFIX,
   judgeCase,
@@ -10,8 +9,8 @@ import {
   parseCaseFile,
 } from "../cases/index.js"
 import { importNodes } from "../dev-server/import-nodes.js"
-import { createServiceResolver } from "../services/resolve.js"
-import type { AnyNodeOrTrigger, Node, Services, WorkflowConfig } from "../types.js"
+import { loadProviders } from "../providers/load.js"
+import type { AnyNodeOrTrigger, Node, Services } from "../types.js"
 
 export interface RunNodeCaseOptions {
   services?: Services
@@ -132,19 +131,20 @@ export async function findCaseFiles(root: string): Promise<string[]> {
   return out.sort()
 }
 
+/**
+ * The providers (and legacy `lorien.config.ts` services) a node would get in
+ * one request. When they can't be created (say an env var is missing), cases
+ * still run: services they mock work, and the rest fail with a clear error.
+ */
 export async function loadConfiguredServices(root: string): Promise<Services> {
-  const configPath = join(root, "lorien.config.ts")
   try {
-    await stat(configPath)
-  } catch {
+    const container = await loadProviders(root)
+    const scope = await container.open({ requestId: `cases-${Date.now()}`, timestamp: Date.now() })
+    return scope.values as Services
+  } catch (e) {
+    console.warn(`[lorien] providers unavailable for node cases: ${(e as Error).message}`)
     return {} as Services
   }
-  const mod = (await import(pathToFileURL(configPath).href)) as { default?: WorkflowConfig }
-  const resolver = createServiceResolver(mod.default?.services ?? {})
-  return (await resolver.resolve({
-    requestId: `cases-${Date.now()}`,
-    timestamp: Date.now(),
-  })) as Services
 }
 
 /** Runs every `nodes/**\/*.cases.json` against its node. */

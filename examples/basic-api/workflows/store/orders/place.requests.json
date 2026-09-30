@@ -26,15 +26,14 @@
     },
     {
       "id": "placesAnOrder",
-      "name": "Places an order",
+      "name": "Places an order, one pet by default",
       "trigger": "Request",
       "method": "POST",
       "path": "/store/orders",
       "body": {
         "kind": "json",
         "json": {
-          "petId": "{{petId}}",
-          "quantity": 1
+          "petId": "{{petId}}"
         }
       },
       "expect": [
@@ -48,6 +47,12 @@
           "path": "status",
           "op": "equals",
           "value": "placed"
+        },
+        {
+          "target": "body",
+          "path": "quantity",
+          "op": "equals",
+          "value": 1
         }
       ]
     },
@@ -68,6 +73,47 @@
           "target": "status",
           "op": "equals",
           "value": 409
+        }
+      ]
+    },
+    {
+      "id": "returns404ForAnUnknownPet",
+      "name": "Returns 404 for a pet that does not exist",
+      "trigger": "Request",
+      "method": "POST",
+      "path": "/store/orders",
+      "body": {
+        "kind": "json",
+        "json": {
+          "petId": 99999999
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 404
+        }
+      ]
+    },
+    {
+      "id": "rejectsAZeroQuantity",
+      "name": "Rejects a quantity under 1",
+      "trigger": "Request",
+      "method": "POST",
+      "path": "/store/orders",
+      "body": {
+        "kind": "json",
+        "json": {
+          "petId": 1,
+          "quantity": 0
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "greaterThan",
+          "value": 399
         }
       ]
     }

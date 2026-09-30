@@ -3,6 +3,7 @@ import { resolveCoreNode } from "../core/registry.js"
 import type { LifecycleEmitter } from "../exec/lifecycle.js"
 import { runWorkflow, type WorkflowRunResult } from "../exec/run.js"
 import { computeExecutionPlan } from "../exec/topology.js"
+import type { ProviderContainer } from "../providers/container.js"
 import type { AnyNodeOrTrigger, Services } from "../types.js"
 import { validateWorkflow } from "../workflow/validate.js"
 import { withRunContext } from "./console-capture.js"
@@ -28,7 +29,10 @@ export interface DebugIntegration {
 
 export interface MountOptions {
   nodes: Record<string, AnyNodeOrTrigger>
-  services: Services
+  /** Opens a provider scope per request. Takes precedence over `services`. */
+  providers?: ProviderContainer
+  /** A fixed services bag, used when there is no `providers` container. */
+  services?: Services
   debug?: DebugIntegration
 }
 
@@ -87,7 +91,12 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
 
         const run = opts.debug?.buildRun(runId, wf.relativePath, nodeId, request)
 
+        let scope: Awaited<ReturnType<ProviderContainer["open"]>> | null = null
         try {
+          scope = opts.providers
+            ? await opts.providers.open({ requestId: runId, timestamp: startedAt })
+            : null
+          const services = (scope?.values ?? opts.services ?? {}) as Services
           const result = await withRunContext(runId, () =>
             runWorkflow({
               workflow: projectedFile,
@@ -100,7 +109,7 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
                 headers,
                 context: { requestId: runId, timestamp: startedAt },
               },
-              services: opts.services,
+              services,
               resolveNode: (uses) => resolveCoreNode(uses) ?? opts.nodes[uses] ?? null,
               ...(run?.lifecycle ? { lifecycle: run.lifecycle } : {}),
               ...(run?.onBeforeNode ? { onBeforeNode: run.onBeforeNode } : {}),
@@ -122,6 +131,8 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
             status: 500,
             headers: { "content-type": "application/json" },
           })
+        } finally {
+          void scope?.dispose()
         }
       }
 

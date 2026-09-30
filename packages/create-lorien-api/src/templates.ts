@@ -7,7 +7,7 @@ export interface TemplateContext {
  * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
  * (with frontmatter wrapper). Single source of truth — both renderers must use this.
  */
-export const SKILL_BODY = `<!-- lorien-skill-version: 2 -->
+export const SKILL_BODY = `<!-- lorien-skill-version: 3 -->
 
 # lorien-api project guide
 
@@ -17,9 +17,12 @@ This is a lorien-api project. HTTP endpoints are defined as \`.workflow\` files:
 
 \`\`\`
 workflows/**/*.workflow   ← HTTP routes (you author these)
-nodes/**/*.ts             ← typed compute units, one defineNode per file
-lorien.config.ts          ← service registry (db, logger, etc.)
-.lorien/                  ← IDE cache, do not edit
+nodes/**/*.ts             ← typed compute units, one defineNode per file; ALL business logic
+providers/<name>.ts       ← injected dependencies (db, logger, cache, clients), one defineProvider per file
+providers/<name>/         ← code private to one provider (migrations, SQL, client setup)
+lib/                      ← plain shared code: zod schemas, helpers
+lorien.config.ts          ← build target only
+.lorien/                  ← IDE cache and generated types, do not edit
 .lorien/chats/            ← agent chat transcripts, do not edit
 \`\`\`
 
@@ -40,8 +43,8 @@ export default defineNode({
   outputs: z.object({
     id: z.string(),
   }),
-  async run({ email, passwordHash }, services) {
-    const row = await services.db.users.insert({ email, passwordHash })
+  async run({ email, passwordHash }, { db }) {
+    const row = await db.users.insert({ email, passwordHash })
     return { id: row.id }
   },
 })
@@ -49,7 +52,7 @@ export default defineNode({
 
 Rules:
 - \`inputs\` and \`outputs\` are Zod object schemas.
-- \`run\` is \`async\`; receives the typed input and the \`services\` object from \`lorien.config.ts\`.
+- \`run\` is \`async\`; receives the typed input and the providers (destructure the ones you need; each is typed from its \`providers/<name>.ts\`).
 - Don't throw. Return shaped errors via the output schema if needed.
 - One node per file. Filename kebab-case. Export default.
 
@@ -100,9 +103,35 @@ Rules:
 1. Add an entry under \`nodes\` with \`uses\` pointing to the node file.
 2. In its \`in\` block, reference upstream outputs as \`<id>.<field>\`.
 
-**Add a service (db, logger, etc.)**
-1. Edit \`lorien.config.ts\` and add to the \`services\` object.
-2. Destructure it from the second argument of \`run()\` in any node that needs it.
+**Add a provider (db, logger, cache, API client)**
+1. Create \`providers/<name>.ts\` exporting \`defineProvider({ lifetime, env, uses, create, dispose })\`. The file name is the name nodes read it by (\`http-client.ts\` → \`httpClient\`).
+2. Pick a lifetime: \`singleton\` (default, once at boot: pools, clients), \`scoped\` (once per request: a logger tagged with the request id), or \`transient\` (every read). A singleton may only \`uses\` other singletons.
+3. Declare env vars in \`env\` (a zod object); boot fails with a clear message when one is missing. Don't read \`process.env\` in nodes.
+4. Destructure it from the second argument of \`run()\` in any node that needs it.
+
+\`\`\`ts
+// providers/db.ts
+import { defineProvider } from "@darrylondil/lorien-runtime"
+import { z } from "zod"
+import { Pool } from "pg"
+
+export default defineProvider({
+  env: z.object({ DATABASE_URL: z.string() }),
+  create: ({ env }) => new Pool({ connectionString: env.DATABASE_URL }),
+  dispose: (pool) => pool.end(),
+})
+\`\`\`
+
+## Where things go
+
+| You're adding | Put it in |
+| --- | --- |
+| A database, cache, queue, logger or third-party API client | \`providers/<name>.ts\` |
+| Anything that decides, validates, transforms or queries data for a route | a node in \`nodes/\` |
+| A zod schema or helper shared by several nodes | \`lib/\` |
+| A new HTTP route | \`workflows/<path>.workflow\` |
+
+Providers export only \`create\`/\`dispose\`: never a \`users.ts\` provider with \`createUser()\` — that is a node. Don't create new top-level folders.
 
 **Add an OpenAPI-typed HTTP client**
 1. Run \`lorien openapi add <url-or-path>\`.
@@ -134,7 +163,7 @@ The IDE's Tests and Run tabs read two JSON files. Write them by hand or from the
 ] }
 \`\`\`
 
-\`expect.output\` matches as a subset unless \`"match": "equals"\`. \`expect.error\` passes when the message contains the text. \`mocks\` replace a service's methods with \`{ "returns": value }\` or \`{ "throws": "message" }\`.
+\`expect.output\` matches as a subset unless \`"match": "equals"\`. \`expect.error\` passes when the message contains the text. \`mocks\` replace a provider's methods with \`{ "returns": value }\` or \`{ "throws": "message" }\`.
 
 **Saved requests**: \`workflows/<path>/<workflow>.requests.json\` next to the \`.workflow\` file:
 
@@ -203,7 +232,15 @@ export function renderTsconfig(): string {
       skipLibCheck: true,
       types: ["node"],
     },
-    include: ["src/**/*", "nodes/**/*", "lorien.config.ts", "workflows/**/*.test.ts"],
+    include: [
+      "src/**/*",
+      "nodes/**/*",
+      "providers/**/*",
+      "lib/**/*",
+      "lorien.config.ts",
+      "workflows/**/*.test.ts",
+      ".lorien/types/**/*",
+    ],
   }
   return `${JSON.stringify(tsconfig, null, 2)}\n`
 }
@@ -254,13 +291,9 @@ export function renderGitignore(): string {
 export function renderLorienConfig(): string {
   return `import { defineConfig } from "@darrylondil/lorien-runtime"
 
+// Databases, loggers and clients go in providers/<name>.ts, one defineProvider each.
 export default defineConfig({
   target: "hono",
-  services: {
-    // Add your services here, e.g.:
-    // db: createDb(process.env.DATABASE_URL),
-    // logger: (ctx) => createLogger(ctx.requestId),
-  },
 })
 `
 }
@@ -331,7 +364,7 @@ export function renderClaudeSkill(): string {
   const frontmatter = [
     "---",
     "name: lorien-api",
-    "description: Use when authoring or editing files in a lorien-api project — workflows (.workflow JSON dependency graphs), nodes (typed defineNode modules), or lorien.config.ts (service registry). Triggers on edits in workflows/, nodes/, or any file ending in .workflow.",
+    "description: Use when authoring or editing files in a lorien-api project — workflows (.workflow JSON dependency graphs), nodes (typed defineNode modules), or providers (defineProvider dependencies like a db or logger). Triggers on edits in workflows/, nodes/, providers/, or any file ending in .workflow.",
     "---",
     "",
   ].join("\n")
@@ -372,7 +405,8 @@ curl http://localhost:3000/hello
 
 - \`workflows/\` — HTTP routes as \`.workflow\` JSON files
 - \`nodes/\` — typed compute units (\`defineNode\` modules)
-- \`lorien.config.ts\` — service registry
+- \`providers/\` — injected dependencies (db, logger, clients)
+- \`lorien.config.ts\` — build target
 
 See [AGENTS.md](./AGENTS.md) for the author's guide.
 `

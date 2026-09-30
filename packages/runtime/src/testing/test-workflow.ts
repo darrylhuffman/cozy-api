@@ -1,7 +1,7 @@
 import { resolveCoreNode } from "../core/registry.js"
 import { runWorkflow, type WorkflowRunResult } from "../exec/run.js"
 import { computeExecutionPlan } from "../exec/topology.js"
-import type { AnyNodeOrTrigger, Services } from "../types.js"
+import type { AnyNodeOrTrigger, MockProviders, Services } from "../types.js"
 import type { WorkflowFile } from "../workflow/types.js"
 import { validateWorkflow } from "../workflow/validate.js"
 
@@ -15,7 +15,7 @@ export interface RequestInput {
 export interface TestWorkflowOptions {
   request: RequestInput
   nodes?: Record<string, AnyNodeOrTrigger>
-  services?: Services
+  services?: MockProviders
   /** Specify which trigger node to fire when the workflow has multiple. Defaults to the first @core/http-request found. */
   trigger?: string
 }
@@ -47,7 +47,7 @@ export async function testWorkflow(
       headers: opts.request.headers ?? {},
       context: { requestId: `test-${Math.random().toString(36).slice(2)}`, timestamp: Date.now() },
     },
-    services: opts.services ?? {},
+    services: (opts.services ?? {}) as Services,
     resolveNode: (uses) => resolveCoreNode(uses) ?? opts.nodes?.[uses] ?? null,
   })
 }

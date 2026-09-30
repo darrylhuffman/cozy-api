@@ -40,6 +40,69 @@
           "value": "not found"
         }
       ]
+    },
+    {
+      "id": "addsAPetToFind",
+      "name": "Adds a pet to find",
+      "method": "POST",
+      "path": "/pets",
+      "body": {
+        "kind": "json",
+        "json": {
+          "name": "{{petPrefix}}-{{$randomInt}}",
+          "species": "ferret"
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 201
+        }
+      ],
+      "capture": {
+        "petId": "body.id"
+      }
+    },
+    {
+      "id": "findsThePetJustAdded",
+      "name": "Finds the pet just added",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/pets/{{petId}}",
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 200
+        },
+        {
+          "target": "body",
+          "path": "species",
+          "op": "equals",
+          "value": "ferret"
+        },
+        {
+          "target": "body",
+          "path": "status",
+          "op": "equals",
+          "value": "available"
+        }
+      ]
+    },
+    {
+      "id": "rejectsANonNumericId",
+      "name": "Rejects an id that is not a number",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/pets/rex",
+      "expect": [
+        {
+          "target": "status",
+          "op": "greaterThan",
+          "value": 399
+        }
+      ]
     }
   ]
 }
