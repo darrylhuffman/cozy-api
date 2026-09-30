@@ -77,6 +77,14 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
     },
     outputs: { type: "object", properties: {} },
   },
+  "@core/variable": {
+    name: "Variable",
+    color: null,
+    description:
+      "A named constant. Other nodes read it as `<id>.value`. Drag an input's handle onto empty canvas to make one typed for that input.",
+    inputs: { type: "object", properties: { value: {} } },
+    outputs: { type: "object", properties: { value: {} } },
+  },
 }
 
 interface CacheEntry {

@@ -1,10 +1,12 @@
 import type { AnyNodeOrTrigger } from "../types.js"
 import httpRequest from "./http-request.js"
 import response from "./response.js"
+import variable from "./variable.js"
 
 const CORE_REGISTRY: Record<string, AnyNodeOrTrigger> = {
   "@core/http-request": httpRequest,
   "@core/response": response,
+  "@core/variable": variable,
 }
 
 export function resolveCoreNode(uses: string): AnyNodeOrTrigger | null {
