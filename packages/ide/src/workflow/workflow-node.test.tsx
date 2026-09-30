@@ -851,3 +851,13 @@ describe("WorkflowNode", () => {
     })
   })
 })
+
+describe("nodeTint", () => {
+  it("uses the declared colour, else the colour of the node's kind", async () => {
+    const { nodeTint } = await import("./workflow-node")
+    expect(nodeTint("./nodes/pets/add-pet", "#ff0000")).toBe("#ff0000")
+    expect(nodeTint("./nodes/pets/add-pet")).toBe("var(--ai)")
+    expect(nodeTint("@core/response", null)).toBe("var(--info)")
+    expect(nodeTint("some-package/node")).toBe("var(--muted-foreground)")
+  })
+})
