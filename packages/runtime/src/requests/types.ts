@@ -21,7 +21,18 @@ export type RequestBody =
   | { kind: "xml"; text: string }
   | { kind: "form"; form: Record<string, string> }
 
-export type AssertionTarget = "status" | "header" | "body" | "duration"
+/**
+ * Sent with a request that has mocks or node checks. The value is
+ * `encodeURIComponent(JSON.stringify({ mocks }))`. Servers started with
+ * `testHooks` apply the mocks, record what each node received and returned,
+ * and answer with `TRACE_HEADER`; other servers ignore it.
+ */
+export const TEST_HEADER = "x-lorien-test"
+/** Response header naming the recorded trace; fetch it from `TRACE_PATH + id`. */
+export const TRACE_HEADER = "x-lorien-trace"
+export const TRACE_PATH = "/__lorien/traces/"
+
+export type AssertionTarget = "status" | "header" | "body" | "duration" | "node"
 
 export type AssertionOp =
   | "equals"
@@ -40,10 +51,23 @@ export interface Assertion {
    * `header`: the header name (case-insensitive).
    * `body`: a path into the parsed body, e.g. `user.id` or `items[0].name`;
    * omit or leave empty for the whole body.
+   * `node`: a path into what the node did — `input.name`, `output.pet.id` or
+   * `error`; omit to check whether the node ran at all (`exists`/`notExists`).
    */
   path?: string
+  /** `node` checks only: the node id in the workflow, e.g. `AddPet`. */
+  node?: string
   op: AssertionOp
   value?: unknown
+}
+
+/**
+ * Replaces a node's `run()` for one request: it returns `output` instead, or
+ * throws `error`. The node's inputs are still resolved and validated.
+ */
+export interface NodeMock {
+  output?: Record<string, unknown>
+  error?: string
 }
 
 export interface SavedRequest {
@@ -64,6 +88,8 @@ export interface SavedRequest {
    * Paths start with `body.`, `header.` or are exactly `status`.
    */
   capture?: Record<string, string>
+  /** Node id → what it returns (or throws) instead of running, for this request only. */
+  mocks?: Record<string, NodeMock>
 }
 
 export interface RequestCollection {
@@ -92,6 +118,19 @@ export interface ResponseSnapshot {
   durationMs: number
 }
 
+/** What one node did during a traced request. A node that never ran has no entry. */
+export interface NodeTraceEntry {
+  input: Record<string, unknown>
+  output?: Record<string, unknown>
+  error?: string
+  /** True when a mock stood in for the node's `run()`. */
+  mocked?: boolean
+}
+
+export interface RunTrace {
+  nodes: Record<string, NodeTraceEntry>
+}
+
 export interface AssertionResult {
   assertion: Assertion
   pass: boolean
@@ -109,6 +148,8 @@ export interface RequestRunResult {
   assertions: AssertionResult[]
   /** Variables captured from this response. */
   captured: Record<string, string>
+  /** What each node did, when the request had mocks or node checks. */
+  trace?: RunTrace
   /** Variables referenced but not defined (left as `{{name}}`). */
   missingVariables: string[]
   passed: boolean

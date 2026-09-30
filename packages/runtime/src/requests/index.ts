@@ -18,5 +18,5 @@ export {
 } from "./parse.js"
 export { parsePath, readPath } from "./path.js"
 export type { FetchLike, RunCollectionOptions, RunRequestOptions } from "./run.js"
-export { resolveRequest, runRequests, runSavedRequest, toSnapshot } from "./run.js"
+export { needsTrace, resolveRequest, runRequests, runSavedRequest, toSnapshot } from "./run.js"
 export * from "./types.js"

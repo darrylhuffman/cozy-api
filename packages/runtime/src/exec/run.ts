@@ -1,3 +1,4 @@
+import type { NodeMock } from "../requests/types.js"
 import type { AnyNodeOrTrigger, Node, Services } from "../types.js"
 import { parseReference } from "../workflow/reference.js"
 import type { WorkflowFile } from "../workflow/types.js"
@@ -38,6 +39,11 @@ export interface RunWorkflowOptions {
    * @core/response (which short-circuits without `outputs.set`).
    */
   onAfterNode?: (nodeId: string, output: Record<string, unknown>) => Promise<void>
+  /**
+   * Node id → what the node returns (or throws) instead of running. Inputs are
+   * still resolved and validated. Used by request tests; never set in production.
+   */
+  mocks?: Record<string, NodeMock>
 }
 
 /**
@@ -333,13 +339,17 @@ async function runOneNode(
     }
   }
   const t0 = Date.now()
+  const mock = opts.mocks?.[nodeId]
   let output: Record<string, unknown>
   try {
-    output = (await (nodeDef as Node).run(
-      validatedInput as never,
-      opts.services,
-      undefined as never,
-    )) as Record<string, unknown>
+    if (mock?.error !== undefined) throw new Error(mock.error)
+    output = mock
+      ? (mock.output ?? {})
+      : ((await (nodeDef as Node).run(
+          validatedInput as never,
+          opts.services,
+          undefined as never,
+        )) as Record<string, unknown>)
   } catch (err) {
     lifecycle?.emit({ type: "error", nodeId, error: err as Error })
     throw new NodeRunError(nodeId, err)

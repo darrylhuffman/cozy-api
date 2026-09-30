@@ -1,5 +1,5 @@
 import { ArrowRight } from "lucide-react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { askAi } from "@/ai/ask"
 import { explainRequestFailure } from "@/ai/prompts"
 import { cn } from "@/lib/utils"
@@ -13,11 +13,12 @@ import { BodyEditor } from "./body-editor"
 import { BodyTypeTabs } from "./body-type-tabs"
 import { KeyValueGrid } from "./key-value-grid"
 import { methodTone } from "./method-tone"
+import { MocksEditor } from "./mocks-editor"
 import { RequestResult } from "./request-result"
 import { formToSavedRequest } from "./saved-request-form"
 import { sendRequest } from "./send-request"
 
-type BuilderTab = "body" | "headers" | "query" | "capture"
+type BuilderTab = "body" | "headers" | "query" | "capture" | "mocks"
 
 const BODY_KIND_LABEL: Record<BodyKind, string> = {
   json: "JSON",
@@ -34,6 +35,8 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
   const editingId = useRequestEditor((s) => s.editingId)
   const expect = useRequestEditor((s) => s.expect)
   const capture = useRequestEditor((s) => s.capture)
+  const mocks = useRequestEditor((s) => s.mocks)
+  const nodeIds = useWorkflowNodeIds()
   const lastResult = useRequestEditor((s) => s.lastResult)
 
   const actions = useRequestActions(workflowPath)
@@ -48,6 +51,7 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
     { id: "headers", label: "Headers", hint: String(form.headers.length) },
     { id: "query", label: "Query", hint: String(form.query.length) },
     { id: "capture", label: "Capture", hint: String(capture.length) },
+    { id: "mocks", label: "Mocks", hint: String(mocks.length) },
   ]
 
   return (
@@ -172,6 +176,13 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
               />
             </>
           )}
+          {tab === "mocks" && (
+            <MocksEditor
+              value={mocks}
+              nodeIds={nodeIds.mockable}
+              onChange={(next) => useRequestEditor.getState().setMocks(next)}
+            />
+          )}
         </div>
       </div>
       <section className="flex flex-col gap-1.5" aria-label="Checks">
@@ -180,6 +191,7 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
         </div>
         <AssertionsEditor
           value={expect}
+          nodeIds={nodeIds.all}
           onChange={(next) => useRequestEditor.getState().setExpect(next)}
         />
       </section>
@@ -202,6 +214,22 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
   )
 }
 
+/** The live workflow's node ids: all of them, and the ones a mock can stand in for. */
+function useWorkflowNodeIds(): { all: string[]; mockable: string[] } {
+  const key = useLiveWorkflowStore((s) =>
+    Object.entries(s.workflow?.nodes ?? {})
+      .map(([id, n]) => `${n.uses.startsWith("@core/") ? "-" : "+"}${id}`)
+      .join("\n"),
+  )
+  return useMemo(() => {
+    const entries = key ? key.split("\n") : []
+    return {
+      all: entries.map((e) => e.slice(1)),
+      mockable: entries.filter((e) => e.startsWith("+")).map((e) => e.slice(1)),
+    }
+  }, [key])
+}
+
 /** Send / save for the form in the builder, plus the last validation or save problem. */
 function useRequestActions(workflowPath: string) {
   const editingId = useRequestEditor((s) => s.editingId)
@@ -217,6 +245,7 @@ function useRequestActions(workflowPath: string) {
       name: ed.name,
       expect: ed.expect,
       capture: ed.capture,
+      mocks: ed.mocks,
     })
     if (r.error !== undefined) {
       setProblem(r.error)
@@ -259,7 +288,7 @@ function useRequestActions(workflowPath: string) {
     try {
       await useRequestCollections.getState().upsert(workflowPath, { ...req, name })
       const last = ed.lastResult
-      ed.open({ id, name, expect: ed.expect, capture: ed.capture })
+      ed.open({ id, name, expect: ed.expect, capture: ed.capture, mocks: ed.mocks })
       if (last) {
         ed.setLastResult(last)
         useRequestCollections

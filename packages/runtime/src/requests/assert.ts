@@ -1,5 +1,5 @@
 import { readPath } from "./path.js"
-import type { Assertion, AssertionResult, ResponseSnapshot } from "./types.js"
+import type { Assertion, AssertionResult, ResponseSnapshot, RunTrace } from "./types.js"
 
 export function deepEqual(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true
@@ -43,16 +43,21 @@ function show(v: unknown): string {
 }
 
 export function describeAssertion(a: Assertion): string {
+  if (a.target === "node" && !a.path && (a.op === "exists" || a.op === "notExists")) {
+    return `${a.node ?? "?"} ${a.op === "exists" ? "ran" : "did not run"}`
+  }
   const subject =
-    a.target === "status"
-      ? "status"
-      : a.target === "duration"
-        ? "duration (ms)"
-        : a.target === "header"
-          ? `header ${a.path ?? ""}`
-          : a.path
-            ? `body.${a.path}`
-            : "body"
+    a.target === "node"
+      ? `${a.node ?? "?"}${a.path ? ` ${a.path}` : ""}`
+      : a.target === "status"
+        ? "status"
+        : a.target === "duration"
+          ? "duration (ms)"
+          : a.target === "header"
+            ? `header ${a.path ?? ""}`
+            : a.path
+              ? `body.${a.path}`
+              : "body"
   const verb: Record<Assertion["op"], string> = {
     equals: "equals",
     notEquals: "does not equal",
@@ -69,8 +74,17 @@ export function describeAssertion(a: Assertion): string {
     : `${subject} ${verb[a.op]} ${show(a.value)}`
 }
 
-function subjectOf(a: Assertion, res: ResponseSnapshot): { found: boolean; value: unknown } {
+function subjectOf(
+  a: Assertion,
+  res: ResponseSnapshot,
+  trace: RunTrace | undefined,
+): { found: boolean; value: unknown } {
   switch (a.target) {
+    case "node": {
+      const entry = a.node ? trace?.nodes[a.node] : undefined
+      if (!entry) return { found: false, value: undefined }
+      return a.path ? readPath(entry, a.path) : { found: true, value: entry }
+    }
     case "status":
       return { found: true, value: res.status }
     case "duration":
@@ -87,8 +101,24 @@ function subjectOf(a: Assertion, res: ResponseSnapshot): { found: boolean; value
   }
 }
 
-export function evaluateAssertion(a: Assertion, res: ResponseSnapshot): AssertionResult {
-  const { found, value } = subjectOf(a, res)
+/**
+ * Checks one assertion. `node` checks read `trace`; without one (the server
+ * didn't record it) they fail and say why.
+ */
+export function evaluateAssertion(
+  a: Assertion,
+  res: ResponseSnapshot,
+  trace?: RunTrace,
+): AssertionResult {
+  if (a.target === "node" && !trace) {
+    return {
+      assertion: a,
+      pass: false,
+      actual: undefined,
+      message: `${describeAssertion(a)}: node checks need the lorien IDE or \`lorien test\`; this server did not record a trace`,
+    }
+  }
+  const { found, value } = subjectOf(a, res, trace)
   let pass: boolean
   let problem: string | null = null
   switch (a.op) {
@@ -143,13 +173,16 @@ export function evaluateAssertion(a: Assertion, res: ResponseSnapshot): Assertio
     ? expected
     : problem
       ? `${expected}: ${problem}`
-      : `expected ${expected}, got ${found ? show(value) : "nothing"}`
+      : a.target === "node" && !a.path
+        ? `expected ${expected}, but it ${found ? "ran" : "never ran"}`
+        : `expected ${expected}, got ${found ? show(value) : "nothing"}`
   return { assertion: a, pass, actual: value, message }
 }
 
 export function evaluateAssertions(
   list: Assertion[] | undefined,
   res: ResponseSnapshot,
+  trace?: RunTrace,
 ): AssertionResult[] {
-  return (list ?? []).map((a) => evaluateAssertion(a, res))
+  return (list ?? []).map((a) => evaluateAssertion(a, res, trace))
 }

@@ -1,4 +1,9 @@
-import type { Assertion, RequestBody, SavedRequest } from "@darrylondil/lorien-runtime/requests"
+import type {
+  Assertion,
+  NodeMock,
+  RequestBody,
+  SavedRequest,
+} from "@darrylondil/lorien-runtime/requests"
 import type { DebugSessionState } from "@/store/debug-session"
 
 export type RequestForm = DebugSessionState["requestForm"]
@@ -31,6 +36,47 @@ export function savedRequestToForm(req: SavedRequest, triggerNodeId: string | nu
   }
 }
 
+/** One row of the Mocks editor: the node, whether it returns or throws, and the text typed. */
+export interface MockRow {
+  node: string
+  kind: "output" | "error"
+  /** JSON object for `output`, the message for `error`. */
+  text: string
+}
+
+export function mocksToRows(mocks: Record<string, NodeMock> | undefined): MockRow[] {
+  return Object.entries(mocks ?? {}).map(([node, m]) =>
+    m.error !== undefined
+      ? { node, kind: "error", text: m.error }
+      : { node, kind: "output", text: JSON.stringify(m.output ?? {}) },
+  )
+}
+
+export function rowsToMocks(
+  rows: MockRow[],
+): { mocks: Record<string, NodeMock> | undefined; error?: undefined } | { error: string } {
+  const mocks: Record<string, NodeMock> = {}
+  for (const row of rows) {
+    const node = row.node.trim()
+    if (!node) continue
+    if (row.kind === "error") {
+      mocks[node] = { error: row.text }
+      continue
+    }
+    let output: unknown
+    try {
+      output = JSON.parse(row.text.trim() || "{}")
+    } catch (e) {
+      return { error: `Mock for ${node} is not valid JSON (${(e as Error).message}).` }
+    }
+    if (!output || typeof output !== "object" || Array.isArray(output)) {
+      return { error: `Mock for ${node} must be a JSON object of the node's outputs.` }
+    }
+    mocks[node] = { output: output as Record<string, unknown> }
+  }
+  return { mocks: Object.keys(mocks).length > 0 ? mocks : undefined }
+}
+
 export type FormToRequestResult =
   | { request: SavedRequest; error?: undefined }
   | { request?: undefined; error: string }
@@ -41,8 +87,16 @@ export type FormToRequestResult =
  */
 export function formToSavedRequest(
   form: RequestForm,
-  meta: { id: string; name: string; expect: Assertion[]; capture: Array<[string, string]> },
+  meta: {
+    id: string
+    name: string
+    expect: Assertion[]
+    capture: Array<[string, string]>
+    mocks?: MockRow[]
+  },
 ): FormToRequestResult {
+  const mocked = rowsToMocks(meta.mocks ?? [])
+  if (mocked.error !== undefined) return { error: mocked.error }
   let body: RequestBody | undefined
   switch (form.bodyKind) {
     case "json": {
@@ -83,5 +137,6 @@ export function formToSavedRequest(
   if (meta.expect.length > 0) request.expect = meta.expect
   const capture = toMap(meta.capture)
   if (capture) request.capture = capture
+  if (mocked.mocks) request.mocks = mocked.mocks
   return { request }
 }

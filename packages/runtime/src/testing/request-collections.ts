@@ -103,7 +103,7 @@ export async function loadCollectionFiles(root: string): Promise<CollectionFile[
  * requests the IDE's Run tab edits. Use from `lorien test`, or from Vitest:
  *
  * ```ts
- * const app = await startLorienServer({ root })
+ * const app = await startLorienServer({ root, testHooks: true })
  * const runs = await runRequestCollections({ root, app })
  * for (const run of runs) for (const r of run.results)
  *   test(`${run.path} › ${r.name}`, () => expect(failureSummary(r)).toEqual([]))

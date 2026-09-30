@@ -14,6 +14,8 @@ lorien.environments.local.json         ← your own overrides (git-ignore this)
 
 Open a workflow, then the **Run** tab in the right-hand panel.
 
+- The **Tests** tab lists the same requests as **Workflow tests**, above the node tests, with
+  Run, Run all and the reason a test failed. Click one to edit it here in the Run tab.
 - **Saved requests** lists the workflow's requests with their last result. Click one to
   load it, ▶ to run it, **Run all** to run them in order.
 - Build or edit a request below, add **checks**, and press **Save**. Saving writes the
@@ -56,6 +58,43 @@ Open a workflow, then the **Run** tab in the right-hand panel.
   `matches` (regex), `lessThan`, `greaterThan` or `type`.
 - A request with no checks passes when its status is below 400.
 
+## Mocks and step checks
+
+A saved request is a workflow test: it sends a request through the whole workflow. Two
+optional extras let it look inside the workflow too.
+
+```json
+{
+  "id": "reportsADatabaseFailure",
+  "name": "Reports a database failure as a 500",
+  "method": "POST",
+  "path": "/pets",
+  "body": { "kind": "json", "json": { "name": "Rex", "species": "dog" } },
+  "mocks": { "AddPet": { "error": "database is locked" } },
+  "expect": [
+    { "target": "status", "op": "equals", "value": 500 },
+    { "target": "node", "node": "AddPet", "path": "input.species", "op": "equals", "value": "dog" },
+    { "target": "node", "node": "Response", "op": "notExists" }
+  ]
+}
+```
+
+- `mocks` maps a node id to `{ "output": { ... } }` (returned instead of running the node's
+  code) or `{ "error": "message" }` (thrown). The node's inputs are still resolved and
+  validated. Strings may use `{{variables}}`. Use mocks for paths that are hard to reach
+  for real, like a failing database or a race.
+- A **step check** is a check with `"target": "node"` and `"node"` set to a node id. Its
+  `path` reads what the node did: `input.name`, `output.pet.id` or `error`. With no path,
+  `exists` means the node ran and `notExists` that it never ran.
+- In the IDE, the Run tab has a **Mocks** tab, and **Node** in a check's first dropdown adds
+  a step check.
+
+Mocks and step checks need a server that records what each node did: the IDE and
+`lorien test` do. They send an `x-lorien-test` header; `startLorienServer({ testHooks: true })`
+honours it, and a server started without `testHooks` (the default, and what you deploy)
+ignores it, so such a request fails with a message instead of silently running the real
+nodes.
+
 ## Environments
 
 ```json
@@ -86,7 +125,8 @@ Or from Vitest, as `examples/basic-api/src/requests.test.ts` does:
 ```ts
 import { failureSummary, runRequestCollections } from "@darrylondil/lorien-runtime/testing"
 
-const runs = await runRequestCollections({ root, app: await startLorienServer({ root }) })
+const app = await startLorienServer({ root, testHooks: true })
+const runs = await runRequestCollections({ root, app })
 for (const run of runs)
   for (const r of run.results)
     test(`${run.path} › ${r.name}`, () => expect(failureSummary(r)).toEqual([]))

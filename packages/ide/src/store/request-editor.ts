@@ -1,5 +1,6 @@
 import type { Assertion, RequestRunResult } from "@darrylondil/lorien-runtime/requests"
 import { create } from "zustand"
+import type { MockRow } from "@/panels/run-tab/saved-request-form"
 
 /**
  * The parts of the Run tab's request that the debug form doesn't carry: which
@@ -14,16 +15,19 @@ interface State {
   name: string
   expect: Assertion[]
   capture: Array<[string, string]>
+  mocks: MockRow[]
   lastResult: RequestRunResult | null
   sending: boolean
   setName(name: string): void
   setExpect(expect: Assertion[]): void
   setCapture(capture: Array<[string, string]>): void
+  setMocks(mocks: MockRow[]): void
   open(v: {
     id: string | null
     name: string
     expect: Assertion[]
     capture: Array<[string, string]>
+    mocks?: MockRow[]
   }): void
   setLastResult(r: RequestRunResult | null): void
   setSending(v: boolean): void
@@ -38,6 +42,7 @@ const initial = {
   name: "",
   expect: [] as Assertion[],
   capture: [] as Array<[string, string]>,
+  mocks: [] as MockRow[],
   lastResult: null,
   sending: false,
 }
@@ -47,8 +52,9 @@ export const useRequestEditor = create<State>((set, get) => ({
   setName: (name) => set({ name }),
   setExpect: (expect) => set({ expect }),
   setCapture: (capture) => set({ capture }),
-  open: ({ id, name, expect, capture }) =>
-    set({ editingId: id, name, expect, capture, lastResult: null }),
+  setMocks: (mocks) => set({ mocks }),
+  open: ({ id, name, expect, capture, mocks = [] }) =>
+    set({ editingId: id, name, expect, capture, mocks, lastResult: null }),
   setLastResult: (lastResult) => set({ lastResult }),
   setSending: (sending) => set({ sending }),
   reset: () => set(initial),

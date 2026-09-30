@@ -156,7 +156,7 @@ describe("parse", () => {
     } catch (e) {
       expect(e).toBeInstanceOf(RequestFileError)
       expect((e as RequestFileError).problems).toEqual([
-        "requests[0].expect[0].target must be one of status, header, body, duration",
+        "requests[0].expect[0].target must be one of status, header, body, duration, node",
         "requests[1].name must be a non-empty string",
       ])
     }
@@ -281,5 +281,45 @@ describe("running", () => {
       },
     )
     expect(init?.body).toBeUndefined()
+  })
+})
+
+describe("mocks and node checks in files", () => {
+  const file = (req: unknown) => JSON.stringify({ lorien: 1, requests: [req] })
+  const base = { id: "a", name: "A", method: "GET", path: "/x" }
+
+  it("parses mocks and node checks", () => {
+    const c = parseRequestCollection(
+      file({
+        ...base,
+        mocks: { FindPet: { output: { status: 404 } }, Audit: { error: "down" } },
+        expect: [{ target: "node", node: "FindPet", path: "input.id", op: "equals", value: "1" }],
+      }),
+    )
+    expect(c.requests[0]?.mocks).toEqual({
+      FindPet: { output: { status: 404 } },
+      Audit: { error: "down" },
+    })
+    expect(c.requests[0]?.expect?.[0]?.node).toBe("FindPet")
+  })
+
+  it("lists problems with mocks and node checks", () => {
+    try {
+      parseRequestCollection(
+        file({
+          ...base,
+          mocks: { A: {}, B: { output: 3 }, C: { error: 1 } },
+          expect: [{ target: "node", op: "exists" }],
+        }),
+      )
+      expect.fail("should throw")
+    } catch (e) {
+      expect((e as RequestFileError).problems).toEqual([
+        "requests[0].expect[0].node must name the node to check",
+        'requests[0].mocks.A must have either "output" or "error"',
+        "requests[0].mocks.B.output must be an object",
+        "requests[0].mocks.C.error must be a string",
+      ])
+    }
   })
 })

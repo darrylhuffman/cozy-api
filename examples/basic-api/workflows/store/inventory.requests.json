@@ -56,6 +56,40 @@
           "value": 0
         }
       ]
+    },
+    {
+      "id": "returnsTheCountsGetInventoryReports",
+      "name": "Returns the counts GetInventory reports",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/store/inventory",
+      "mocks": {
+        "GetInventory": {
+          "output": {
+            "inventory": {
+              "available": 3,
+              "pending": 1,
+              "sold": 2
+            }
+          }
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 200
+        },
+        {
+          "target": "body",
+          "op": "equals",
+          "value": {
+            "available": 3,
+            "pending": 1,
+            "sold": 2
+          }
+        }
+      ]
     }
   ]
 }

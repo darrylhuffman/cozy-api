@@ -55,7 +55,10 @@ export const REQUESTS_FORMAT = `Saved API requests live next to the workflow as 
   "method": "POST", "path": "/users", "query": {}, "headers": {},
   "body": { "kind": "json", "json": { ... } },   (or { "kind": "text"|"xml", "text": "..." } or { "kind": "form", "form": {} })
   "expect": [ { "target": "status"|"header"|"body"|"duration", "path": "user.id", "op": "equals"|"notEquals"|"contains"|"exists"|"notExists"|"matches"|"lessThan"|"greaterThan"|"type", "value": ... } ],
-  "capture": { "userId": "body.user.id" } } ] }
+  "capture": { "userId": "body.user.id" },
+  "mocks": { "<node id>": { "output": { ... } } | { "error": "message" } } } ] }
+Step checks use "target": "node" with "node": "<node id>" and a "path" into what it did: "input.name", "output.user.id" or "error"; with no path, "exists" means the node ran and "notExists" that it never ran.
+Mocks make a node return that output (or throw) without running its code, for that request only: use them for paths that are hard to reach for real, like a database failure.
 Strings may use {{variables}} from lorien.environments.json, values captured by earlier requests, or {{$uuid}}, {{$timestamp}}, {{$randomInt}}.
 Run them with \`lorien test <path fragment>\`.`
 

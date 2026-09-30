@@ -3,12 +3,13 @@ import type {
   AssertionOp,
   AssertionTarget,
   EnvironmentsFile,
+  NodeMock,
   RequestBody,
   RequestCollection,
   SavedRequest,
 } from "./types.js"
 
-const TARGETS: AssertionTarget[] = ["status", "header", "body", "duration"]
+const TARGETS: AssertionTarget[] = ["status", "header", "body", "duration", "node"]
 const OPS: AssertionOp[] = [
   "equals",
   "notEquals",
@@ -94,10 +95,42 @@ function parseAssertion(v: unknown, where: string, problems: string[]): Assertio
     problems.push(`${where}.path must be a string`)
     return null
   }
+  if (v.target === "node" && (typeof v.node !== "string" || v.node.length === 0)) {
+    problems.push(`${where}.node must name the node to check`)
+    return null
+  }
   const a: Assertion = { target: v.target as AssertionTarget, op: v.op as AssertionOp }
+  if (v.target === "node") a.node = v.node as string
   if (typeof v.path === "string") a.path = v.path
   if ("value" in v) a.value = v.value
   return a
+}
+
+function parseMocks(
+  v: unknown,
+  where: string,
+  problems: string[],
+): Record<string, NodeMock> | undefined {
+  if (v === undefined) return undefined
+  if (!isObj(v)) {
+    problems.push(`${where} must be an object of node id → { output } or { error }`)
+    return undefined
+  }
+  const out: Record<string, NodeMock> = {}
+  for (const [node, m] of Object.entries(v)) {
+    const at = `${where}.${node}`
+    if (!isObj(m) || (m.output === undefined) === (m.error === undefined)) {
+      problems.push(`${at} must have either "output" or "error"`)
+    } else if (m.error !== undefined) {
+      if (typeof m.error === "string") out[node] = { error: m.error }
+      else problems.push(`${at}.error must be a string`)
+    } else if (isObj(m.output)) {
+      out[node] = { output: m.output }
+    } else {
+      problems.push(`${at}.output must be an object`)
+    }
+  }
+  return out
 }
 
 export function parseSavedRequest(
@@ -138,6 +171,8 @@ export function parseSavedRequest(
   }
   const capture = stringMap(v.capture, `${where}.capture`, problems)
   if (capture) req.capture = capture
+  const mocks = parseMocks(v.mocks, `${where}.mocks`, problems)
+  if (mocks && Object.keys(mocks).length > 0) req.mocks = mocks
   return req
 }
 

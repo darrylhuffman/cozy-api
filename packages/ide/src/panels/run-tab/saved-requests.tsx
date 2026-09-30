@@ -1,20 +1,18 @@
 import type { RequestRunResult, SavedRequest } from "@darrylondil/lorien-runtime/requests"
 import { Play, Plus, Sparkles, Trash2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { askAi } from "@/ai/ask"
 import { generateRequests } from "@/ai/prompts"
-import { subscribeToFileEvents } from "@/lib/events"
 import { cn } from "@/lib/utils"
 import { confirmAction } from "@/store/confirm"
 import { useDebugSessionStore } from "@/store/debug-session"
-import { activeEnvironment, useEnvironments } from "@/store/environments"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { resultKey, useRequestCollections } from "@/store/request-collections"
 import { useRequestEditor } from "@/store/request-editor"
 import { useSchemasStore } from "@/store/schemas"
 import { methodTone } from "./method-tone"
-import { savedRequestToForm } from "./saved-request-form"
-import { sendAll, sendRequest } from "./send-request"
+import { runAllSaved, runSaved, useCollection } from "./run-saved"
+import { mocksToRows, savedRequestToForm } from "./saved-request-form"
 
 /**
  * Row actions collapse to zero width until the row is hovered or focused, so
@@ -23,10 +21,6 @@ import { sendAll, sendRequest } from "./send-request"
  */
 const REVEAL =
   "w-0 overflow-hidden p-0 opacity-0 group-hover:w-auto group-hover:p-1 group-hover:opacity-100 group-has-[:focus-visible]:w-auto group-has-[:focus-visible]:p-1 group-has-[:focus-visible]:opacity-100"
-
-function currentVars() {
-  return activeEnvironment(useEnvironments.getState()).vars
-}
 
 /** Loads a saved request into the builder below. */
 export function openSavedRequest(req: SavedRequest) {
@@ -37,27 +31,16 @@ export function openSavedRequest(req: SavedRequest) {
     name: req.name,
     expect: req.expect ?? [],
     capture: Object.entries(req.capture ?? {}),
+    mocks: mocksToRows(req.mocks),
   })
 }
 
 export function SavedRequests({ workflowPath }: { workflowPath: string }) {
-  const entry = useRequestCollections((s) => s.byWorkflow[workflowPath])
+  const entry = useCollection(workflowPath)
   const results = useRequestCollections((s) => s.results)
   const editingId = useRequestEditor((s) => s.editingId)
   const [runningAll, setRunningAll] = useState(false)
   const [runningId, setRunningId] = useState<string | null>(null)
-
-  useEffect(() => {
-    const store = useRequestCollections.getState()
-    if (!store.byWorkflow[workflowPath]?.loaded) void store.load(workflowPath)
-    const collectionPath = workflowPath.replace(/\.workflow$/, ".requests.json")
-    return subscribeToFileEvents((e) => {
-      if (e.path !== collectionPath) return
-      // Our own saves echo back as change events; only reload for outside edits.
-      if (useRequestCollections.getState().byWorkflow[workflowPath]?.saving) return
-      void useRequestCollections.getState().load(workflowPath)
-    })
-  }, [workflowPath])
 
   const requests = entry?.collection.requests ?? []
   const ran = requests
@@ -68,10 +51,7 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
   const runOne = async (req: SavedRequest) => {
     setRunningId(req.id)
     try {
-      const r = await sendRequest(req, { workflowPath, vars: currentVars() })
-      useRequestCollections.getState().setResult(workflowPath, req.id, r)
-      if (useRequestEditor.getState().editingId === req.id)
-        useRequestEditor.getState().setLastResult(r)
+      await runSaved(workflowPath, req)
     } finally {
       setRunningId(null)
     }
@@ -80,15 +60,7 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
   const runAll = async () => {
     setRunningAll(true)
     try {
-      await sendAll(requests, {
-        workflowPath,
-        vars: currentVars(),
-        onResult: (r) => {
-          useRequestCollections.getState().setResult(workflowPath, r.requestId, r)
-          if (useRequestEditor.getState().editingId === r.requestId)
-            useRequestEditor.getState().setLastResult(r)
-        },
-      })
+      await runAllSaved(workflowPath, requests)
     } finally {
       setRunningAll(false)
     }

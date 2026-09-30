@@ -5,6 +5,7 @@ const TARGETS: Array<[AssertionTarget, string]> = [
   ["body", "Body"],
   ["header", "Header"],
   ["duration", "Time (ms)"],
+  ["node", "Node"],
 ]
 
 const OPS: Array<[AssertionOp, string]> = [
@@ -39,7 +40,7 @@ export function parseValue(text: string): unknown {
   }
 }
 
-const needsPath = (t: AssertionTarget) => t === "body" || t === "header"
+const needsPath = (t: AssertionTarget) => t === "body" || t === "header" || t === "node"
 const needsValue = (op: AssertionOp) => op !== "exists" && op !== "notExists"
 
 const field =
@@ -47,9 +48,12 @@ const field =
 
 export function AssertionsEditor({
   value,
+  nodeIds = [],
   onChange,
 }: {
   value: Assertion[]
+  /** Nodes a `Node` check can name. */
+  nodeIds?: string[]
   onChange: (next: Assertion[]) => void
 }) {
   const update = (i: number, patch: Partial<Assertion>) =>
@@ -57,6 +61,13 @@ export function AssertionsEditor({
       value.map((a, j) => {
         if (j !== i) return a
         const next: Assertion = { ...a, ...patch }
+        if (patch.target === "node" && a.target !== "node") {
+          // Start a node check as "<first node> ran".
+          next.node = nodeIds[0] ?? ""
+          next.op = "exists"
+          delete next.path
+        }
+        if (next.target !== "node") delete next.node
         if (!needsPath(next.target)) delete next.path
         if (!needsValue(next.op)) delete next.value
         return next
@@ -89,7 +100,9 @@ export function AssertionsEditor({
               </option>
             ))}
           </select>
-          {needsPath(a.target) ? (
+          {a.target === "node" ? (
+            <span />
+          ) : needsPath(a.target) ? (
             <input
               aria-label={a.target === "header" ? "Header name" : "Body path"}
               placeholder={a.target === "header" ? "content-type" : "user.id (empty = whole body)"}
@@ -143,6 +156,32 @@ export function AssertionsEditor({
           >
             ×
           </button>
+          {a.target === "node" && (
+            <div className="col-span-3 col-start-2 flex min-w-0 gap-1">
+              <select
+                aria-label="Checked node"
+                className={field}
+                value={a.node ?? ""}
+                onChange={(e) => update(i, { node: e.target.value })}
+              >
+                {a.node !== undefined && !nodeIds.includes(a.node) && (
+                  <option value={a.node}>{a.node || "node"}</option>
+                )}
+                {nodeIds.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+              <input
+                aria-label="Node path"
+                placeholder="output.id, input.name, error (empty = it ran)"
+                className={`${field} min-w-0 flex-1`}
+                value={a.path ?? ""}
+                onChange={(e) => update(i, { path: e.target.value })}
+              />
+            </div>
+          )}
         </div>
       ))}
       <button

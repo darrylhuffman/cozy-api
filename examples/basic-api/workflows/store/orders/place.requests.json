@@ -53,6 +53,13 @@
           "path": "quantity",
           "op": "equals",
           "value": 1
+        },
+        {
+          "target": "node",
+          "node": "PlaceOrder",
+          "path": "input.quantity",
+          "op": "equals",
+          "value": 1
         }
       ]
     },
@@ -114,6 +121,42 @@
           "target": "status",
           "op": "greaterThan",
           "value": 399
+        }
+      ]
+    },
+    {
+      "id": "passesPlaceOrdersAnswerThrough",
+      "name": "Passes PlaceOrder's answer straight through",
+      "trigger": "Request",
+      "method": "POST",
+      "path": "/store/orders",
+      "body": {
+        "kind": "json",
+        "json": {
+          "petId": 1
+        }
+      },
+      "mocks": {
+        "PlaceOrder": {
+          "output": {
+            "status": 409,
+            "body": {
+              "error": "Biscuit is sold"
+            }
+          }
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 409
+        },
+        {
+          "target": "body",
+          "path": "error",
+          "op": "equals",
+          "value": "Biscuit is sold"
         }
       ]
     }
