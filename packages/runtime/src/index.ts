@@ -28,6 +28,7 @@ export { importNodes } from "./dev-server/import-nodes.js"
 export type { LoadedWorkflow, LoadedWorkspace } from "./dev-server/load.js"
 // Dev server
 export { loadWorkspace } from "./dev-server/load.js"
+export { allowedMethods, answerUnmatchedWithJson } from "./dev-server/not-found.js"
 export type { DebugIntegration, MountOptions } from "./dev-server/server.js"
 export { mountWorkflows } from "./dev-server/server.js"
 export type { StartServerOptions } from "./dev-server/start.js"

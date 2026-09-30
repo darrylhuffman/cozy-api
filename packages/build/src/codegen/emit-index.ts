@@ -59,6 +59,31 @@ export function emitIndex(opts: EmitIndexOptions): EmitIndexResult {
   for (const ident of idents) {
     lines.push(`${ident}(app)`)
   }
+  // Like \`lorien dev\`: a known path under the wrong method is 405, anything else a JSON 404.
+  lines.push(`app.notFound((c) => {`)
+  lines.push(`  const allowed = [`)
+  lines.push(`    ...new Set(`)
+  lines.push(`      app.routes`)
+  lines.push(`        .filter((r) => r.method !== "ALL" && routePattern(r.path).test(c.req.path))`)
+  lines.push(`        .map((r) => r.method),`)
+  lines.push(`    ),`)
+  lines.push(`  ]`)
+  lines.push(`  if (allowed.length > 0)`)
+  lines.push(
+    `    return c.json({ error: "Method Not Allowed" }, 405, { Allow: allowed.join(", ") })`,
+  )
+  lines.push(`  return c.json({ error: "Not Found" }, 404)`)
+  lines.push(`})`)
+  lines.push(`function routePattern(route: string): RegExp {`)
+  lines.push(`  const segments = route.split("/").map((seg) => {`)
+  lines.push(`    if (seg.startsWith(":")) return "[^/]+"`)
+  lines.push(`    if (seg === "*") return ".*"`)
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted as-is into generated code.
+  lines.push('    return seg.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")')
+  lines.push(`  })`)
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted as-is into generated code.
+  lines.push('  return new RegExp(`^${segments.join("/")}/?$`)')
+  lines.push(`}`)
   lines.push("")
   lines.push(`const port = Number(process.env.PORT) || 3000`)
   lines.push(
