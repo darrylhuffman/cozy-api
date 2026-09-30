@@ -22,8 +22,6 @@ export interface ProviderCreateContext<E, U extends string> {
 }
 
 export interface DefineProviderInput<T, S extends EnvSchema | undefined, U extends string> {
-  /** Display name in the IDE. No runtime effect. */
-  name?: string
   /** IDE accent color. No runtime effect. */
   color?: TailwindColor
   /** Defaults to `singleton`. */
@@ -44,7 +42,6 @@ export interface Provider<
   U extends string = string,
 > {
   readonly kind: "provider"
-  readonly name?: string
   readonly color?: TailwindColor
   readonly lifetime: ProviderLifetime
   readonly env?: S
@@ -84,7 +81,6 @@ export function defineProvider<
 >(def: DefineProviderInput<T, S, U>): Provider<T, S, U> {
   return {
     kind: "provider",
-    name: def.name,
     color: def.color,
     lifetime: def.lifetime ?? "singleton",
     env: def.env,

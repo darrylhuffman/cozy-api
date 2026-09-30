@@ -211,8 +211,8 @@ export interface ProviderInfo {
   name: string
   /** e.g. "providers/db.ts". */
   path: string
-  /** `name` from defineProvider, for display. */
-  label?: string
+  /** The doc comment above its defineProvider, for display. */
+  description?: string
   color?: string
   lifetime: ProviderLifetime
   uses: string[]

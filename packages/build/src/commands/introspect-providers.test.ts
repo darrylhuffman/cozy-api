@@ -15,8 +15,13 @@ import { z } from "zod"
 import pg from "pg"
 import { open } from "./db/open.js"
 
+/**
+ * The main Postgres pool.
+ * Shared by every request.
+ *
+ * @example db.query("select 1")
+ */
 export default defineProvider({
-  name: "Postgres",
   color: "sky",
   uses: ["logger"],
   env: z.object({
@@ -33,7 +38,7 @@ export default defineProvider({
 describe("parseProvider", () => {
   it("reads lifetime, deps, env status, dispose and packages", () => {
     expect(parseProvider(DB, "providers/db.ts", { DB_NAME: "pets" })).toEqual({
-      label: "Postgres",
+      description: "The main Postgres pool. Shared by every request.",
       color: "sky",
       lifetime: "singleton",
       uses: ["logger"],

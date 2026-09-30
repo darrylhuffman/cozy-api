@@ -106,7 +106,7 @@ Rules:
 2. In its \`in\` block, reference upstream outputs as \`<id>.<field>\`.
 
 **Add a provider (db, logger, cache, API client)**
-1. Create \`providers/<name>.ts\` exporting \`defineProvider({ lifetime, env, uses, create, dispose })\`. The file name is the name nodes read it by (\`http-client.ts\` → \`httpClient\`).
+1. Create \`providers/<name>.ts\` exporting \`defineProvider({ lifetime, env, uses, create, dispose })\`. The file name is the name nodes read it by (\`http-client.ts\` → \`httpClient\`). It has no other name: put a one-sentence doc comment above it to describe it (the IDE shows it on the provider's card).
 2. Pick a lifetime: \`singleton\` (default, once at boot: pools, clients), \`scoped\` (once per request: a logger tagged with the request id), or \`transient\` (every read). A singleton may only \`uses\` other singletons.
 3. Declare env vars in \`env\` (a zod object); boot fails with a clear message when one is missing. Don't read \`process.env\` in nodes.
 4. Destructure it from the second argument of \`run()\` in any node that needs it.

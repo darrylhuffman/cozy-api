@@ -10,11 +10,13 @@ export function providerTemplate(fileBase: string, lifetime: ProviderLifetime): 
   const head = `import { defineProvider } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
 `
-  const read = `Nodes read it as \`${providerName(fileBase)}\`.`
+  // The doc comment is the description on the provider's card in the IDE.
+  const doc = `/** What \`${providerName(fileBase)}\` holds, in a sentence. */`
   if (lifetime === "scoped") {
     return `${head}
-/** Created once per request and disposed when it ends. ${read} */
+${doc}
 export default defineProvider({
+  // Created once per request and disposed when it ends.
   lifetime: "scoped",
   create({ request }) {
     return { requestId: request?.requestId }
@@ -25,8 +27,9 @@ export default defineProvider({
   }
   if (lifetime === "transient") {
     return `${head}
-/** Created fresh every time a node reads it, so \`create\` must be synchronous. ${read} */
+${doc}
 export default defineProvider({
+  // Created fresh every time a node reads it, so \`create\` must be synchronous.
   lifetime: "transient",
   create() {
     return {}
@@ -35,8 +38,9 @@ export default defineProvider({
 `
   }
   return `${head}
-/** Created once at startup and shared by every request. ${read} */
+${doc}
 export default defineProvider({
+  // Created once at startup and shared by every request.
   // Environment variables, validated at startup.
   env: z.object({}),
   create({ env }) {

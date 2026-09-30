@@ -15,8 +15,8 @@ export interface ProviderInfo {
   name: string
   /** Project-relative path, e.g. "providers/db.ts". */
   path: string
-  /** `name` from defineProvider, for display. */
-  label?: string
+  /** The doc comment above `export default defineProvider(...)`, for display. */
+  description?: string
   color?: string
   lifetime: "singleton" | "scoped" | "transient"
   uses: string[]
@@ -142,11 +142,12 @@ export function parseProvider(
   }
   const def = defineCallArgument(sf, "defineProvider")
   if (!def) return out
+  const description = docComment(sf, def)
+  if (description) out.description = description
   for (const prop of def.properties) {
     const key = propName(prop)
     if (!key) continue
     const init = ts.isPropertyAssignment(prop) ? prop.initializer : undefined
-    if (key === "name" && init && ts.isStringLiteralLike(init)) out.label = init.text
     if (key === "color" && init && ts.isStringLiteralLike(init)) out.color = init.text
     if (key === "lifetime" && init && ts.isStringLiteralLike(init)) {
       if (init.text === "scoped" || init.text === "transient") out.lifetime = init.text
@@ -158,6 +159,25 @@ export function parseProvider(
     if (key === "env" && init) out.env = envVars(init, env)
   }
   return out
+}
+
+/** The JSDoc block right above the statement holding `node`, as plain text. */
+function docComment(sf: ts.SourceFile, node: ts.Node): string | undefined {
+  let stmt: ts.Node = node
+  while (stmt.parent && !ts.isSourceFile(stmt.parent)) stmt = stmt.parent
+  const ranges = ts.getLeadingCommentRanges(sf.text, stmt.getFullStart()) ?? []
+  const last = ranges.at(-1)
+  if (!last) return undefined
+  const text = sf.text.slice(last.pos, last.end)
+  if (!text.startsWith("/**")) return undefined
+  const body = text
+    .slice(3, -2)
+    .split("\n")
+    .map((line) => line.replace(/^\s*\*? ?/, "").trim())
+  // Stop at the first tag (@example, @see): the prose above it is the description.
+  const tag = body.findIndex((line) => line.startsWith("@"))
+  const prose = (tag === -1 ? body : body.slice(0, tag)).join(" ").replace(/\s+/g, " ").trim()
+  return prose || undefined
 }
 
 /** Keys of `z.object({ ... })`, with whether each is set, defaulted or optional. */

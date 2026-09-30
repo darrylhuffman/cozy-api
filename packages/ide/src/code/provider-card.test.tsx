@@ -10,7 +10,7 @@ vi.mock("@/lib/events", () => ({ subscribeToFileEvents: vi.fn(() => () => {}) })
 const db: ProviderInfo = {
   name: "db",
   path: "providers/db.ts",
-  label: "Pet store database",
+  description: "The pet store database.",
   lifetime: "singleton",
   uses: ["logger"],
   env: [
@@ -46,7 +46,8 @@ describe("FileContextBar", () => {
   it("describes a provider: lifetime, deps, env, packages and readers", () => {
     render(<FileContextBar path="providers/db.ts" />)
     const card = screen.getByRole("region", { name: "Provider db" })
-    expect(card).toHaveTextContent("Pet store database")
+    expect(card).toHaveTextContent("The pet store database.")
+    expect(card).toHaveTextContent("read it as providers.db")
     expect(card).toHaveTextContent("singleton")
     expect(card).toHaveTextContent("Created once when the app starts")
     expect(card).toHaveTextContent("DATABASE_URL missing")

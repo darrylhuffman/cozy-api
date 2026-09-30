@@ -15,7 +15,7 @@ test("lists providers and describes one above its code", async ({ ide }) => {
 
   await explorer.click()
   const card = ide.getByRole("region", { name: "Provider db" })
-  await expect(card).toContainText("Pet store database")
+  await expect(card).toContainText("The pet store's SQLite database")
   await expect(card).toContainText("PETSTORE_DB set")
   await expect(card).toContainText("6 nodes")
   await expect(card.getByRole("button", { name: "pets/add-pet" })).toBeVisible()

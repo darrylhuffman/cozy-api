@@ -66,11 +66,10 @@ function ProviderCard({ path }: { path: string }) {
     >
       <div className="flex min-w-0 items-center gap-2">
         <Plug aria-hidden className="h-3.5 w-3.5 shrink-0" style={{ color: tint }} />
-        <span className="truncate font-semibold text-[13px]">
-          {provider.label ?? provider.name}
-        </span>
-        <span className="text-muted-foreground">
-          nodes read it as <code className="font-mono text-foreground">{provider.name}</code>
+        <code className="truncate font-mono font-semibold text-[13px]">{provider.name}</code>
+        <span className="truncate text-muted-foreground">
+          nodes and middleware read it as{" "}
+          <code className="font-mono">providers.{provider.name}</code>
         </span>
         <span
           title={LIFETIME_HELP[provider.lifetime]}
@@ -80,6 +79,7 @@ function ProviderCard({ path }: { path: string }) {
           {provider.lifetime}
         </span>
       </div>
+      {provider.description && <div className="text-foreground/85">{provider.description}</div>}
       <div className="text-muted-foreground">
         {LIFETIME_HELP[provider.lifetime]}
         {provider.hasDispose && " Cleaned up by its dispose."}
