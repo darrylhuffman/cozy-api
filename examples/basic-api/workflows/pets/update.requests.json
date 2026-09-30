@@ -49,6 +49,52 @@
           "value": "sold"
         }
       ]
+    },
+    {
+      "id": "rejectsAnUnknownStatus",
+      "name": "Rejects an unknown status",
+      "trigger": "Request",
+      "method": "PATCH",
+      "path": "/pets/{{petId}}",
+      "body": {
+        "kind": "json",
+        "json": {
+          "status": "adopted"
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "greaterThan",
+          "value": 399
+        }
+      ]
+    },
+    {
+      "id": "returns404ForAMissingPet",
+      "name": "Returns 404 for a missing pet",
+      "trigger": "Request",
+      "method": "PATCH",
+      "path": "/pets/99999999",
+      "body": {
+        "kind": "json",
+        "json": {
+          "status": "sold"
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 404
+        },
+        {
+          "target": "body",
+          "path": "error",
+          "op": "contains",
+          "value": "not found"
+        }
+      ]
     }
   ]
 }

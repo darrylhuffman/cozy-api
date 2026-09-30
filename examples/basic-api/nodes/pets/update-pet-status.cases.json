@@ -1,0 +1,38 @@
+{
+  "lorien": 1,
+  "cases": [
+    {
+      "id": "updatesTheStatus",
+      "name": "Updates the pet's status",
+      "input": { "id": 1, "status": "pending" },
+      "mocks": {
+        "db": {
+          "updatePetStatus": {
+            "returns": { "id": 1, "name": "Biscuit", "species": "dog", "status": "pending" }
+          }
+        }
+      },
+      "expect": { "output": { "status": 200, "body": { "id": 1, "status": "pending" } } }
+    },
+    {
+      "id": "returns404WhenMissing",
+      "name": "Returns 404 when the pet does not exist",
+      "input": { "id": 999, "status": "sold" },
+      "mocks": { "db": { "updatePetStatus": { "returns": null } } },
+      "expect": { "output": { "status": 404, "body": { "error": "pet 999 not found" } } }
+    },
+    {
+      "id": "rejectsAnUnknownStatus",
+      "name": "Rejects a status that is not available, pending or sold",
+      "input": { "id": 1, "status": "adopted" },
+      "expect": { "error": "status" }
+    },
+    {
+      "id": "surfacesDatabaseErrors",
+      "name": "Surfaces database errors",
+      "input": { "id": 1, "status": "sold" },
+      "mocks": { "db": { "updatePetStatus": { "throws": "database is locked" } } },
+      "expect": { "error": "database is locked" }
+    }
+  ]
+}

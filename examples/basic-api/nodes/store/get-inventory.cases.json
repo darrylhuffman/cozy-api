@@ -1,0 +1,33 @@
+{
+  "lorien": 1,
+  "cases": [
+    {
+      "id": "reportsAnEmptyStore",
+      "name": "Reports zeros for an empty store",
+      "input": {},
+      "mocks": {
+        "db": { "inventory": { "returns": { "available": 0, "pending": 0, "sold": 0 } } }
+      },
+      "expect": { "output": { "inventory": { "available": 0, "pending": 0, "sold": 0 } } }
+    },
+    {
+      "id": "returnsTheDatabaseCounts",
+      "name": "Returns the counts the database reports",
+      "input": {},
+      "mocks": {
+        "db": { "inventory": { "returns": { "available": 0, "pending": 0, "sold": 12 } } }
+      },
+      "expect": {
+        "output": { "inventory": { "available": 0, "pending": 0, "sold": 12 } },
+        "match": "equals"
+      }
+    },
+    {
+      "id": "surfacesDatabaseErrors",
+      "name": "Surfaces database errors",
+      "input": {},
+      "mocks": { "db": { "inventory": { "throws": "no such table: pets" } } },
+      "expect": { "error": "no such table" }
+    }
+  ]
+}

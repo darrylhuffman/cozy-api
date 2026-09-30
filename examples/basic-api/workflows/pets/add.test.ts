@@ -1,52 +1,38 @@
-import { readFileSync } from "node:fs"
-import { dirname, join } from "node:path"
-import { fileURLToPath } from "node:url"
-import { parseWorkflowFromString } from "@darrylondil/lorien-runtime"
 import { testWorkflow, traceWorkflow } from "@darrylondil/lorien-runtime/testing"
 import { describe, expect, it } from "vitest"
-import addPet from "../../nodes/pets/add-pet.js"
-import type { NewPet } from "../../providers/db/open.js"
+import { loadWorkflow, petStore } from "../../src/workflow-test-kit.js"
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const workflow = parseWorkflowFromString(readFileSync(join(__dirname, "add.workflow"), "utf-8"))
+const workflow = await loadWorkflow("pets/add")
 
-const nodes = { "./nodes/pets/add-pet": addPet }
-
-// A stand-in db: workflow tests exercise the wiring, not SQLite.
-const services = {
-  db: {
-    async addPet(pet: NewPet) {
-      return { id: 7, ...pet, status: pet.status ?? "available" }
-    },
-  },
-  logger: { info: () => {} },
-}
-
-describe("POST /pets workflow", () => {
-  it("adds a pet and responds 201 with it", async () => {
+describe("POST /pets", () => {
+  it("adds a pet and responds 201 with the stored record", async () => {
+    const { db, nodes, services } = await petStore()
     const res = await testWorkflow(workflow, {
       request: { body: { name: "Nori", species: "cat" } },
       nodes,
       services,
     })
     expect(res.status).toBe(201)
-    expect(res.body).toEqual({ id: 7, name: "Nori", species: "cat", status: "available" })
+    expect(res.body).toEqual({ id: 5, name: "Nori", species: "cat", status: "available" })
+    expect(await db.getPet(5)).toEqual(res.body)
   })
 
-  it("rejects a pet without a name by throwing", async () => {
-    await expect(
-      testWorkflow(workflow, { request: { body: { species: "cat" } }, nodes, services }),
-    ).rejects.toThrow()
-  })
-
-  it("traceWorkflow exposes intermediate node outputs", async () => {
+  it("passes the request body through to Add Pet", async () => {
+    const { nodes, services } = await petStore()
     const trace = await traceWorkflow(workflow, {
       request: { body: { name: "Nori", species: "cat", status: "pending" } },
       nodes,
       services,
     })
-    expect(trace.at("AddPet").output).toEqual({
-      pet: { id: 7, name: "Nori", species: "cat", status: "pending" },
-    })
+    expect(trace.at("AddPet").input).toEqual({ name: "Nori", species: "cat", status: "pending" })
+    expect(trace.at("AddPet").output.pet).toMatchObject({ status: "pending" })
+  })
+
+  it("fails without a name and stores nothing", async () => {
+    const { db, nodes, services } = await petStore()
+    await expect(
+      testWorkflow(workflow, { request: { body: { species: "cat" } }, nodes, services }),
+    ).rejects.toThrow(/name/)
+    expect(await db.listPets()).toHaveLength(4)
   })
 })

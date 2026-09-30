@@ -1,0 +1,42 @@
+{
+  "lorien": 1,
+  "cases": [
+    {
+      "id": "listsTheSeededPets",
+      "name": "Lists pets from the seed data",
+      "input": { "species": "rabbit" },
+      "expect": { "output": { "pets": [{ "id": 3, "name": "Pickles", "species": "rabbit" }] } }
+    },
+    {
+      "id": "passesFiltersToTheDatabase",
+      "name": "Returns what the database found for the filters",
+      "input": { "status": "sold", "species": "parrot" },
+      "mocks": {
+        "db": {
+          "listPets": {
+            "returns": [{ "id": 4, "name": "Captain", "species": "parrot", "status": "sold" }]
+          }
+        }
+      },
+      "expect": {
+        "output": {
+          "pets": [{ "id": 4, "name": "Captain", "species": "parrot", "status": "sold" }]
+        },
+        "match": "equals"
+      }
+    },
+    {
+      "id": "returnsAnEmptyList",
+      "name": "Returns an empty list when nothing matches",
+      "input": { "species": "dragon" },
+      "mocks": { "db": { "listPets": { "returns": [] } } },
+      "expect": { "output": { "pets": [] }, "match": "equals" }
+    },
+    {
+      "id": "rejectsAnUnknownStatus",
+      "name": "Rejects a status that is not available, pending or sold",
+      "input": { "status": "lost" },
+      "expect": { "error": "status" }
+    }
+  ]
+}
