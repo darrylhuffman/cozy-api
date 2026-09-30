@@ -120,6 +120,8 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   lines.push(renderTypes())
   lines.push("")
   lines.push(renderReadJsonBodyHelper())
+  lines.push("")
+  lines.push(renderCheckOutputHelper())
   if (triggers.some((t) => requestSourcedNodes(workflow, t.nodeId).size > 0)) {
     lines.push("")
     lines.push(renderParseInputHelper())
@@ -181,6 +183,25 @@ function renderReadJsonBodyHelper(): string {
     `    }`,
     `  }`,
     `  return null`,
+    `}`,
+  ].join("\n")
+}
+
+function renderCheckOutputHelper(): string {
+  return [
+    `/** Stops at a node that returned something its outputs schema doesn't allow. */`,
+    `function checkOutput(`,
+    `  node: { outputs?: { safeParse(v: unknown): { success: boolean; error?: { issues: Array<{ path: PropertyKey[]; message: string }> } } } },`,
+    `  nodeId: string,`,
+    `  output: unknown,`,
+    `): Record<string, unknown> {`,
+    `  const checked = node.outputs?.safeParse(output)`,
+    `  if (checked && !checked.success) {`,
+    `    const issue = checked.error?.issues[0]`,
+    `    const at = issue?.path.map(String).join(".") || "<root>"`,
+    "    throw new Error(`Node \\`${nodeId}\\` failed: output doesn't match its outputs schema at \\`${at}\\`: ${issue?.message ?? \"invalid\"}`)",
+    `  }`,
+    `  return output as Record<string, unknown>`,
     `}`,
   ].join("\n")
 }
@@ -448,11 +469,11 @@ function renderSingleNodeCall(ctx: RunContext, nodeId: string): string[] {
     return [
       `const ${ran} = ${renderRanExpr(ctx, nodeId)}`,
       `const ${outVar} = (${ran}`,
-      `  ? await ${ident}.run(`,
+      `  ? checkOutput(${ident}, "${nodeId}", await ${ident}.run(`,
       `      ${renderParse(ctx, nodeId, ident, inputExpr)} as never,`,
       `      services as never,`,
       `      undefined as never,`,
-      `    )`,
+      `    ))`,
       `  : {}) as Record<string, unknown>`,
     ]
   }
@@ -463,21 +484,21 @@ function renderSingleNodeCall(ctx: RunContext, nodeId: string): string[] {
     return [
       `const ${inputRawVar} = ${inputExpr}`,
       `const ${inputVar} = ${renderParse(ctx, nodeId, ident, inputRawVar)}`,
-      `const ${outVar} = (await ${ident}.run(`,
+      `const ${outVar} = checkOutput(${ident}, "${nodeId}", await ${ident}.run(`,
       `  ${inputVar} as never,`,
       `  services as never,`,
       `  undefined as never,`,
-      `)) as Record<string, unknown>`,
+      `))`,
     ]
   }
 
   return [
     `const ${inputVar} = ${renderParse(ctx, nodeId, ident, inputExpr)}`,
-    `const ${outVar} = (await ${ident}.run(`,
+    `const ${outVar} = checkOutput(${ident}, "${nodeId}", await ${ident}.run(`,
     `  ${inputVar} as never,`,
     `  services as never,`,
     `  undefined as never,`,
-    `)) as Record<string, unknown>`,
+    `))`,
   ]
 }
 
@@ -497,7 +518,8 @@ function renderParallelWave(ctx: RunContext, nodeIds: string[]): string[] {
   const settledNames = nodeIds.map((id) => `${id}_settled`)
   lines.push(`const [${settledNames.join(", ")}] = await Promise.allSettled([`)
   for (const id of nodeIds) {
-    const call = `${identFor(ctx, id)}.run(_${id}Input as never, services as never, undefined as never)`
+    const ident = identFor(ctx, id)
+    const call = `${ident}.run(_${id}Input as never, services as never, undefined as never).then((o: unknown) => checkOutput(${ident}, "${id}", o))`
     lines.push(ctx.conditional.has(id) ? `  ${ranVar(id)} ? ${call} : {},` : `  ${call},`)
   }
   lines.push(`])`)

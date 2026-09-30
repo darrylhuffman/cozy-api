@@ -401,6 +401,20 @@ async function runOneNode(
     lifecycle?.emit({ type: "error", nodeId, error: err as Error })
     throw new NodeRunError(nodeId, err)
   }
+  // A node returning the wrong shape would pass bad data downstream (or into
+  // the response); stop at the node that broke its contract. Mocks are partial
+  // by design and skip this.
+  if (!mock && (nodeDef as Node).outputs) {
+    const checked = (nodeDef as Node).outputs.safeParse(output)
+    if (!checked.success) {
+      const issue = checked.error.issues[0]
+      const err = new Error(
+        `output doesn't match its outputs schema at \`${issue?.path?.join(".") || "<root>"}\`: ${issue?.message ?? "invalid"}`,
+      )
+      lifecycle?.emit({ type: "error", nodeId, error: err })
+      throw new NodeRunError(nodeId, err)
+    }
+  }
   lifecycle?.emit({
     type: "after-node",
     nodeId,

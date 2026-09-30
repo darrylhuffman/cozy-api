@@ -169,7 +169,7 @@ describe("emitWorkflow — handler shape", () => {
       relativePath: "x",
     })
     expect(source).toMatch(/services as never/)
-    expect(source).toMatch(/as never,\n\s*\)\) as Record<string, unknown>/)
+    expect(source).toMatch(/as never,\n\s*\)\)/)
     // inputs.parse() is called before run()
     expect(source).toMatch(/foo\.inputs\.parse\(\{\}\)/)
   })
@@ -299,7 +299,7 @@ describe("emitWorkflow — parallel waves", () => {
     })
     // inputs.parse() is called before run()
     expect(source).toMatch(/const _aInput = foo\.inputs\.parse\(\{\}\)/)
-    expect(source).toMatch(/const a_outputs = \(await foo\.run\(/)
+    expect(source).toMatch(/const a_outputs = checkOutput\(foo, "a", await foo\.run\(/)
     expect(source).not.toMatch(/Promise\.allSettled/)
   })
 
@@ -456,7 +456,7 @@ describe("emitWorkflow — whole-object `in` (string form)", () => {
       /const _saveInput = parseInput\(saveUser\.inputs, _saveInputRaw, "body"\)/,
     )
     // run() still gets the validated input
-    expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/)
+    expect(source).toMatch(/const save_outputs = checkOutput\(saveUser, "save", await saveUser\.run\(/)
     expect(source).toMatch(/_saveInput as never/)
   })
 
@@ -526,7 +526,7 @@ describe("emitWorkflow — full example matches the spec shape", () => {
     expect(source).toMatch(
       /const _saveInput = parseInput\(saveUser\.inputs, \{ email: request_outputs\?\.body\?\.email, password: request_outputs\?\.body\?\.password \}, \{"email":"body\.email","password":"body\.password"\}\)/,
     )
-    expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/)
+    expect(source).toMatch(/const save_outputs = checkOutput\(saveUser, "save", await saveUser\.run\(/)
     expect(source).toMatch(/_saveInput as never/)
     expect(source).toMatch(/body: save_outputs\?\.user,/)
   })
