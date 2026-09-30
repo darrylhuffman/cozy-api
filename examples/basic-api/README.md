@@ -21,6 +21,22 @@ creating and seeding it with a few pets the first time. Delete the file to start
 over, or set `PETSTORE_DB` to another path. Tests use `PETSTORE_DB=:memory:`, so
 each run gets a fresh, seeded database. Needs Node 22.13 or newer.
 
+## Tests
+
+Every node and every workflow ships with tests, at three levels:
+
+- **Node cases** (`nodes/**/*.cases.json`): one node, given inputs, with services
+  mocked where it helps. The IDE's **Tests** tab edits and runs them.
+- **Workflow tests** (`workflows/**/*.test.ts`): a whole workflow run in-process
+  with `testWorkflow` / `traceWorkflow` against a fresh in-memory pet store. They
+  check the response and what each node received and returned, so they catch wiring
+  mistakes such as a query param going to the wrong input.
+  `src/workflow-test-kit.ts` loads the workflow, the nodes and the services.
+- **Saved requests** (`workflows/**/*.requests.json`): real HTTP calls against the
+  running app, chained with captured values. The IDE's **Run** tab edits and runs them.
+
+`pnpm test` runs all three.
+
 ## Scripts
 
 - `pnpm dev` — start the dev server (tsx src/server.ts)

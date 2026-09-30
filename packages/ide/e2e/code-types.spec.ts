@@ -17,7 +17,7 @@ type Box = {
 }
 
 test("resolves package imports in node code and shows error hovers unclipped", async ({ ide }) => {
-  await ide.getByRole("button", { name: "save-user.ts" }).click()
+  await ide.getByRole("button", { name: "add-pet.ts" }).click()
   await expect(ide.locator(".monaco-editor").first()).toBeVisible({ timeout: 20_000 })
 
   const markers = async () =>
