@@ -16,6 +16,7 @@ import { fetchWorkspaceTree } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
 import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
+import { deleteItem, type WorkspaceItem } from "@/lib/workspace-items"
 import { useCommands } from "@/store/commands"
 import { useDockviewApi } from "@/store/dockview-api"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
@@ -23,6 +24,7 @@ import { useTabsStore } from "@/store/tabs"
 import { NewFolderDialog } from "@/workflow/new-folder-dialog"
 import { NewNodeDialog } from "@/workflow/new-node-dialog"
 import { NewWorkflowDialog } from "@/workflow/new-workflow-dialog"
+import { RenameItemDialog } from "@/workflow/rename-item-dialog"
 import { TreeContextMenu } from "./tree-context-menu"
 
 type LoadState = "loading" | "ready" | "fallback"
@@ -41,6 +43,8 @@ interface MenuState {
   y: number
   tree: TreeKind
   folder: string
+  /** The workflow or node file right-clicked, if any. */
+  item?: WorkspaceItem | undefined
 }
 
 type DialogKind = "none" | "new-folder" | "new-workflow" | "new-node"
@@ -94,12 +98,14 @@ export function FilesPanel() {
     })
   }, [])
 
-  const openMenu = (e: ReactMouseEvent, tree: TreeKind, folder: string) => {
+  const openMenu = (e: ReactMouseEvent, tree: TreeKind, folder: string, item?: WorkspaceItem) => {
     if (loadState !== "ready") return
     e.preventDefault()
     e.stopPropagation()
-    setMenu({ open: true, x: e.clientX, y: e.clientY, tree, folder })
+    setMenu({ open: true, x: e.clientX, y: e.clientY, tree, folder, item })
   }
+  const [renaming, setRenaming] = useState<WorkspaceItem | null>(null)
+  const [itemError, setItemError] = useState<string | null>(null)
 
   const itemTree = menu.tree === "workflows" ? workflows : nodes
 
@@ -133,11 +139,22 @@ export function FilesPanel() {
   )
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" data-testid="files-panel">
       {loadState === "fallback" && (
         <div className="flex items-center gap-1.5 border-b bg-warning/10 px-2 py-1 text-[10px] text-warning">
           <WifiOff className="h-3 w-3 shrink-0" />
           <span>Backend not available — showing demo data</span>
+        </div>
+      )}
+      {itemError && (
+        <div
+          role="alert"
+          className="flex items-center gap-2 border-b bg-destructive/10 px-2 py-1 text-[11px] text-destructive"
+        >
+          <span className="min-w-0 flex-1">{itemError}</span>
+          <button type="button" onClick={() => setItemError(null)} className="hover:underline">
+            Dismiss
+          </button>
         </div>
       )}
       <ScrollArea className="flex-1">
@@ -184,7 +201,16 @@ export function FilesPanel() {
         tree={menu.tree}
         onNewFolder={() => setDialog("new-folder")}
         onNewItem={() => setDialog(menu.tree === "workflows" ? "new-workflow" : "new-node")}
+        item={menu.item && { name: menu.item.path.split("/").pop() ?? menu.item.path }}
+        onRename={() => setRenaming(menu.item ?? null)}
+        onDelete={() => {
+          const item = menu.item
+          if (!item) return
+          setItemError(null)
+          deleteItem(item).catch((e: Error) => setItemError(e.message))
+        }}
       />
+      <RenameItemDialog item={renaming} onOpenChange={(o) => !o && setRenaming(null)} />
       <NewFolderDialog
         open={dialog === "new-folder"}
         onOpenChange={(o) => !o && setDialog("none")}
@@ -231,7 +257,7 @@ function Section({
   title: string
   treeKind: TreeKind
   tree: FileNode
-  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
+  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string, item?: WorkspaceItem) => void
   autoExpand?: boolean
   onNewItem?: () => void
   onNewFolder?: () => void
@@ -309,7 +335,7 @@ function TreeNode({
   depth: number
   path: string
   treeKind: TreeKind
-  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
+  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string, item?: WorkspaceItem) => void
   autoExpand?: boolean
 }) {
   if (node.type === "folder") {
@@ -347,7 +373,7 @@ function Folder_({
   depth: number
   path: string
   treeKind: TreeKind
-  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
+  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string, item?: WorkspaceItem) => void
   autoExpand?: boolean
 }) {
   // depth-0 folders (direct children of the section root) start open when autoExpand is on.
@@ -405,7 +431,7 @@ function Leaf({
   depth: number
   parentPath: string
   treeKind: TreeKind
-  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string) => void
+  onContextMenu: (e: ReactMouseEvent, tree: TreeKind, folder: string, item?: WorkspaceItem) => void
 }) {
   const openTab = useTabsStore((s) => s.openTab)
   const activeId = useTabsStore((s) => s.activeId)
@@ -431,7 +457,11 @@ function Leaf({
         const folder = node.path
           ? node.path.split("/").slice(0, -1).join("/") || parentPath
           : parentPath
-        onContextMenu(e, treeKind, folder)
+        const item: WorkspaceItem | undefined =
+          node.path && (node.kind === "workflow" || node.kind === "node")
+            ? { path: node.path, kind: node.kind }
+            : undefined
+        onContextMenu(e, treeKind, folder, item)
       }}
       onClick={() => {
         if (node.kind === "node" && node.path) {
