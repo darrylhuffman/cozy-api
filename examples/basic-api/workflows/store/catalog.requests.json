@@ -1,0 +1,216 @@
+{
+  "lorien": 1,
+  "requests": [
+    {
+      "id": "addsAPetToFind",
+      "name": "Adds a pet to look for",
+      "method": "POST",
+      "path": "/pets",
+      "body": {
+        "kind": "json",
+        "json": {
+          "name": "{{petPrefix}}-{{$randomInt}}",
+          "species": "axolotl"
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 201
+        }
+      ],
+      "capture": {
+        "petId": "body.id"
+      }
+    },
+    {
+      "id": "returnsACatalogPage",
+      "name": "Returns a catalog page for a species",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/store/catalog",
+      "query": {
+        "species": "axolotl",
+        "pageSize": "1"
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 200
+        },
+        {
+          "target": "body",
+          "path": "items[0].species",
+          "op": "equals",
+          "value": "Axolotl"
+        },
+        {
+          "target": "body",
+          "path": "items[0].canOrder",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "target": "body",
+          "path": "pageSize",
+          "op": "equals",
+          "value": 1
+        },
+        {
+          "target": "body",
+          "path": "storeCounts.available",
+          "op": "type",
+          "value": "number"
+        },
+        {
+          "target": "node",
+          "node": "ListPets",
+          "path": "input.species",
+          "op": "equals",
+          "value": "axolotl"
+        },
+        {
+          "target": "node",
+          "node": "ToCatalogPage",
+          "path": "input.pageSize",
+          "op": "equals",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "pagesThroughResults",
+      "name": "Pages through every pet",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/store/catalog",
+      "query": {
+        "page": "2",
+        "pageSize": "2"
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 200
+        },
+        {
+          "target": "body",
+          "path": "page",
+          "op": "equals",
+          "value": 2
+        },
+        {
+          "target": "body",
+          "path": "items",
+          "op": "type",
+          "value": "array"
+        },
+        {
+          "target": "body",
+          "path": "totalItems",
+          "op": "greaterThan",
+          "value": 3
+        },
+        {
+          "target": "body",
+          "path": "hasNextPage",
+          "op": "type",
+          "value": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "shapesMockedRows",
+      "name": "Shapes whatever the database returns",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/store/catalog",
+      "mocks": {
+        "ListPets": {
+          "output": {
+            "pets": [
+              {
+                "id": 7,
+                "name": "Nori",
+                "species": "cat",
+                "status": "sold"
+              }
+            ]
+          }
+        },
+        "GetInventory": {
+          "output": {
+            "inventory": {
+              "available": 0,
+              "pending": 0,
+              "sold": 1
+            }
+          }
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 200
+        },
+        {
+          "target": "body",
+          "op": "equals",
+          "value": {
+            "items": [
+              {
+                "id": 7,
+                "name": "Nori",
+                "species": "Cat",
+                "status": "sold",
+                "canOrder": false
+              }
+            ],
+            "page": 1,
+            "pageSize": 10,
+            "totalItems": 1,
+            "totalPages": 1,
+            "hasNextPage": false,
+            "storeCounts": {
+              "available": 0,
+              "pending": 0,
+              "sold": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "rejectsAnOversizedPage",
+      "name": "Rejects a page size over 50",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/store/catalog",
+      "query": {
+        "pageSize": "500"
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "greaterThan",
+          "value": 399
+        },
+        {
+          "target": "body",
+          "path": "error",
+          "op": "contains",
+          "value": "pageSize"
+        },
+        {
+          "target": "node",
+          "node": "Response",
+          "op": "notExists"
+        }
+      ]
+    }
+  ]
+}

@@ -12,7 +12,24 @@ a SQLite database (Node's built-in `node:sqlite`, so there is nothing to install
 | `GET`   | `/pets/:id`        | `workflows/pets/get.workflow`         |
 | `PATCH` | `/pets/:id`        | `workflows/pets/update.workflow`      |
 | `GET`   | `/store/inventory` | `workflows/store/inventory.workflow`  |
+| `GET`   | `/store/catalog`   | `workflows/store/catalog.workflow` (`?status=`, `?species=`, `?page=`, `?pageSize=`) |
 | `POST`  | `/store/orders`    | `workflows/store/orders/place.workflow` |
+
+## The catalog: several nodes in one workflow
+
+`GET /store/catalog` shows how nodes combine. The request fans out to two nodes
+that run side by side: **List Pets** (the same node `GET /pets` uses) and **Get
+Inventory**. Both feed **To Catalog Page**, a DTO mapper that uses no providers. It
+turns database rows into what the client wants: display-ready items with a
+`canOrder` flag, one page of results, paging info, and the store-wide counts.
+
+```json
+{
+  "items": [{ "id": 1, "name": "Biscuit", "species": "Dog", "status": "available", "canOrder": true }],
+  "page": 1, "pageSize": 10, "totalItems": 4, "totalPages": 1, "hasNextPage": false,
+  "storeCounts": { "available": 2, "pending": 1, "sold": 1 }
+}
+```
 
 ## Database
 
