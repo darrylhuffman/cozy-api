@@ -43,7 +43,7 @@ export function Timeline({ runId }: { runId: string | null }) {
 
 interface FoldedRow {
   offsetMs: number
-  kind: "before" | "after" | "error"
+  kind: "before" | "after" | "error" | "skipped"
   nodeId: string
   payload: unknown
   precedingEdges: Array<{ from: string; to: string; value: unknown }>
@@ -87,6 +87,16 @@ function foldEdges(run: RunRecord): FoldedRow[] {
         precedingEdges: [],
       })
     }
+    // A branch not taken: its `when` was false, or it reads a skipped node.
+    if (e.event.type === "skipped") {
+      rows.push({
+        offsetMs: e.offsetMs,
+        kind: "skipped",
+        nodeId: e.event.nodeId,
+        payload: "Not run: its condition was false, or it reads a node that didn't run.",
+        precedingEdges: [],
+      })
+    }
     // complete handled outside (it's on the outcome)
   }
   return rows
@@ -96,6 +106,7 @@ const phaseTone: Record<FoldedRow["kind"], string> = {
   before: "text-info",
   after: "text-success",
   error: "text-destructive",
+  skipped: "text-muted-foreground",
 }
 
 function TimelineRow({ row }: { row: FoldedRow }) {
@@ -131,10 +142,18 @@ function TimelineRow({ row }: { row: FoldedRow }) {
             </>
           )}
           <span className="text-muted-foreground">
-            {row.kind === "before" ? "input" : row.kind === "after" ? "output" : "error"}
+            {row.kind === "before"
+              ? "input"
+              : row.kind === "after"
+                ? "output"
+                : row.kind === "skipped"
+                  ? "why"
+                  : "error"}
           </span>
           {"\n"}
-          {row.kind === "error" ? String(row.payload) : JSON.stringify(row.payload, null, 2)}
+          {row.kind === "error" || row.kind === "skipped"
+            ? String(row.payload)
+            : JSON.stringify(row.payload, null, 2)}
         </pre>
       )}
     </div>

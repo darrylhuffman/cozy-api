@@ -54,9 +54,16 @@ const BADGE: Record<NodeDiffState, string | null> = {
   same: null,
 }
 
+/** The pseudo-field a node's `when` condition is listed under. */
+const WHEN_FIELD = "$when"
+
 /** What an input shows: its source ("← a.b") or its literal. */
 function slot(node: WorkflowFile["nodes"][string] | undefined, field: string): string | undefined {
   if (!node) return undefined
+  if (field === WHEN_FIELD) {
+    if (node.when === undefined) return undefined
+    return node.when.startsWith("!") ? `if not ${node.when.slice(1)}` : `if ${node.when}`
+  }
   const ref = inputRefs(node)[field]
   if (ref !== undefined) return `← ${ref}`
   const v = node.values?.[field]
@@ -70,6 +77,7 @@ function rowsFor(
   const fields = new Set<string>()
   for (const n of [was, now]) {
     if (!n) continue
+    if (n.when !== undefined) fields.add(WHEN_FIELD)
     for (const f of Object.keys(inputRefs(n))) fields.add(f)
     for (const f of Object.keys(n.values ?? {})) fields.add(f)
   }
@@ -159,7 +167,7 @@ function DiffNode({ data }: { data: Record<string, unknown> }) {
               style={{ width: 8, height: 8, background: "var(--muted-foreground)", border: 0 }}
             />
             <span className="w-[64px] shrink-0 truncate text-muted-foreground">
-              {r.field === "" ? "input" : r.field}
+              {r.field === "" ? "input" : r.field === WHEN_FIELD ? "when" : r.field}
             </span>
             {r.state === "changed" ? (
               <span className="flex min-w-0 flex-1 flex-col items-end py-0.5 font-mono text-[10.5px] leading-[1.45]">
@@ -256,7 +264,9 @@ export function WorkflowDiffCanvas({
     >()
     const collect = (wf: WorkflowFile | null, side: "before" | "after") => {
       for (const [id, node] of Object.entries(wf?.nodes ?? {})) {
-        for (const [field, ref] of Object.entries(inputRefs(node))) {
+        const refs = inputRefs(node)
+        if (node.when !== undefined) refs[WHEN_FIELD] = node.when.replace(/^!/, "")
+        for (const [field, ref] of Object.entries(refs)) {
           const source = ref.split(".")[0] ?? ""
           const key = `${source}|${id}|${field}|${ref}`
           const seen = byKey.get(key)

@@ -55,6 +55,14 @@ import { addNode } from "./add-node"
 import { CanvasContextMenu } from "./canvas-context-menu"
 import { CanvasToolbar, type SaveStatus } from "./canvas-toolbar"
 import { CommandPalette } from "./command-palette"
+import { ConditionEdge, type ConditionEdgeData } from "./condition-edge"
+import {
+  conditionLabel,
+  flipCondition,
+  parseCondition,
+  setCondition,
+  WHEN_HANDLE_ID,
+} from "./conditions"
 import { ConnectionLine } from "./connection-line"
 import { removeMappings } from "./delete-edge"
 import { deleteNode } from "./delete-node"
@@ -122,7 +130,10 @@ const nodeTypes: NodeTypes = {
   workflow: WorkflowNode as NodeTypes[string],
   variable: VariableNode as NodeTypes[string],
 }
-const edgeTypes: EdgeTypes = { path: PathEdge as EdgeTypes[string] }
+const edgeTypes: EdgeTypes = {
+  path: PathEdge as EdgeTypes[string],
+  condition: ConditionEdge as EdgeTypes[string],
+}
 
 type SaveState = "idle" | "saving" | "saved" | "error"
 
@@ -200,6 +211,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       if (e.event.type === "before-node") statuses.set(e.event.nodeId, "running")
       else if (e.event.type === "after-node") statuses.set(e.event.nodeId, "completed")
       else if (e.event.type === "error") statuses.set(e.event.nodeId, "errored")
+      else if (e.event.type === "skipped") statuses.set(e.event.nodeId, "skipped")
     }
     if (selectedRunPausedFrame) statuses.set(selectedRunPausedFrame.nodeId, "paused")
     return statuses
@@ -342,13 +354,17 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       const wf = workflowRef.current
       if (!wf) return
       const allMappings: PathMapping[] = []
+      let next = wf
       for (const e of deleted) {
+        if (e.type === "condition") {
+          next = setCondition(next, e.target, null)
+          continue
+        }
         const m = (e.data as { mappings?: PathMapping[] } | undefined)?.mappings
         if (m) allMappings.push(...m)
       }
-      if (allMappings.length === 0) return
-      const next = removeMappings(wf, allMappings)
-      applyWorkflow(next)
+      if (allMappings.length > 0) next = removeMappings(next, allMappings)
+      if (next !== wf) applyWorkflow(next)
     },
     [applyWorkflow],
   )
@@ -606,6 +622,22 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     [applyWorkflow],
   )
 
+  /** Removes a node's `when`, or flips it between truthy and falsy. */
+  const onClearCondition = useCallback(
+    (nodeId: string) => {
+      const wf = workflowRef.current
+      if (wf) applyWorkflow(setCondition(wf, nodeId, null))
+    },
+    [applyWorkflow],
+  )
+  const onFlipCondition = useCallback(
+    (nodeId: string) => {
+      const wf = workflowRef.current
+      if (wf) applyWorkflow(flipCondition(wf, nodeId))
+    },
+    [applyWorkflow],
+  )
+
   // Keep expansionRef in sync so node-init effect always sees fresh data
   expansionRef.current = expansion
 
@@ -734,6 +766,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
             onTogglePort(id, side, handleId),
           onInputValueChange: (portId: string, value: unknown) =>
             onInputValueChange(id, portId, value),
+          onClearCondition: () => onClearCondition(id),
           nodeStatus: nodeStatusesRef.current.get(id),
           issues: issuesByNode.get(id),
           tests: testsByUsesRef.current.get(instance.uses) ?? null,
@@ -745,7 +778,16 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     })
     setNodes(initial)
     nodesRef.current = initial
-  }, [workflow, schemas, portsByNode, issuesByNode, onTogglePort, onInputValueChange, path])
+  }, [
+    workflow,
+    schemas,
+    portsByNode,
+    issuesByNode,
+    onTogglePort,
+    onInputValueChange,
+    onClearCondition,
+    path,
+  ])
 
   // Nodes added or changed since the last commit get a mark on their header.
   const gitStatus = useGitStore((s) => s.status)
@@ -1000,7 +1042,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     }
 
     let edgeIdx = 0
-    return Array.from(groups.values()).map((group) => ({
+    const dataEdges: Edge[] = Array.from(groups.values()).map((group) => ({
       id: `e-${edgeIdx++}`,
       source: group.sourceNodeId,
       sourceHandle: group.sourceHandle,
@@ -1010,13 +1052,44 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       animated: false,
       data: { mappings: group.mappings },
     }))
+
+    // `when` conditions: a dashed edge from the output a node branches on
+    // into its condition handle, labelled with the branch it takes.
+    const conditionEdges: Edge[] = []
+    for (const [nodeId, instance] of Object.entries(workflow.nodes)) {
+      const c = parseCondition(instance.when)
+      if (!c || c.nodeId === nodeId || !workflow.nodes[c.nodeId]) continue
+      const outputs = portsByNode.get(c.nodeId)?.outputs ?? []
+      const visible = visibleOutputsByNode.get(c.nodeId) ?? new Set<string>()
+      // A bare node reference ("when": "FindRoom") anchors on its first output.
+      const sourceHandle = effectiveHandle(c.path.join("."), visible) || outputs[0]?.id
+      if (!sourceHandle) continue
+      const data: ConditionEdgeData = {
+        when: instance.when as string,
+        label: conditionLabel(c),
+        negate: c.negate,
+      }
+      conditionEdges.push({
+        id: `when-${nodeId}`,
+        source: c.nodeId,
+        sourceHandle,
+        target: nodeId,
+        targetHandle: WHEN_HANDLE_ID,
+        type: "condition",
+        data: data as unknown as Record<string, unknown>,
+      })
+    }
+    return [...dataEdges, ...conditionEdges]
   }, [workflow, expansion, portsByNode])
 
   // Merge flash state into edges for display — only `animated` and
   // `style.strokeOpacity` are touched; source/target/handles are untouched.
   const displayEdges = useMemo<Edge[]>(() => {
-    if (flashingEdges.size === 0) return edges
     return edges.map((ed) => {
+      if (ed.type === "condition") {
+        return { ...ed, data: { ...ed.data, onFlip: () => onFlipCondition(ed.target) } }
+      }
+      if (flashingEdges.size === 0) return ed
       const flashKey = `${ed.source}||${ed.sourceHandle ?? ""}`
       if (!flashingEdges.has(flashKey)) return ed
       return {
@@ -1025,7 +1098,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
         style: { ...ed.style, strokeOpacity: 1 },
       }
     })
-  }, [edges, flashingEdges])
+  }, [edges, flashingEdges, onFlipCondition])
 
   const save = useCallback(async () => {
     const wf = workflowRef.current
@@ -1184,6 +1257,15 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       const targetNode = wf.nodes[target]
       if (!targetNode) return
 
+      // Dropped on the condition handle: the node now runs only when this
+      // output is truthy. Re-pointing an existing condition keeps its polarity.
+      if (targetHandle === WHEN_HANDLE_ID) {
+        if (source === target) return
+        const negate = parseCondition(targetNode.when)?.negate ?? false
+        applyWorkflow(setCondition(wf, target, refString, negate))
+        return
+      }
+
       let nextIn: string | Record<string, string>
       // Fields whose literal values must be cleared from `values:` because a
       // reference is taking over. The connection wins over the literal.
@@ -1301,6 +1383,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
       const from = state.fromHandle
       if (state.isValid || state.toNode || !from || from.type !== "target") return
+      if (from.id === WHEN_HANDLE_ID) return
       const wf = workflowRef.current
       const target = from.nodeId
       const node = wf?.nodes[target]

@@ -1,10 +1,17 @@
 import { nodeFileForUses } from "@darrylondil/lorien-runtime/cases"
-import { Code, Sparkles } from "lucide-react"
+import { Code, GitBranch, Sparkles } from "lucide-react"
 import { useState } from "react"
 import { askAi } from "@/ai/ask"
 import { explainNode } from "@/ai/prompts"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { JsonSchema, NodeInstance } from "@/lib/api"
+import type { JsonSchema, NodeInstance, NodeSchemas, WorkflowFile } from "@/lib/api"
 import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
 import { type InspectorTab, useInspectorTab } from "@/store/inspector-tab"
@@ -15,9 +22,12 @@ import { useSchemas } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkflowDrafts } from "@/store/workflow-drafts"
-import { isValidNodeId } from "@/workflow/diagnose"
+import { conditionColor } from "@/workflow/condition-edge"
+import { conditionOptions, parseCondition, setCondition } from "@/workflow/conditions"
+import { isValidNodeId, TRIGGERS } from "@/workflow/diagnose"
 import { renameNode } from "@/workflow/graph-ops"
 import { expandTemplate } from "@/workflow/template"
+import { VARIABLE_USES } from "@/workflow/variables"
 import { RunTab } from "./run-tab"
 import { TestsTab } from "./tests-tab"
 
@@ -182,6 +192,11 @@ function InspectContent() {
           </button>
         </div>
       </Section>
+      {workflow && instance.uses !== VARIABLE_USES && !TRIGGERS.has(instance.uses) && (
+        <Section label="Runs">
+          <ConditionField id={selectedId} tabId={liveTabId} workflow={workflow} schemas={schemas} />
+        </Section>
+      )}
       {schema?.description && (
         <Section label="Description">
           <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/85">
@@ -299,6 +314,101 @@ function NodeIdField({
           {error}
         </span>
       )}
+    </div>
+  )
+}
+
+const ALWAYS = "$always"
+
+/**
+ * The node's `when`: always run, or only when another node's output is true
+ * (or false). The same edit as drawing a condition edge on the canvas.
+ */
+function ConditionField({
+  id,
+  tabId,
+  workflow,
+  schemas,
+}: {
+  id: string
+  tabId: string | null
+  workflow: WorkflowFile
+  schemas: Record<string, NodeSchemas>
+}) {
+  const condition = parseCondition(workflow.nodes[id]?.when)
+  const options = conditionOptions(workflow, schemas, id)
+  if (condition && !options.some((o) => o.ref === condition.ref)) {
+    options.unshift({ ref: condition.ref, type: undefined })
+  }
+  const apply = (ref: string | null, negate: boolean) => {
+    if (!tabId) return
+    const drafts = useWorkflowDrafts.getState()
+    const draft = drafts.drafts[tabId]
+    if (!draft) return
+    const next = setCondition(draft.workflow, id, ref, negate)
+    if (next !== draft.workflow) drafts.apply(tabId, next)
+  }
+  const negate = condition?.negate ?? false
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Select
+        value={condition?.ref ?? ALWAYS}
+        disabled={!tabId}
+        onValueChange={(v) => apply(v === ALWAYS ? null : v, negate)}
+      >
+        <SelectTrigger
+          aria-label="Condition"
+          className="h-8 w-full min-w-0 bg-background px-2.5 font-mono text-[12.5px]"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALWAYS}>
+            <span className="font-sans">Always</span>
+          </SelectItem>
+          {options.map((o) => (
+            <SelectItem key={o.ref} value={o.ref}>
+              <span className="font-sans text-muted-foreground">only if</span>
+              <span className="font-mono">{o.ref}</span>
+              {o.type && o.type !== "boolean" && (
+                <span className="font-sans text-[11px] text-muted-foreground">{o.type}</span>
+              )}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {condition && (
+        <fieldset className="grid grid-cols-2 gap-1 rounded-md bg-muted/50 p-0.5">
+          <legend className="sr-only">Branch</legend>
+          {[false, true].map((neg) => {
+            const on = negate === neg
+            const color = conditionColor(neg)
+            return (
+              <button
+                key={String(neg)}
+                type="button"
+                aria-pressed={on}
+                onClick={() => apply(condition.ref, neg)}
+                className={cn(
+                  "flex h-7 items-center justify-center gap-1.5 rounded-[5px] text-xs",
+                  on
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <GitBranch aria-hidden className="h-3 w-3" style={on ? { color } : undefined} />
+                {neg ? "when false" : "when true"}
+              </button>
+            )
+          })}
+        </fieldset>
+      )}
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {condition
+          ? "Skipped otherwise, along with anything that reads its output."
+          : "Or drag an output onto the diamond left of the node's title."}
+      </p>
     </div>
   )
 }

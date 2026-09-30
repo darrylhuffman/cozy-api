@@ -169,6 +169,7 @@ const SYMBOL: Record<ChangeKind, "add" | "remove" | "change"> = {
   rewired: "change",
   "value-changed": "change",
   "after-changed": "change",
+  "when-changed": "change",
 }
 
 function VisualDiff({

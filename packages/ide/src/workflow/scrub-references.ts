@@ -2,10 +2,16 @@ import type { NodeInstance } from "@/lib/api"
 
 /**
  * Strips all `in:` references pointing at `targetId` from a single node
- * instance. Handles both per-field (`in: {...}`) and whole-object (`in: "..."`)
+ * instance, and a `when:` that reads it. Handles both per-field (`in: {...}`) and whole-object (`in: "..."`)
  * forms. Returns the original instance unchanged if nothing references targetId.
  */
 export function scrubReferencesTo(node: NodeInstance, targetId: string): NodeInstance {
+  // A condition on the removed node goes with it.
+  const when = node.when?.replace(/^!/, "")
+  if (when !== undefined && (when === targetId || when.startsWith(`${targetId}.`))) {
+    const { when: _drop, ...rest } = node
+    return scrubReferencesTo(rest, targetId)
+  }
   if (!node.in) return node
 
   if (typeof node.in === "string") {

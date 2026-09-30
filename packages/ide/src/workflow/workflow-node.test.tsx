@@ -7,6 +7,7 @@ vi.mock("@xyflow/react", () => ({
     <div data-testid={`handle-${type}-${id ?? "default"}`} />
   ),
   Position: { Left: "left", Right: "right" },
+  useConnection: () => false,
 }))
 
 import type { NodeInstance } from "@/lib/api"
@@ -939,5 +940,40 @@ describe("WorkflowNode — guarded by", () => {
     ).toEqual(["Request log", "admin/_middleware"])
     fireEvent.click(within(row).getByRole("button", { name: "admin/_middleware" }))
     expect(useTabsStore.getState().activeCodeId).toBe("workflows/admin/_middleware.ts")
+  })
+})
+
+describe("WorkflowNode conditions", () => {
+  const ports: NodePorts = { inputs: inputRoot([leaf("body")]), outputs: [] }
+
+  it("shows the branch a node runs on, with the condition handle on that row", () => {
+    const onClearCondition = vi.fn()
+    const data = makeData("missing", { uses: "@core/response", when: "!find.found" }, ports, {
+      onClearCondition,
+    })
+    render(<WorkflowNode data={data} />)
+    const strip = screen.getByTestId("node-condition")
+    expect(strip).toHaveTextContent("Runs if not")
+    expect(strip).toHaveTextContent("find.found")
+    expect(within(strip).getByTestId("handle-target-$when")).toBeInTheDocument()
+    fireEvent.click(within(strip).getByRole("button", { name: "Remove condition" }))
+    expect(onClearCondition).toHaveBeenCalledOnce()
+  })
+
+  it("still offers a condition handle when there is no condition, except on triggers", () => {
+    render(<WorkflowNode data={makeData("ok", { uses: "@core/response" }, ports)} />)
+    expect(screen.queryByTestId("node-condition")).not.toBeInTheDocument()
+    expect(screen.getByTestId("handle-target-$when")).toBeInTheDocument()
+    cleanup()
+    render(
+      <WorkflowNode
+        data={makeData(
+          "request",
+          { uses: "@core/http-request" },
+          { inputs: emptyInputRoot, outputs: [] },
+        )}
+      />,
+    )
+    expect(screen.queryByTestId("handle-target-$when")).not.toBeInTheDocument()
   })
 })

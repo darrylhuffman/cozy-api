@@ -38,6 +38,20 @@ describe("deleteNode", () => {
     expect(next.nodes.response?.in).toBeUndefined()
   })
 
+  it("drops a `when` that reads the deleted node", () => {
+    const branching: WorkflowFile = {
+      ...wf,
+      nodes: {
+        ...wf.nodes,
+        missing: { uses: "@core/response", when: "!save.user", in: { body: "request.body" } },
+        other: { uses: "@core/response", when: "request.ok" },
+      },
+    }
+    const next = deleteNode(branching, "save")
+    expect(next.nodes.missing).toEqual({ uses: "@core/response", in: { body: "request.body" } })
+    expect(next.nodes.other?.when).toBe("request.ok")
+  })
+
   it("clears whole-object `in:` strings pointing at the deleted node", () => {
     const next = deleteNode(wf, "save")
     expect(next.nodes.log?.in).toBeUndefined() // string-form ref scrubbed

@@ -18,6 +18,7 @@ export type ChangeKind =
   | "rewired"
   | "value-changed"
   | "after-changed"
+  | "when-changed"
 
 export interface WorkflowChange {
   kind: ChangeKind
@@ -49,6 +50,12 @@ function show(v: unknown): string {
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
+/** "if Room.found" / "if not Room.found". */
+function describeWhen(when: string | undefined): string {
+  if (when === undefined) return "always"
+  return when.startsWith("!") ? `if not ${when.slice(1)}` : `if ${when}`
+}
 
 function target(nodeId: string, field: string): string {
   return field === "" ? nodeId : `${nodeId}.${field}`
@@ -178,6 +185,18 @@ export function diffWorkflows(
         text: `${id} now runs after ${(now.after ?? []).join(", ") || "nothing extra"}`,
       })
     }
+    if (was.when !== now.when) {
+      own.push({
+        kind: "when-changed",
+        nodeId: id,
+        before: was.when,
+        after: now.when,
+        text:
+          now.when === undefined
+            ? `${id} always runs (was only ${describeWhen(was.when)})`
+            : `${id} now runs only ${describeWhen(now.when)}`,
+      })
+    }
     nodes[id] = own.length > 0 ? "changed" : "same"
     changes.push(...own)
 
@@ -228,6 +247,10 @@ export function revertChange(
     case "label-changed":
       if (was?.label === undefined) delete next.label
       else next.label = was.label
+      break
+    case "when-changed":
+      if (was?.when === undefined) delete next.when
+      else next.when = was.when
       break
     case "after-changed":
       if (was?.after === undefined) delete next.after

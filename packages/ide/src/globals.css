@@ -247,6 +247,11 @@ body,
   border-color: var(--primary);
   border-width: 2px;
 }
+/* Its `when` was false (or it reads a node that was): the branch not taken. */
+.lorien-skipped {
+  border-style: dashed;
+  opacity: 0.45;
+}
 
 /* React Flow ships its own light/dark palette (neutral greys such as #141414).
    Point it at the theme tokens so the canvas matches the rest of the editor. */

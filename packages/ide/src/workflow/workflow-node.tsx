@@ -1,10 +1,12 @@
-import { Handle, Position } from "@xyflow/react"
+import { Handle, Position, useConnection } from "@xyflow/react"
 import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
   FlaskConical,
+  GitBranch,
   ShieldCheck,
+  X,
   XCircle,
 } from "lucide-react"
 import { useState } from "react"
@@ -15,8 +17,10 @@ import { cn } from "@/lib/utils"
 import { middlewareFor, useProvidersStore } from "@/store/providers"
 import { useSelectionStore } from "@/store/selection"
 import { idFromUses } from "./add-node"
+import { conditionColor } from "./condition-edge"
+import { type Condition, parseCondition, WHEN_HANDLE_ID } from "./conditions"
 import type { NodePorts, PortNode } from "./derive-ports"
-import type { Diagnostic } from "./diagnose"
+import { type Diagnostic, TRIGGERS } from "./diagnose"
 import { resolveAccentColor } from "./tailwind-colors"
 import { expandTemplate } from "./template"
 import { type ChipState, ValueChip } from "./value-chip"
@@ -70,6 +74,8 @@ export interface WorkflowNodeData {
   tests?: { total: number; passed: number; failed: number; run: number } | null
   /** Set when the node was added or changed since the last commit. */
   gitChange?: "added" | "changed" | undefined
+  /** Removes the node's `when` condition. */
+  onClearCondition?: () => void
 }
 
 // Using the xyflow NodeProps generic requires the data type to extend Node which
@@ -116,6 +122,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     issues,
     tests,
     gitChange,
+    onClearCondition,
   } = data as unknown as WorkflowNodeData
   const providers = useProvidersStore((s) => s.nodes[instance.uses])
   const errorCount = issues?.filter((i) => i.severity === "error").length ?? 0
@@ -148,8 +155,9 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     safePorts.inputs.children.length === 0
   )
 
-  const nodeStatus = (data as { nodeStatus?: "running" | "completed" | "errored" | "paused" })
-    .nodeStatus
+  const nodeStatus = (
+    data as { nodeStatus?: "running" | "completed" | "errored" | "paused" | "skipped" }
+  ).nodeStatus
   const statusClass =
     nodeStatus === "running"
       ? "lorien-running"
@@ -159,7 +167,10 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
           ? "lorien-errored"
           : nodeStatus === "paused"
             ? "lorien-paused"
-            : ""
+            : nodeStatus === "skipped"
+              ? "lorien-skipped"
+              : ""
+  const condition = parseCondition(instance.when)
 
   const accent = color ? resolveAccentColor(color) : null
   // The header carries the node's colour: its accent when it declares one,
@@ -175,7 +186,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     <div
       data-testid="node-card"
       className={cn(
-        "rounded-[10px] border border-input bg-popover text-[12px] text-card-foreground shadow-[0_10px_24px_rgba(0,0,0,.18)]",
+        "group rounded-[10px] border border-input bg-popover text-[12px] text-card-foreground shadow-[0_10px_24px_rgba(0,0,0,.18)]",
         errorCount > 0 ? "border-destructive/70" : warningCount > 0 && "border-warning/70",
         isSelected && "ring-2 ring-primary",
         statusClass,
@@ -218,7 +229,10 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         {gitChange && <GitChangeMark change={gitChange} />}
         {tests && tests.run > 0 && <TestsBadge tests={tests} />}
         {issues && issues.length > 0 && <IssueBadge issues={issues} errorCount={errorCount} />}
+        {!condition && !TRIGGERS.has(instance.uses) && <IdleConditionHandle />}
       </div>
+
+      {condition && <ConditionStrip condition={condition} onClear={onClearCondition} />}
 
       {instance.uses === "@core/http-request" && workflowPath && (
         <GuardedBy workflowPath={workflowPath} />
@@ -264,6 +278,88 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         ))}
       </div>
     </div>
+  )
+}
+
+/** Condition handles are diamonds, so they don't read as data inputs. */
+function conditionHandleStyle(color: string): React.CSSProperties {
+  return {
+    top: "50%",
+    transform: "translateY(-50%) rotate(45deg)",
+    width: 9,
+    height: 9,
+    borderRadius: 2,
+    background: color,
+    border: "2px solid var(--popover)",
+  }
+}
+
+/**
+ * The row under the header of a node that has a `when`: which output it
+ * branches on, and whether it runs when that output is truthy or falsy. The
+ * condition edge lands on its handle.
+ */
+function ConditionStrip({
+  condition,
+  onClear,
+}: {
+  condition: Condition
+  onClear: (() => void) | undefined
+}) {
+  const color = conditionColor(condition.negate)
+  return (
+    <div
+      data-testid="node-condition"
+      className="relative flex h-[26px] items-center gap-1.5 border-b border-border pr-1.5 pl-3 text-[11px]"
+      style={{ background: `color-mix(in srgb, ${color} 8%, var(--popover))` }}
+    >
+      <Handle
+        type="target"
+        position={Position.Left}
+        id={WHEN_HANDLE_ID}
+        style={conditionHandleStyle(color)}
+      />
+      <GitBranch aria-hidden className="h-3 w-3 shrink-0" style={{ color }} />
+      <span className="shrink-0 text-muted-foreground">
+        {condition.negate ? "Runs if not" : "Runs if"}
+      </span>
+      <span className="min-w-0 flex-1 truncate font-mono text-[10.5px]" style={{ color }}>
+        {condition.ref}
+      </span>
+      {onClear && (
+        <button
+          type="button"
+          aria-label="Remove condition"
+          title="Remove condition"
+          onClick={(e) => {
+            e.stopPropagation()
+            onClear()
+          }}
+          className="nodrag flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <X aria-hidden className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A node without a condition still takes one: drop an output on this handle
+ * (left of the header) to branch on it. Hidden until the card is hovered or
+ * an output is being dragged.
+ */
+function IdleConditionHandle() {
+  const dragging = useConnection((c) => c.inProgress && c.fromHandle?.type === "source")
+  return (
+    <Handle
+      type="target"
+      position={Position.Left}
+      id={WHEN_HANDLE_ID}
+      title="Drop an output here to run this node only when it's true"
+      className={dragging ? undefined : "opacity-0 group-hover:opacity-100"}
+      style={conditionHandleStyle("var(--muted-foreground)")}
+    />
   )
 }
 
