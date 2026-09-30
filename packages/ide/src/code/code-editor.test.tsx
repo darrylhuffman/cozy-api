@@ -35,6 +35,9 @@ vi.mock("@monaco-editor/react", () => ({
 }))
 
 // Mock events module — SSE isn't available in jsdom
+// Gutter change marks need a real Monaco editor; they're covered end to end.
+vi.mock("./git-gutter", () => ({ useGitGutter: () => {} }))
+
 vi.mock("@/lib/events", () => ({
   subscribeToFileEvents: vi.fn(() => () => {}),
 }))

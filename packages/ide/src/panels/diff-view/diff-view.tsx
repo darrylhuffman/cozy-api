@@ -1,7 +1,15 @@
-import { DiffEditor } from "@monaco-editor/react"
+import { DiffEditor, type DiffOnMount } from "@monaco-editor/react"
 import { ReactFlowProvider } from "@xyflow/react"
-import { ArrowLeftRight, ChevronLeft, ChevronRight, Minus, Plus, Undo2 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import {
+  ArrowLeftRight,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Minus,
+  Plus,
+  Undo2,
+} from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { languageFor } from "@/code/code-editor"
 import {
   fetchGitFile,
@@ -11,7 +19,9 @@ import {
   type WorkflowFile,
 } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
+import { applyHunk, diffLines, type Hunk } from "@/lib/line-diff"
 import { defineMonacoThemes, monacoThemeName } from "@/lib/monaco-theme"
+import { openWorkspaceFile } from "@/lib/open-file"
 import { cn } from "@/lib/utils"
 import { useGitStore } from "@/store/git"
 import { useActiveTheme } from "@/store/theme"
@@ -34,6 +44,19 @@ export const REVISION_LABEL: Record<GitRevision, string> = {
 }
 
 type Mode = "visual" | "text"
+
+/**
+ * What a single change can do in this comparison: between staged and the
+ * working copy it can be staged or discarded, between HEAD and staged it can
+ * be unstaged. Other comparisons are read-only.
+ */
+export type ChangeActions = "worktree" | "index" | null
+
+function actionsFor(base: GitRevision, head: GitRevision): ChangeActions {
+  if (base === "index" && head === "worktree") return "worktree"
+  if (base === "HEAD" && head === "index") return "index"
+  return null
+}
 
 /**
  * A file's changes between two revisions. Workflows open as a visual graph
@@ -90,6 +113,16 @@ export function DiffView({
           {REVISION_LABEL[base]} ↔ {REVISION_LABEL[head]}
         </span>
         <span className="flex-1" />
+        {(head === "worktree" || head === "index") && texts.head !== null && (
+          <button
+            type="button"
+            onClick={() => openWorkspaceFile(path)}
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ExternalLink aria-hidden className="size-3.5" />
+            Open file
+          </button>
+        )}
         {isWorkflow && (
           <div
             role="tablist"
@@ -118,35 +151,176 @@ export function DiffView({
       </div>
       <div className="min-h-0 flex-1">
         {mode === "visual" && isWorkflow ? (
-          <VisualDiff path={path} texts={texts} canRevert={head === "worktree"} />
+          <VisualDiff path={path} texts={texts} actions={actionsFor(base, head)} />
         ) : (
-          <TextDiff path={path} base={texts.base ?? ""} head={texts.head ?? ""} />
+          <TextDiff
+            path={path}
+            base={texts.base ?? ""}
+            head={texts.head ?? ""}
+            actions={actionsFor(base, head)}
+          />
         )}
       </div>
     </div>
   )
 }
 
-function TextDiff({ path, base, head }: { path: string; base: string; head: string }) {
+/** The hunk at or after `line` (1-based, in the head), else the last one. */
+function hunkAt(hunks: Hunk[], line: number): number {
+  const i = hunks.findIndex((h) => line <= Math.max(h.headEnd, h.headStart + 1))
+  return i < 0 ? hunks.length - 1 : i
+}
+
+function TextDiff({
+  path,
+  base,
+  head,
+  actions,
+}: {
+  path: string
+  base: string
+  head: string
+  actions: ChangeActions
+}) {
   const theme = useActiveTheme()
+  const hunks = useMemo(() => diffLines(base, head), [base, head])
+  const [current, setCurrent] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const editorRef = useRef<Parameters<DiffOnMount>[0] | null>(null)
+  const hunksRef = useRef(hunks)
+  hunksRef.current = hunks
+  const index = Math.min(current, hunks.length - 1)
+  const hunk = hunks[index]
+
+  const reveal = (i: number) => {
+    const h = hunks[i]
+    const editor = editorRef.current?.getModifiedEditor()
+    setCurrent(i)
+    if (!h || !editor) return
+    const line = Math.max(1, h.headStart + 1)
+    editor.revealLineInCenter(line)
+    editor.setPosition({ lineNumber: line, column: 1 })
+  }
+  const step = (by: number) => {
+    if (hunks.length === 0) return
+    reveal((index + by + hunks.length) % hunks.length)
+  }
+
+  // Detach the models before disposing them; the diff widget throws if its
+  // models go first, which happens when a diff tab closes or switches away.
+  useEffect(
+    () => () => {
+      const editor = editorRef.current
+      const models = editor?.getModel()
+      editor?.setModel(null)
+      models?.original.dispose()
+      models?.modified.dispose()
+    },
+    [],
+  )
+
+  const onMount: DiffOnMount = (editor) => {
+    editorRef.current = editor
+    // Following the cursor, so clicking into a change picks it.
+    editor.getModifiedEditor().onDidChangeCursorPosition((e) => {
+      if (e.source === "api") return
+      setCurrent(hunkAt(hunksRef.current, e.position.lineNumber))
+    })
+  }
+
+  const apply = async (kind: "stage" | "unstage" | "discard") => {
+    if (!hunk) return
+    try {
+      if (kind === "discard") {
+        await saveFile(path, applyHunk(base, head, hunk, "to-base"))
+      } else {
+        const next = applyHunk(base, head, hunk, kind === "stage" ? "to-head" : "to-base")
+        if (!(await useGitStore.getState().setStaged(path, next))) {
+          throw new Error(useGitStore.getState().error ?? "Couldn't update what's staged")
+        }
+      }
+      setError(null)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  const button =
+    "flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-45"
   return (
-    <DiffEditor
-      height="100%"
-      language={languageFor(path)}
-      original={base}
-      modified={head}
-      theme={monacoThemeName(theme)}
-      beforeMount={defineMonacoThemes}
-      options={{
-        readOnly: true,
-        renderSideBySide: true,
-        minimap: { enabled: false },
-        fontSize: 12.5,
-        fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-      }}
-    />
+    <div className="flex h-full flex-col">
+      {hunks.length > 0 && (
+        <div
+          className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3 text-[12px]"
+          data-testid="hunk-bar"
+        >
+          <div className="flex items-center gap-1 text-muted-foreground">
+            <button
+              type="button"
+              aria-label="Previous change"
+              onClick={() => step(-1)}
+              className="rounded p-0.5 hover:bg-accent hover:text-foreground"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <span className="min-w-[72px] text-center tabular-nums" data-testid="hunk-position">
+              Change {index + 1} of {hunks.length}
+            </span>
+            <button
+              type="button"
+              aria-label="Next change"
+              onClick={() => step(1)}
+              className="rounded p-0.5 hover:bg-accent hover:text-foreground"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {error && <span className="truncate text-destructive">{error}</span>}
+          <span className="flex-1" />
+          {actions === "worktree" && (
+            <>
+              <button type="button" className={button} onClick={() => void apply("discard")}>
+                <Undo2 aria-hidden className="size-3.5" />
+                Discard change
+              </button>
+              <button type="button" className={button} onClick={() => void apply("stage")}>
+                <Plus aria-hidden className="size-3.5" />
+                Stage change
+              </button>
+            </>
+          )}
+          {actions === "index" && (
+            <button type="button" className={button} onClick={() => void apply("unstage")}>
+              <Minus aria-hidden className="size-3.5" />
+              Unstage change
+            </button>
+          )}
+        </div>
+      )}
+      <div className="min-h-0 flex-1">
+        <DiffEditor
+          height="100%"
+          language={languageFor(path)}
+          original={base}
+          modified={head}
+          theme={monacoThemeName(theme)}
+          beforeMount={defineMonacoThemes}
+          onMount={onMount}
+          keepCurrentOriginalModel
+          keepCurrentModifiedModel
+          options={{
+            readOnly: true,
+            renderSideBySide: true,
+            minimap: { enabled: false },
+            fontSize: 12.5,
+            fontFamily:
+              "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+          }}
+        />
+      </div>
+    </div>
   )
 }
 
@@ -172,14 +346,22 @@ const SYMBOL: Record<ChangeKind, "add" | "remove" | "change"> = {
   "when-changed": "change",
 }
 
+/** The same change seen from the other side: what staging it adds back. */
+const INVERSE: Partial<Record<ChangeKind, ChangeKind>> = {
+  "node-added": "node-removed",
+  "node-removed": "node-added",
+  connected: "disconnected",
+  disconnected: "connected",
+}
+
 function VisualDiff({
   path,
   texts,
-  canRevert,
+  actions,
 }: {
   path: string
   texts: { base: string | null; head: string | null }
-  canRevert: boolean
+  actions: ChangeActions
 }) {
   const before = useMemo(() => parse(path, texts.base), [path, texts.base])
   const after = useMemo(() => parse(path, texts.head), [path, texts.head])
@@ -210,6 +392,19 @@ function VisualDiff({
       setRevertError(null)
     } catch (e) {
       setRevertError((e as Error).message)
+    }
+  }
+  /** Stages a working-copy change, or unstages a staged one, in the index only. */
+  const restage = async (change: WorkflowChange) => {
+    if (!before || !after) return
+    const next =
+      actions === "worktree"
+        ? revertChange(before, after, { ...change, kind: INVERSE[change.kind] ?? change.kind })
+        : revertChange(after, before, change)
+    if (await useGitStore.getState().setStaged(path, serializeWorkflow(next))) {
+      setRevertError(null)
+    } else {
+      setRevertError(useGitStore.getState().error)
     }
   }
 
@@ -320,7 +515,7 @@ function VisualDiff({
                 >
                   {c.text}
                 </button>
-                {canRevert && (
+                {actions === "worktree" && (
                   <button
                     type="button"
                     aria-label={`Revert: ${c.text}`}
@@ -329,6 +524,21 @@ function VisualDiff({
                   >
                     <Undo2 className="h-3 w-3" aria-hidden />
                     Revert
+                  </button>
+                )}
+                {actions && before && after && (
+                  <button
+                    type="button"
+                    aria-label={`${actions === "worktree" ? "Stage" : "Unstage"}: ${c.text}`}
+                    onClick={() => void restage(c)}
+                    className="flex shrink-0 items-center gap-1 rounded px-1.5 text-[11.5px] text-muted-foreground opacity-0 hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+                  >
+                    {actions === "worktree" ? (
+                      <Plus className="h-3 w-3" aria-hidden />
+                    ) : (
+                      <Minus className="h-3 w-3" aria-hidden />
+                    )}
+                    {actions === "worktree" ? "Stage" : "Unstage"}
                   </button>
                 )}
               </li>

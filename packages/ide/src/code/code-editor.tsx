@@ -10,6 +10,7 @@ import { useCommands } from "@/store/commands"
 import { useSettings } from "@/store/settings"
 import { useTabsStore } from "@/store/tabs"
 import { useActiveTheme } from "@/store/theme"
+import { useGitGutter } from "./git-gutter"
 import { FileContextBar } from "./provider-card"
 
 interface Props {
@@ -124,7 +125,14 @@ export function CodeEditor({ path, tabId }: Props) {
     [],
   )
 
+  const [mounted, setMounted] = useState<{
+    editor: Parameters<OnMount>[0]
+    monaco: Parameters<OnMount>[1]
+  } | null>(null)
+  useGitGutter(mounted?.editor ?? null, mounted?.monaco ?? null, path, content)
+
   const onMount: OnMount = (editor, monaco) => {
+    setMounted({ editor, monaco })
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       void saveRef.current()
     })
