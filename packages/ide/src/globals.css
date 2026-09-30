@@ -88,8 +88,11 @@
   --sidebar-ring: #8a5f0a;
 }
 
-/* Dark: cool blue-grey neutrals, gold accent. */
-.dark {
+/* Dark: cool blue-grey neutrals, gold accent. Scoped to <html> because React
+ * Flow puts its own .dark class on the canvas, which would otherwise reset the
+ * tokens there. These are the pre-JS defaults; the theme store (lib/themes.ts)
+ * sets the active theme's tokens inline on <html>. */
+:root.dark {
   --background: #0e1116;
   --foreground: #e8ecf2;
   --card: #14181f;

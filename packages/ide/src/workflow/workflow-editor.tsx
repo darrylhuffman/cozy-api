@@ -1,6 +1,7 @@
 import {
   applyNodeChanges,
   Background,
+  BackgroundVariant,
   type Connection,
   Controls,
   type Edge,
@@ -33,8 +34,9 @@ import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
 import { useSchemas, useSchemasStore } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
+import { CANVAS_GRID, useSettings } from "@/store/settings"
 import { useTabsStore } from "@/store/tabs"
-import { useThemeStore } from "@/store/theme"
+import { useActiveTheme } from "@/store/theme"
 import {
   type ApplyOptions,
   isDraftDirty,
@@ -140,7 +142,10 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
   const [deletedOnDisk, setDeletedOnDisk] = useState(false)
   const { screenToFlowPosition, fitView } = useReactFlow()
   const [expansion, setExpansion] = useState<Map<string, NodeExpansion>>(() => new Map())
-  const theme = useThemeStore((s) => s.theme)
+  const colorMode = useActiveTheme().mode
+  const canvasBackground = useSettings((s) => s.canvasBackground)
+  const showMinimap = useSettings((s) => s.canvasMinimap)
+  const snapToGrid = useSettings((s) => s.canvasSnapToGrid)
   const setDirty = useTabsStore((s) => s.setDirty)
   const setSelected = useSelectionStore((s) => s.setSelected)
   const selectedRunId = useDebugSessionStore((s) => s.selectedRunId)
@@ -1285,13 +1290,24 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
             onNodeContextMenu={onNodeContextMenu}
             reconnectRadius={25}
             fitView
-            colorMode={theme}
+            colorMode={colorMode}
+            snapToGrid={snapToGrid}
+            snapGrid={[CANVAS_GRID, CANVAS_GRID]}
             nodesConnectable={true}
             proOptions={{ hideAttribution: true }}
           >
-            <Background gap={20} size={1.2} color="var(--canvas-dot)" />
+            {canvasBackground !== "none" && (
+              <Background
+                gap={CANVAS_GRID}
+                size={canvasBackground === "dots" ? 1.2 : 1}
+                variant={
+                  canvasBackground === "dots" ? BackgroundVariant.Dots : BackgroundVariant.Lines
+                }
+                color="var(--canvas-dot)"
+              />
+            )}
             <Controls showFitView={false} />
-            {!isEmpty && (
+            {!isEmpty && showMinimap && (
               <MiniMap
                 pannable
                 zoomable

@@ -24,6 +24,8 @@ interface TabsState {
   closeTab(id: string): void
   selectTab(id: string): void
   setDirty(id: string, dirty: boolean): void
+  /** Moves a tab to `toIndex` (its index after the move). */
+  moveTab(id: string, toIndex: number): void
 }
 
 /** Returns the state slice that tracks which tab is active for this tab's kind. */
@@ -91,6 +93,18 @@ export const useTabsStore = create<TabsState>()(
         const tab = get().tabs.find((t) => t.id === id)
         if (!tab) return
         set(activationUpdate(tab))
+      },
+
+      moveTab(id, toIndex) {
+        set((s) => {
+          const from = s.tabs.findIndex((t) => t.id === id)
+          if (from < 0) return s
+          const tabs = [...s.tabs]
+          const [tab] = tabs.splice(from, 1)
+          const to = Math.max(0, Math.min(toIndex, tabs.length))
+          tabs.splice(to, 0, tab as OpenTab)
+          return { tabs }
+        })
       },
 
       setDirty(id, dirty) {

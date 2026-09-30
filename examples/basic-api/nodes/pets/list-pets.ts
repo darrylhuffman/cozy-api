@@ -1,28 +1,17 @@
 import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
-
-const petShape = z.object({
-  id: z.number(),
-  name: z.string(),
-  species: z.string(),
-  status: z.enum(["available", "pending", "sold"]),
-})
-const petStatus = z.enum(["available", "pending", "sold"])
-
-/** The part of the `db` service (src/db.ts) this node uses. */
-interface Db {
-  listPets(filter: { status?: string; species?: string }): Promise<z.infer<typeof petShape>[]>
-}
+import type { PetStoreDb } from "../../src/db.js"
+import { petSchema, petStatusSchema } from "../../src/schemas.js"
 
 export default defineNode({
   name: "List Pets",
   color: "sky",
   inputs: z.object({
-    status: petStatus.optional(),
+    status: petStatusSchema.optional(),
     species: z.string().optional(),
   }),
   outputs: z.object({
-    pets: z.array(petShape),
+    pets: z.array(petSchema),
   }),
   /**
    * Lists pets, optionally filtered by status and species.
@@ -31,7 +20,7 @@ export default defineNode({
    * @returns Every matching pet, oldest first.
    */
   async run({ status, species }, services) {
-    const { db } = services as { db: Db }
+    const { db } = services as { db: PetStoreDb }
     const pets = await db.listPets({
       ...(status ? { status } : {}),
       ...(species ? { species } : {}),

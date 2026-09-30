@@ -91,15 +91,18 @@ export function NodeCasesGroup({
 
   return (
     <div
-      className={cn("rounded-md border", highlighted && "border-primary/60")}
+      className={cn(
+        "rounded-lg border border-border bg-card",
+        highlighted && "border-primary/70 ring-1 ring-primary/40",
+      )}
       data-testid="node-cases-group"
       data-node-file={nodeFile}
     >
-      <div className="flex items-center gap-2 px-2 py-1.5">
+      <div className="flex items-center gap-2 px-2.5 py-2">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-1 text-left text-xs font-medium"
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[13px] font-semibold"
           aria-expanded={open}
         >
           {open ? (
@@ -108,7 +111,7 @@ export function NodeCasesGroup({
             <ChevronRight className="h-3 w-3 shrink-0" />
           )}
           <span className="truncate">{title}</span>
-          <span className="shrink-0 font-normal text-muted-foreground">
+          <span className="shrink-0 text-xs font-normal text-muted-foreground">
             {cases.length === 0
               ? "no cases"
               : `${cases.length} case${cases.length === 1 ? "" : "s"}`}
@@ -117,7 +120,7 @@ export function NodeCasesGroup({
         {summary && summary.run > 0 && (
           <span
             className={cn(
-              "rounded px-1.5 text-[10px] font-medium",
+              "rounded-full px-2 py-px text-[11px] font-medium",
               summary.failed === 0
                 ? "bg-success/15 text-success"
                 : "bg-destructive/15 text-destructive",
@@ -131,13 +134,13 @@ export function NodeCasesGroup({
           aria-label={`Run ${title} cases`}
           disabled={cases.length === 0 || running}
           onClick={() => void useNodeCases.getState().run([nodeFile])}
-          className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+          className="rounded p-1 text-success hover:bg-accent disabled:text-muted-foreground disabled:opacity-40"
         >
           <Play className="h-3 w-3" />
         </button>
       </div>
       {open && (
-        <div className="flex flex-col gap-1 border-t px-2 py-1.5 text-xs">
+        <div className="flex flex-col gap-1 border-t border-border px-2.5 py-2 text-[13px]">
           {entry?.error && (
             <div role="alert" className="text-destructive">
               {entry.error}

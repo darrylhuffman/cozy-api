@@ -34,9 +34,11 @@ test("resolves package imports in node code and shows error hovers unclipped", a
     .toBe(0)
 
   const editor = ide.locator(".monaco-editor").first()
-  // A type error on line 3: its hover opens upward, past the editor's top
+  // A type error on line 4: its hover opens upward, past the editor's top
   // edge and over the tab strip.
   await editor.locator(".view-line").nth(2).click()
+  await ide.keyboard.press("End")
+  await ide.keyboard.press("Enter")
   await ide.keyboard.type("export const n: number = z.string()")
   await expect
     .poll(async () => (await markers()).map((m) => m.message).join("\n"), { timeout: 20_000 })
