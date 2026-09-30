@@ -23,19 +23,22 @@ each run gets a fresh, seeded database. Needs Node 22.13 or newer.
 
 ## Tests
 
-Every node and every workflow ships with tests, at three levels:
+Every node and every workflow ships with tests:
 
 - **Node cases** (`nodes/**/*.cases.json`): one node, given inputs, with services
   mocked where it helps. The IDE's **Tests** tab edits and runs them.
-- **Workflow tests** (`workflows/**/*.test.ts`): a whole workflow run in-process
-  with `testWorkflow` / `traceWorkflow` against a fresh in-memory pet store. They
-  check the response and what each node received and returned, so they catch wiring
-  mistakes such as a query param going to the wrong input.
-  `src/workflow-test-kit.ts` loads the workflow, the nodes and the services.
-- **Saved requests** (`workflows/**/*.requests.json`): real HTTP calls against the
-  running app, chained with captured values. The IDE's **Run** tab edits and runs them.
+- **Workflow tests** (`workflows/**/*.requests.json`): saved requests that call each
+  workflow over HTTP, chain values between calls with `capture`, and check the
+  response. They cover the happy path, 404s, 409s and invalid input. The IDE runs
+  them from the **Run** tab, and `lorien test` runs them in CI. They create the pets
+  they change, so they pass again and again against the IDE's persistent database.
+- **Workflow code tests** (`workflows/**/*.test.ts`): Vitest runs each workflow
+  in-process with `traceWorkflow` against a fresh in-memory pet store. They check
+  what each node received and returned (for example, that `?status=` reaches List
+  Pets' `status` input), which a saved request can't see. `src/workflow-test-kit.ts`
+  loads the workflow, the nodes and the services.
 
-`pnpm test` runs all three.
+`pnpm test` runs all of them.
 
 ## Scripts
 

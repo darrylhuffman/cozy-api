@@ -2,6 +2,30 @@
   "lorien": 1,
   "requests": [
     {
+      "id": "addsASoldPet",
+      "name": "Adds a sold pet",
+      "method": "POST",
+      "path": "/pets",
+      "body": {
+        "kind": "json",
+        "json": {
+          "name": "{{petPrefix}}-{{$randomInt}}",
+          "species": "goldfish",
+          "status": "sold"
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 201
+        }
+      ],
+      "capture": {
+        "petId": "body.id"
+      }
+    },
+    {
       "id": "countsPetsByStatus",
       "name": "Counts pets by status",
       "trigger": "Request",
@@ -16,6 +40,12 @@
         {
           "target": "body",
           "path": "available",
+          "op": "type",
+          "value": "number"
+        },
+        {
+          "target": "body",
+          "path": "pending",
           "op": "type",
           "value": "number"
         },
