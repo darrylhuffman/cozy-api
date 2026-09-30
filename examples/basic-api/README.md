@@ -68,6 +68,7 @@ Every node and every workflow ships with tests:
 ## Layout
 
 - `workflows/` — HTTP routes as `.workflow` JSON files, with saved requests in `*.requests.json`
+  - `_middleware.ts` — runs before every route: logs the request and sets `x-response-time`
 - `nodes/` — typed compute units, with test cases in `*.cases.json`
 - `providers/` — dependencies injected into every node, one file each:
   - `db.ts` — the SQLite pet store (singleton); its SQL lives in `providers/db/`

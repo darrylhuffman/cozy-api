@@ -1,3 +1,7 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { pathToFileURL } from "node:url"
 import { parseWorkflow, type WorkflowFile } from "@darrylondil/lorien-runtime"
 import { describe, expect, it } from "vitest"
 import { emitWorkflow } from "./emit-workflow.js"
@@ -96,7 +100,8 @@ describe("emitWorkflow — handler shape", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/const req_outputs = \{/)
+    expect(source).toMatch(/const trigger: HttpTrigger = \{/)
+    expect(source).toMatch(/const req_outputs = trigger/)
     expect(source).toMatch(/body: await readJsonBody\(c\)/)
     expect(source).toMatch(/params: c\.req\.param\(\)/)
     expect(source).toMatch(/query: Object\.fromEntries\(new URL\(c\.req\.url\)\.searchParams/)
@@ -117,7 +122,7 @@ describe("emitWorkflow — handler shape", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/const services = singletons/)
+    expect(source).toMatch(/const result = await run_req\(trigger, singletons\)/)
     expect(source).not.toMatch(/openScope/)
   })
 
@@ -139,7 +144,7 @@ describe("emitWorkflow — handler shape", () => {
     expect(source).toMatch(
       /const scope = await openScope\(\{ requestId, timestamp: Date\.now\(\) \}\)/,
     )
-    expect(source).toMatch(/const services = scope\.values/)
+    expect(source).toMatch(/result = await run_req\(trigger, scope\.values\)/)
     expect(source).toMatch(/finally \{\n\s+void scope\.dispose\(\)/)
   })
 
@@ -341,10 +346,10 @@ describe("emitWorkflow — response", () => {
       }),
       relativePath: "users/create",
     })
-    expect(source).toMatch(/return new Response\(/)
-    expect(source).toMatch(/JSON\.stringify\(_bodyValue\)/)
-    expect(source).toMatch(/_bodyValue = save_outputs\.user/)
-    expect(source).toMatch(/\(\(201\) as number \| undefined\) \?\? 200/)
+    expect(source).toMatch(/return c\.newResponse\(/)
+    expect(source).toMatch(/JSON\.stringify\(result\.body\)/)
+    expect(source).toMatch(/body: save_outputs\.user,/)
+    expect(source).toMatch(/status: \(\(201\) as number \| undefined\) \?\? 200/)
     expect(source).toMatch(/"content-type": "application\/json"/)
   })
 
@@ -362,8 +367,7 @@ describe("emitWorkflow — response", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/return new Response\("null"/)
-    expect(source).toMatch(/status: 200/)
+    expect(source).toMatch(/return \{ status: 200, headers: \{\}, body: null \}/)
   })
 })
 
@@ -473,7 +477,7 @@ describe("emitWorkflow — whole-object `in` (string form)", () => {
       relativePath: "x",
     })
     // body/status/headers are plucked off the whole-object base expression
-    expect(source).toMatch(/_bodyValue = \(shape_outputs\.result\)\?\.body/)
+    expect(source).toMatch(/body: \(shape_outputs\.result\)\?\.body/)
     expect(source).toMatch(/\(shape_outputs\.result\)\?\.status/)
     expect(source).toMatch(/\(shape_outputs\.result\)\?\.headers/)
   })
@@ -513,6 +517,69 @@ describe("emitWorkflow — full example matches the spec shape", () => {
     )
     expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/)
     expect(source).toMatch(/_saveInput as never/)
-    expect(source).toMatch(/_bodyValue = save_outputs\.user/)
+    expect(source).toMatch(/body: save_outputs\.user,/)
   })
+})
+
+describe("emitWorkflow — middleware", () => {
+  const ping = wf({
+    lorien: 1,
+    nodes: {
+      req: { uses: "@core/http-request", values: { path: "/admin/ping", method: "GET" } },
+      res: { uses: "@core/response", in: { body: "req.context.requestId" } },
+    },
+  })
+
+  it("emits nothing extra for a workflow no middleware guards", () => {
+    const { source } = emitWorkflow({ workflow: ping, relativePath: "admin/ping", middleware: [] })
+    expect(source).not.toMatch(/guards|MiddlewareHandler|_middleware/)
+  })
+
+  for (const perRequest of [false, true]) {
+    it(`runs _middleware.ts outermost first, then the route (per-request providers: ${perRequest})`, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "lorien-emit-mw-"))
+      try {
+        mkdirSync(join(dir, "dist", "workflows", "admin"), { recursive: true })
+        mkdirSync(join(dir, "workflows", "admin"), { recursive: true })
+        writeFileSync(
+          join(dir, "dist", "providers.gen.js"),
+          `export const singletons = { tag: "single" }
+export async function openScope(ctx) { return { values: { tag: "scoped:" + ctx.requestId }, dispose: async () => {} } }\n`,
+        )
+        const mw = (name: string) =>
+          `{ kind: "middleware", async run(c, next, p) { c.header("x-${name}", p.tag); await next() } }`
+        writeFileSync(join(dir, "workflows", "_middleware.js"), `export default ${mw("root")}\n`)
+        writeFileSync(
+          join(dir, "workflows", "admin", "_middleware.js"),
+          `export default [${mw("admin")}, { kind: "middleware", run: (c, next) => c.req.query("deny") ? c.json({ denied: true }, 403) : next() }]\n`,
+        )
+        const { source } = emitWorkflow({
+          workflow: ping,
+          relativePath: "admin/ping",
+          perRequestProviders: perRequest,
+          middleware: ["workflows/_middleware.ts", "workflows/admin/_middleware.ts"],
+        })
+        const genPath = join(dir, "dist", "workflows", "admin", "ping.gen.ts")
+        writeFileSync(genPath, source)
+        const { Hono } = await import("hono")
+        const gen = await import(pathToFileURL(genPath).href)
+        const app = new Hono()
+        gen.register(app)
+
+        const res = await app.request("/admin/ping")
+        const requestId = (await res.json()) as string
+        // Both middleware saw the providers; with per-request providers it is
+        // the same scope, opened with the route's request id.
+        const tag = perRequest ? `scoped:${requestId}` : "single"
+        expect(res.headers.get("x-root")).toBe(tag)
+        expect(res.headers.get("x-admin")).toBe(tag)
+
+        const denied = await app.request("/admin/ping?deny=1")
+        expect(denied.status).toBe(403)
+        expect(await denied.json()).toEqual({ denied: true })
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+  }
 })

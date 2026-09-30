@@ -1,8 +1,10 @@
-import type { Context, Hono } from "hono"
+import type { Context, Hono, MiddlewareHandler } from "hono"
 import { resolveCoreNode } from "../core/registry.js"
 import { LifecycleEmitter } from "../exec/lifecycle.js"
 import { runWorkflow, type WorkflowRunResult } from "../exec/run.js"
 import { computeExecutionPlan } from "../exec/topology.js"
+import type { Middleware } from "../middleware/define-middleware.js"
+import { middlewareChain } from "../middleware/load.js"
 import type { ProviderContainer } from "../providers/container.js"
 import {
   type NodeMock,
@@ -47,7 +49,19 @@ export interface MountOptions {
    * never turn this on for a deployed server.
    */
   testHooks?: boolean
+  /**
+   * Middleware by the folder it guards ("workflows", "workflows/admin"), from
+   * `_middleware.ts` files. Each route runs its folders' middleware, outermost
+   * first, before the workflow.
+   */
+  middleware?: Record<string, Middleware[]>
 }
+
+/** Where the leading middleware keeps the request's provider scope for the rest of the chain. */
+const SCOPE_KEY = "lorien.scope"
+/** The request id middleware's scope was opened with, so the run uses the same one. */
+const RUN_ID_KEY = "lorien.runId"
+type Scope = Awaited<ReturnType<ProviderContainer["open"]>>
 
 /** How many traces to keep; a test fetches its trace straight after the response. */
 const MAX_TRACES = 200
@@ -119,7 +133,10 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
       const plan = computeExecutionPlan(projectedFile, sliceDeps)
 
       const handler = async (c: Context): Promise<Response> => {
-        const runId = opts.debug?.newRunId() ?? crypto.randomUUID()
+        const runId =
+          (c.get(RUN_ID_KEY as never) as string | undefined) ??
+          opts.debug?.newRunId() ??
+          crypto.randomUUID()
         const startedAt = Date.now()
 
         let body: unknown = null
@@ -177,11 +194,15 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
           return { [TRACE_HEADER]: runId }
         }
 
-        let scope: Awaited<ReturnType<ProviderContainer["open"]>> | null = null
+        // Middleware already opened this request's scope; share it.
+        const shared = c.get(SCOPE_KEY as never) as Scope | undefined
+        let scope: Scope | null = null
         try {
-          scope = opts.providers
-            ? await opts.providers.open({ requestId: runId, timestamp: startedAt })
-            : null
+          scope =
+            shared ??
+            (opts.providers
+              ? await opts.providers.open({ requestId: runId, timestamp: startedAt })
+              : null)
           const services = (scope?.values ?? opts.services ?? {}) as Services
           const result = await withRunContext(runId, () =>
             runWorkflow({
@@ -204,27 +225,56 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
             }),
           )
           opts.debug?.onResult(runId, result, Date.now() - startedAt)
-          return new Response(JSON.stringify(result.body), {
-            status: result.status,
-            headers: {
-              "content-type": "application/json",
-              ...result.headers,
-              ...traceHeaders(),
-            },
+          // c.newResponse keeps headers middleware set with c.header() before next().
+          return c.newResponse(JSON.stringify(result.body), result.status as never, {
+            "content-type": "application/json",
+            ...result.headers,
+            ...traceHeaders(),
           })
         } catch (err) {
           opts.debug?.onError(runId, err, Date.now() - startedAt)
           const msg = err instanceof Error ? err.message : String(err)
-          return new Response(JSON.stringify({ error: msg }), {
-            status: 500,
-            headers: { "content-type": "application/json", ...traceHeaders() },
+          return c.newResponse(JSON.stringify({ error: msg }), 500, {
+            "content-type": "application/json",
+            ...traceHeaders(),
           })
+        } finally {
+          if (!shared) void scope?.dispose()
+        }
+      }
+
+      const chain = middlewareChain(
+        wf.relativePath,
+        Object.entries(opts.middleware ?? {}).map(([dir, list]) => ({ dir, list })),
+      ).flatMap((m) => m.list)
+      if (chain.length === 0) {
+        app.on(method, path, handler)
+        continue
+      }
+      // One provider scope for the whole request: middleware and nodes share
+      // scoped providers (the same request logger), disposed at the end.
+      const openScope: MiddlewareHandler = async (c, next) => {
+        const runId = opts.debug?.newRunId() ?? crypto.randomUUID()
+        c.set(RUN_ID_KEY as never, runId as never)
+        const scope = opts.providers
+          ? await opts.providers.open({ requestId: runId, timestamp: Date.now() })
+          : null
+        c.set(SCOPE_KEY as never, (scope ?? { values: opts.services ?? {} }) as never)
+        try {
+          await next()
         } finally {
           void scope?.dispose()
         }
       }
-
-      app.on(method, path, handler)
+      const run = chain.map(
+        (m): MiddlewareHandler =>
+          async (c, next) => {
+            const scope = c.get(SCOPE_KEY as never) as Scope
+            const res = await m.run(c, next, scope.values as Services)
+            return res instanceof Response ? res : undefined
+          },
+      )
+      app.on(method, path, openScope, ...run, handler)
     }
   }
 }

@@ -898,3 +898,46 @@ describe("nodeTint", () => {
     expect(nodeTint("some-package/node")).toBe("var(--muted-foreground)")
   })
 })
+
+describe("WorkflowNode — guarded by", () => {
+  afterEach(() => resetProvidersStore())
+
+  it("lists the middleware guarding an HTTP trigger, outermost first", () => {
+    useProvidersStore.setState({
+      middleware: [
+        { dir: "workflows", path: "workflows/_middleware.ts", names: ["Request log"], reads: [] },
+        {
+          dir: "workflows/admin",
+          path: "workflows/admin/_middleware.ts",
+          names: [null],
+          reads: [],
+        },
+        {
+          dir: "workflows/pets",
+          path: "workflows/pets/_middleware.ts",
+          names: ["Pets"],
+          reads: [],
+        },
+      ],
+      loaded: true,
+    })
+    render(
+      <WorkflowNode
+        data={makeData(
+          "req",
+          { uses: "@core/http-request" },
+          { inputs: emptyInputRoot, outputs: [] },
+          { workflowPath: "workflows/admin/stats.workflow" },
+        )}
+      />,
+    )
+    const row = screen.getByTestId("guarded-by")
+    expect(
+      within(row)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Request log", "admin/_middleware"])
+    fireEvent.click(within(row).getByRole("button", { name: "admin/_middleware" }))
+    expect(useTabsStore.getState().activeCodeId).toBe("workflows/admin/_middleware.ts")
+  })
+})

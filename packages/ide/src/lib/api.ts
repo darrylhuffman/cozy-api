@@ -224,8 +224,21 @@ export interface ProviderInfo {
   usedBy: string[]
 }
 
+export interface MiddlewareInfo {
+  /** The folder it guards, e.g. "workflows/admin". */
+  dir: string
+  /** e.g. "workflows/admin/_middleware.ts". */
+  path: string
+  /** Each exported middleware's name (null when unnamed), in run order. */
+  names: (string | null)[]
+  /** Providers its `run` reads. */
+  reads: string[]
+}
+
 export interface WorkspaceProviders {
   providers: ProviderInfo[]
+  /** Every `_middleware.ts`, outermost folder first. Missing from older servers. */
+  middleware?: MiddlewareInfo[]
   /** Node `uses` key ("./nodes/pets/add-pet") → the providers its `run` reads. */
   nodes: Record<string, string[]>
 }

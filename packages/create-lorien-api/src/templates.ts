@@ -7,7 +7,7 @@ export interface TemplateContext {
  * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
  * (with frontmatter wrapper). Single source of truth — both renderers must use this.
  */
-export const SKILL_BODY = `<!-- lorien-skill-version: 3 -->
+export const SKILL_BODY = `<!-- lorien-skill-version: 4 -->
 
 # lorien-api project guide
 
@@ -17,6 +17,7 @@ This is a lorien-api project. HTTP endpoints are defined as \`.workflow\` files:
 
 \`\`\`
 workflows/**/*.workflow   ← HTTP routes (you author these)
+workflows/**/_middleware.ts ← middleware for every route in that folder and below
 nodes/**/*.ts             ← typed compute units, one defineNode per file; ALL business logic
 providers/<name>.ts       ← injected dependencies (db, logger, cache, clients), one defineProvider per file
 providers/<name>/         ← code private to one provider (migrations, SQL, client setup)
@@ -122,6 +123,25 @@ export default defineProvider({
 })
 \`\`\`
 
+**Add middleware (auth, CORS, rate limits, request logging)**
+1. Create \`_middleware.ts\` in the \`workflows/\` folder whose routes it guards: \`workflows/_middleware.ts\` runs before every route, \`workflows/admin/_middleware.ts\` before \`workflows/admin/**\` only. Outer folders run first.
+2. Export \`defineMiddleware({ name, run(c, next, providers) })\`, or an array of them to run several in order. \`c\` is Hono's context: return a response to stop, or \`await next()\` to continue. It reads providers like a node does.
+
+\`\`\`ts
+// workflows/admin/_middleware.ts
+import { defineMiddleware } from "@darrylondil/lorien-runtime"
+
+export default defineMiddleware({
+  name: "Require admin key",
+  async run(c, next) {
+    if (c.req.header("x-admin-key") !== process.env.ADMIN_KEY) {
+      return c.json({ error: "forbidden" }, 403)
+    }
+    await next()
+  },
+})
+\`\`\`
+
 ## Where things go
 
 | You're adding | Put it in |
@@ -130,6 +150,7 @@ export default defineProvider({
 | Anything that decides, validates, transforms or queries data for a route | a node in \`nodes/\` |
 | A zod schema or helper shared by several nodes | \`lib/\` |
 | A new HTTP route | \`workflows/<path>.workflow\` |
+| Auth, CORS, rate limits or request logging for a group of routes | \`workflows/<folder>/_middleware.ts\` |
 
 Providers export only \`create\`/\`dispose\`: never a \`users.ts\` provider with \`createUser()\` — that is a node. Don't create new top-level folders.
 
@@ -186,7 +207,7 @@ Run everything with \`npx lorien test\` (\`--env <name>\`, \`--base-url <url>\` 
 - Don't add \`@darrylondil/lorien-runtime\` as a *runtime* dep in user code — it's build-time only. The compiled output has no runtime dep on lorien.
 - Don't hand-edit anything under \`.lorien/\` (IDE cache + chat transcripts).
 - Don't introduce an edges-array workflow format. lorien-api is named-input style: each node declares its own inputs.
-- Don't add middleware-style global error handling. Handle errors at the node level by returning shaped output.
+- Don't use middleware for error handling or business logic. Handle errors at the node level by returning shaped output; middleware is for auth, CORS, rate limits and request logging.
 `
 
 export function renderPackageJson(ctx: TemplateContext): string {
@@ -239,6 +260,7 @@ export function renderTsconfig(): string {
       "lib/**/*",
       "lorien.config.ts",
       "workflows/**/*.test.ts",
+      "workflows/**/_middleware.ts",
       ".lorien/types/**/*",
     ],
   }
@@ -364,7 +386,7 @@ export function renderClaudeSkill(): string {
   const frontmatter = [
     "---",
     "name: lorien-api",
-    "description: Use when authoring or editing files in a lorien-api project — workflows (.workflow JSON dependency graphs), nodes (typed defineNode modules), or providers (defineProvider dependencies like a db or logger). Triggers on edits in workflows/, nodes/, providers/, or any file ending in .workflow.",
+    "description: Use when authoring or editing files in a lorien-api project — workflows (.workflow JSON dependency graphs), nodes (typed defineNode modules), providers (defineProvider dependencies like a db or logger), or middleware (workflows/**/_middleware.ts). Triggers on edits in workflows/, nodes/, providers/, or any file ending in .workflow.",
     "---",
     "",
   ].join("\n")
@@ -406,6 +428,7 @@ curl http://localhost:3000/hello
 - \`workflows/\` — HTTP routes as \`.workflow\` JSON files
 - \`nodes/\` — typed compute units (\`defineNode\` modules)
 - \`providers/\` — injected dependencies (db, logger, clients)
+- \`workflows/**/_middleware.ts\` — middleware for the routes in that folder
 - \`lorien.config.ts\` — build target
 
 See [AGENTS.md](./AGENTS.md) for the author's guide.

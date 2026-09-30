@@ -16,6 +16,12 @@ describe("dev server end-to-end", () => {
     expect(pets.map((p) => p.name)).toEqual(["Biscuit", "Miso", "Pickles", "Captain"])
   })
 
+  it("runs workflows/_middleware.ts before every route", async () => {
+    const app = await buildApp()
+    const res = await app.request("/pets")
+    expect(res.headers.get("x-response-time")).toMatch(/^\d+ms$/)
+  })
+
   it("filters pets by status from the query string", async () => {
     const app = await buildApp()
     const res = await app.request("/pets?status=available")
