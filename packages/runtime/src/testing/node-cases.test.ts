@@ -51,6 +51,37 @@ describe("runNodeCase", () => {
     expect(r.error).toMatch(/^input validation failed at `email`/)
   })
 
+  it("mocks sync provider methods: the node gets the value, and a throw is catchable", async () => {
+    const hasOverlap = defineNode({
+      inputs: z.object({}),
+      outputs: z.object({ overlap: z.boolean(), failed: z.boolean() }),
+      async run(_input, services) {
+        const db = (services as { db: { findOverlap(): { id: number } | undefined } }).db
+        try {
+          return { overlap: db.findOverlap() !== undefined, failed: false }
+        } catch {
+          return { overlap: false, failed: true }
+        }
+      },
+    })
+    const found = await runNodeCase(hasOverlap, {
+      id: "found",
+      name: "overlap",
+      input: {},
+      mocks: { db: { findOverlap: { returns: { id: 1 } } } },
+      expect: { output: { overlap: true } },
+    })
+    expect(found.output).toEqual({ overlap: true, failed: false })
+    const locked = await runNodeCase(hasOverlap, {
+      id: "locked",
+      name: "db locked",
+      input: {},
+      mocks: { db: { findOverlap: { throws: "database is locked" } } },
+      expect: { output: { failed: true } },
+    })
+    expect(locked.passed).toBe(true)
+  })
+
   it("fails on a thrown mock, and on output that breaks the schema", async () => {
     const thrown = await runNodeCase(saveUser, {
       id: "c",

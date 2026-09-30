@@ -37,7 +37,13 @@ describe("runDev", () => {
     expect(spawnImpl).toHaveBeenCalledOnce()
     const callArgs = spawnImpl.mock.calls[0]!
     expect(callArgs[0]).toBe("tsx")
-    expect(callArgs[1]).toEqual([join(dir, "src", "server.ts")])
+    expect(callArgs[1]).toEqual([
+      "watch",
+      "--clear-screen=false",
+      "--include",
+      "workflows/**/*.workflow",
+      join(dir, "src", "server.ts"),
+    ])
     expect(callArgs[2].env.PORT).toMatch(/^\d+$/)
     expect(result.exitCode).toBe(0)
   })

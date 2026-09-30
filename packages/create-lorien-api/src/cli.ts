@@ -67,6 +67,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
     console.error(`Your project files are intact at ${target}.`)
     const { cmd, args } = installCommand(pm)
     console.error(`Run \`cd ${parsed.name} && ${cmd} ${args.join(" ")}\` manually to retry.`)
+    if (pm === "npm") console.error(`If npm keeps failing, \`pnpm install\` works too.`)
     process.exit(1)
   }
 }
@@ -76,7 +77,7 @@ function printNextSteps(name: string, pm: string, needsInstall: boolean): void {
   const _execPrefix =
     pm === "pnpm" ? "pnpm exec" : pm === "yarn" ? "yarn" : pm === "bun" ? "bunx" : "npx"
   console.log(``)
-  console.log(`✓ Created ${name} with lorien-api`)
+  console.log(`✓ Created ${name} with lorien`)
   console.log(``)
   console.log(`Next steps:`)
   console.log(`  cd ${name}`)

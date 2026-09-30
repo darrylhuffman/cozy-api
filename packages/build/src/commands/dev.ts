@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { stat } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import type { Command } from "commander"
+import { generateServicesTypes } from "../generate-services-types.js"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
 import { DEFAULT_IDE_PORT, runIde } from "./ide.js"
 
@@ -81,6 +82,13 @@ export async function runDevServer(opts: RunDevOptions): Promise<RunDevResult> {
     return { exitCode: 1, error: "entry-not-found" }
   }
 
+  // Nodes read provider types from .lorien/types, which is git-ignored.
+  try {
+    await generateServicesTypes(opts.root)
+  } catch (e) {
+    console.warn(`lorien dev: couldn't generate provider types: ${(e as Error).message}`)
+  }
+
   const requestedPort = parseStartingPort(opts.port ?? process.env.PORT, DEFAULT_API_PORT)
   const port = await findAvailablePort(requestedPort)
   if (port !== requestedPort) {
@@ -88,8 +96,9 @@ export async function runDevServer(opts: RunDevOptions): Promise<RunDevResult> {
   }
 
   const spawnFn = opts.spawnImpl ?? spawn
+  const args = await devServerArgs(opts.root, entry)
   return new Promise<RunDevResult>((resolveResult) => {
-    const child = spawnFn("tsx", [entry], {
+    const child = spawnFn("tsx", args, {
       cwd: opts.root,
       env: { ...process.env, PORT: String(port) },
       stdio: "inherit",
@@ -133,6 +142,18 @@ export async function runDevWithIde(opts: {
   console.log("Both services started. Ctrl-C to stop.")
   // Then start the dev server — tsx logs alongside the IDE startup line.
   return runDevServer(devOpts)
+}
+
+/**
+ * `tsx watch` restarts the server when a node, provider, middleware or
+ * workflow file changes (workflows are read from disk, so they're included by
+ * glob). A `.env` in the project root is loaded into the server's environment.
+ */
+export async function devServerArgs(root: string, entry: string): Promise<string[]> {
+  const args = ["watch", "--clear-screen=false", "--include", "workflows/**/*.workflow"]
+  if (await fileExists(join(root, ".env"))) args.push("--env-file=.env")
+  args.push(entry)
+  return args
 }
 
 /** Keep the old export name as an alias so any external callers aren't broken. */

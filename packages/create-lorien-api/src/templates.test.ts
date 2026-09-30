@@ -60,7 +60,7 @@ describe("template renderers", () => {
 
   it("say-hello.ts mentions defineNode", () => {
     expect(renderSayHelloNode()).toMatch(/defineNode/)
-    expect(renderSayHelloNode()).toMatch(/Hello from lorien-api/)
+    expect(renderSayHelloNode()).toMatch(/Hello from lorien!/)
   })
 
   it("server.ts uses startLorienServer + serve + agent broker", () => {

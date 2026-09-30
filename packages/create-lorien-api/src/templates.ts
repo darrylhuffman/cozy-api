@@ -222,8 +222,8 @@ export function renderPackageJson(ctx: TemplateContext): string {
       "dev:server": "lorien dev --no-ide",
       build: "lorien build",
       start: "node dist/index.js",
-      test: "vitest run",
-      typecheck: "tsc --noEmit",
+      test: "lorien test && vitest run --passWithNoTests",
+      typecheck: "lorien types && tsc --noEmit",
     },
     dependencies: {
       "@hono/node-server": "^1.13.0",
@@ -311,6 +311,58 @@ export function renderGitignore(): string {
   ].join("\n")
 }
 
+/**
+ * Vitest runs the runtime from node_modules, where it would load node files
+ * with Node's own import() and miss `./x.js` → `./x.ts`. Inlining the runtime
+ * lets Vite load them, the same way it loads the tests.
+ */
+export function renderVitestConfig(): string {
+  return `import { defineConfig } from "vitest/config"
+
+export default defineConfig({
+  test: {
+    server: { deps: { inline: [/@darrylondil\\/lorien-runtime/] } },
+  },
+})
+`
+}
+
+/** Node cases for say-hello, run by \`lorien test\` and the IDE's Tests tab. */
+export function renderSayHelloCases(): string {
+  const cases = {
+    lorien: 1,
+    cases: [
+      {
+        id: "greets",
+        name: "greets",
+        input: {},
+        expect: { output: { greeting: "Hello from lorien!" } },
+      },
+    ],
+  }
+  return `${JSON.stringify(cases, null, 2)}\n`
+}
+
+/** A saved request for GET /hello, run by \`lorien test\` and the IDE's Run tab. */
+export function renderHelloRequests(): string {
+  const requests = {
+    lorien: 1,
+    requests: [
+      {
+        id: "hello",
+        name: "says hello",
+        method: "GET",
+        path: "/hello",
+        expect: [
+          { target: "status", op: "equals", value: 200 },
+          { target: "body", op: "equals", value: "Hello from lorien!" },
+        ],
+      },
+    ],
+  }
+  return `${JSON.stringify(requests, null, 2)}\n`
+}
+
 export function renderLorienConfig(): string {
   return `import { defineConfig } from "@darrylondil/lorien-runtime"
 
@@ -351,7 +403,7 @@ export default defineNode({
   inputs: z.object({}),
   outputs: z.object({ greeting: z.string() }),
   async run() {
-    return { greeting: "Hello from lorien-api!" }
+    return { greeting: "Hello from lorien!" }
   },
 })
 `
@@ -367,7 +419,7 @@ mountAgentBroker(app, { projectRoot: process.cwd() })
 
 const port = Number(process.env.PORT) || 3000
 const server = serve({ fetch: app.fetch, port }, ({ port }) => {
-  console.log(\`lorien-api listening on http://localhost:\${port}\`)
+  console.log(\`lorien listening on http://localhost:\${port}\`)
 })
 attachAgentBroker({ app, server, projectRoot: process.cwd() })
 `
@@ -406,7 +458,7 @@ function runCmd(pm: string, script: string): string {
 export function renderReadme(ctx: TemplateContext, pm: string): string {
   return `# ${ctx.name}
 
-API project built with [lorien-api](https://lorien-api.dev).
+API project built with [lorien](https://github.com/darrylhuffman/lorien).
 
 ## Quickstart
 
@@ -421,7 +473,7 @@ Then:
 
 \`\`\`
 curl http://localhost:3000/hello
-# { "greeting": "Hello from lorien-api!" }
+# "Hello from lorien!"
 \`\`\`
 
 ## Layout

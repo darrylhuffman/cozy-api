@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { readFileSync } from "node:fs"
 import { access, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import type { Server as HttpServer } from "node:http"
 import { createRequire } from "node:module"
@@ -788,20 +789,43 @@ async function openBrowser(url: string): Promise<void> {
   })
 }
 
+/**
+ * Registers the workspace's tsx loader in this process so `.ts` node,
+ * provider and middleware files import (with their `./x.js` → `./x.ts`
+ * specifiers). Loads tsx's ESM API: its CommonJS build can't register the
+ * ESM hooks from here on tsx 4.23 and newer.
+ */
 export async function registerTsxFromWorkspace(root: string): Promise<void> {
+  let apiPath: string
   try {
-    const anchor = pathToFileURL(join(root, "package.json")).href
-    const req = createRequire(anchor)
-    const apiPath = req.resolve("tsx/esm/api")
-    const mod = (await import(pathToFileURL(apiPath).href)) as {
-      register?: () => unknown
-    }
-    if (typeof mod.register === "function") {
-      mod.register()
-    }
+    apiPath = resolveTsxEsmApi(root)
   } catch {
     console.warn(
       "[lorien] tsx not found in workspace — .ts node files may fail to load. Install with `pnpm add -D tsx` (or your package manager's equivalent).",
     )
+    return
   }
+  try {
+    const mod = (await import(pathToFileURL(apiPath).href)) as { register?: () => unknown }
+    if (typeof mod.register === "function") mod.register()
+  } catch (e) {
+    console.warn(
+      `[lorien] couldn't register tsx from ${apiPath} — .ts node files may fail to load: ${(e as Error).message}`,
+    )
+  }
+}
+
+/** The file tsx's `./esm/api` export resolves to under the `import` condition. */
+export function resolveTsxEsmApi(root: string): string {
+  const req = createRequire(pathToFileURL(join(root, "package.json")).href)
+  const pkgPath = req.resolve("tsx/package.json")
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as {
+    exports?: Record<string, unknown>
+  }
+  const entry = pkg.exports?.["./esm/api"] as
+    | { import?: string | { default?: string } }
+    | undefined
+  const target = typeof entry?.import === "string" ? entry.import : entry?.import?.default
+  if (!target) throw new Error("tsx has no ESM api export")
+  return join(dirname(pkgPath), target)
 }
