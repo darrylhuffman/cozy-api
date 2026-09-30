@@ -1,8 +1,10 @@
 <div align="center">
 
-<img src="docs/images/logo.svg" alt="lorien" width="72" height="72" />
+<img src="docs/images/logo.svg" alt="A gold ring around a green leaf" width="120" height="120" />
 
 # lorien
+
+_API workflows, woven in Lórien._
 
 **Typed, visual HTTP APIs that you and your AI agents can both see into.**
 
@@ -209,3 +211,9 @@ To work on the IDE with live data from the sample, run `pnpm -r build` once, the
 ## License
 
 MIT, see [`LICENSE`](LICENSE). Issues and pull requests are welcome at [github.com/darrylhuffman/lorien](https://github.com/darrylhuffman/lorien).
+
+<br />
+
+<div align="center">
+<sub>The name is a nod to Lothlórien, the golden wood in Tolkien's <i>The Lord of the Rings</i>.</sub>
+</div>
