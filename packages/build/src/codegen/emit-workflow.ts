@@ -199,6 +199,7 @@ function renderCheckOutputHelper(): string {
     `  if (checked && !checked.success) {`,
     `    const issue = checked.error?.issues[0]`,
     `    const at = issue?.path.map(String).join(".") || "<root>"`,
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted as-is into generated code.
     '    throw new Error(`Node \\`${nodeId}\\` failed: output doesn\'t match its outputs schema at \\`${at}\\`: ${issue?.message ?? "invalid"}`)',
     `  }`,
     `  return output as Record<string, unknown>`,
