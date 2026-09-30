@@ -86,7 +86,8 @@ export async function runDevServer(opts: RunDevOptions): Promise<RunDevResult> {
   // Loading lorien.config.ts needs tsx on Node without native type stripping.
   try {
     await registerTsxFromWorkspace(opts.root)
-    await generateServicesTypes(opts.root)
+    const types = await generateServicesTypes(opts.root)
+    for (const e of types.errors) console.warn(`lorien dev: ${e.path}: ${e.message}`)
   } catch (e) {
     console.warn(`lorien dev: couldn't generate provider types: ${(e as Error).message}`)
   }

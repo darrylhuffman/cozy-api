@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest"
 import {
+  lorienRange,
   renderAgentsMd,
   renderBiomeJson,
   renderClaudeSkill,
   renderGitignore,
   renderHelloWorkflow,
   renderLorienConfig,
-  lorienRange,
   renderPackageJson,
   renderReadme,
   renderSayHelloNode,

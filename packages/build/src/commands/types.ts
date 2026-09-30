@@ -13,5 +13,9 @@ export function registerTypes(program: Command): void {
       await registerTsxFromWorkspace(root)
       const result = await generateServicesTypes(root)
       if (result.path) console.log(`✓ Generated ${result.path}`)
+      // A provider left out of the types would surface later as a confusing
+      // "Property 'x' does not exist on type 'Services'" from tsc.
+      for (const e of result.errors) console.error(`✗ ${e.path}: ${e.message}`)
+      if (result.errors.length > 0) process.exit(1)
     })
 }
