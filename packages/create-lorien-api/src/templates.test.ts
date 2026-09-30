@@ -31,6 +31,11 @@ describe("template renderers", () => {
     expect(pkg.dependencies.hono).toMatch(/^\^/)
   })
 
+  it("package.json keeps vitest on 4.0, which npm 10 can install", () => {
+    const pkg = JSON.parse(renderPackageJson(ctx))
+    expect(pkg.devDependencies.vitest).toMatch(/^~4\.0\./)
+  })
+
   it("tsconfig.json parses as JSON with strict + NodeNext", () => {
     const tc = JSON.parse(renderTsconfig())
     expect(tc.compilerOptions.strict).toBe(true)
