@@ -8,7 +8,7 @@ export const test = base.extend<{ ide: Page }>({
     await page.goto("/")
     await page.evaluate(() => localStorage.clear())
     await page.reload()
-    await expect(page.getByText("WORKFLOWS")).toBeVisible()
+    await expect(page.getByText("WORKFLOWS", { exact: true })).toBeVisible()
     await use(page)
     expect(errors, "uncaught errors in the page").toEqual([])
   },
