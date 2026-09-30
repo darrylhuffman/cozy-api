@@ -508,7 +508,9 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
   try {
     await loadedProviders.init()
   } catch (e) {
-    console.error(`[lorien] ${(e as Error).message}`)
+    // Provider errors already start with "[lorien]".
+    const message = (e as Error).message
+    console.error(message.startsWith("[lorien]") ? message : `[lorien] ${message}`)
   }
   await generateServicesTypes(workspaceRoot).catch((e: unknown) => {
     console.error(`[lorien] generating provider types failed: ${(e as Error).message}`)

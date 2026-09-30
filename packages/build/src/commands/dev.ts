@@ -160,11 +160,19 @@ export function withProjectBin(root: string, env: NodeJS.ProcessEnv): NodeJS.Pro
 /**
  * `tsx watch` restarts the server when a node, provider, middleware or
  * workflow file changes (workflows are read from disk, so they're included by
- * glob). A `.env` in the project root is loaded into the server's environment.
+ * glob), and when `.env` changes. `.env` is loaded into the server's
+ * environment; where Node supports it, a `.env` created after startup is
+ * picked up on the next restart too.
  */
-export async function devServerArgs(root: string, entry: string): Promise<string[]> {
+export async function devServerArgs(
+  root: string,
+  entry: string,
+  nodeFlags: ReadonlySet<string> = process.allowedNodeEnvironmentFlags,
+): Promise<string[]> {
   const args = ["watch", "--clear-screen=false", "--include", "workflows/**/*.workflow"]
-  if (await fileExists(join(root, ".env"))) args.push("--env-file=.env")
+  args.push("--include", ".env")
+  if (nodeFlags.has("--env-file-if-exists")) args.push("--env-file-if-exists=.env")
+  else if (await fileExists(join(root, ".env"))) args.push("--env-file=.env")
   args.push(entry)
   return args
 }
