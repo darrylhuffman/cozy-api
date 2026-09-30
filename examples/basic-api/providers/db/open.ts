@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { dirname } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 
 export const PET_STATUSES = ["available", "pending", "sold"] as const
@@ -26,7 +26,7 @@ export interface NewPet {
   status?: PetStatus
 }
 
-/** The `db` service. Async so node test cases can mock it with canned results. */
+/** The `db` provider. Async so node test cases can mock it with canned results. */
 export interface PetStoreDb {
   listPets(filter?: { status?: PetStatus; species?: string }): Promise<Pet[]>
   getPet(id: number): Promise<Pet | null>
@@ -142,9 +142,4 @@ export function openPetStoreDb(file: string): PetStoreDb {
       db.close()
     },
   }
-}
-
-/** `PETSTORE_DB` if set, otherwise `data/petstore.db` in this example project. */
-export function defaultDbFile(): string {
-  return process.env.PETSTORE_DB || join(import.meta.dirname, "..", "data", "petstore.db")
 }

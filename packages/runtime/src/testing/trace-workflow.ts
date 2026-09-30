@@ -2,6 +2,7 @@ import { resolveCoreNode } from "../core/registry.js"
 import { LifecycleEmitter } from "../exec/lifecycle.js"
 import { runWorkflow, type WorkflowRunResult } from "../exec/run.js"
 import { computeExecutionPlan } from "../exec/topology.js"
+import type { Services } from "../types.js"
 import type { WorkflowFile } from "../workflow/types.js"
 import { validateWorkflow } from "../workflow/validate.js"
 import type { TestWorkflowOptions } from "./test-workflow.js"
@@ -62,7 +63,7 @@ export async function traceWorkflow(
       headers: opts.request.headers ?? {},
       context: { requestId: `trace-${Math.random().toString(36).slice(2)}`, timestamp: Date.now() },
     },
-    services: opts.services ?? {},
+    services: (opts.services ?? {}) as Services,
     resolveNode: (uses) => resolveCoreNode(uses) ?? opts.nodes?.[uses] ?? null,
     lifecycle: emitter,
   })

@@ -5,6 +5,7 @@ import { parseWorkflowFromString } from "@darrylondil/lorien-runtime"
 import { testWorkflow, traceWorkflow } from "@darrylondil/lorien-runtime/testing"
 import { describe, expect, it } from "vitest"
 import addPet from "../../nodes/pets/add-pet.js"
+import type { NewPet } from "../../providers/db/open.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const workflow = parseWorkflowFromString(readFileSync(join(__dirname, "add.workflow"), "utf-8"))
@@ -14,8 +15,8 @@ const nodes = { "./nodes/pets/add-pet": addPet }
 // A stand-in db: workflow tests exercise the wiring, not SQLite.
 const services = {
   db: {
-    async addPet(pet: { name: string; species: string; status: string }) {
-      return { id: 7, ...pet }
+    async addPet(pet: NewPet) {
+      return { id: 7, ...pet, status: pet.status ?? "available" }
     },
   },
   logger: { info: () => {} },

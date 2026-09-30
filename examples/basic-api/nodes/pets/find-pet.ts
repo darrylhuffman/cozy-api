@@ -1,7 +1,6 @@
 import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
-import type { PetStoreDb } from "../../src/db.js"
-import { idSchema, petSchema } from "../../src/schemas.js"
+import { idSchema, petSchema } from "../../lib/schemas.js"
 
 export default defineNode({
   name: "Find Pet",
@@ -19,8 +18,7 @@ export default defineNode({
    * @param input - The pet id, usually the `:id` path param.
    * @returns 200 with the pet, or 404 with an error when there is no such pet.
    */
-  async run({ id }, services) {
-    const { db } = services as { db: PetStoreDb }
+  async run({ id }, { db }) {
     const pet = await db.getPet(id)
     if (!pet) return { status: 404, body: { error: `pet ${id} not found` } }
     return { status: 200, body: pet }

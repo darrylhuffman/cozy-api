@@ -1,5 +1,5 @@
 import type { z } from "zod"
-import type { Node, Services, TailwindColor, ZodObjectAny } from "./types.js"
+import type { Node, Providers, TailwindColor, ZodObjectAny } from "./types.js"
 
 export interface DefineNodeInput<
   I extends ZodObjectAny,
@@ -18,7 +18,7 @@ export interface DefineNodeInput<
   color?: TailwindColor
   run(
     input: z.infer<I>,
-    services: Services,
+    providers: Providers,
     config: C extends ZodObjectAny ? z.infer<C> : undefined,
   ): Promise<z.infer<O>>
 }

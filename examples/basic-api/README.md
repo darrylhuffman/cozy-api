@@ -16,7 +16,7 @@ a SQLite database (Node's built-in `node:sqlite`, so there is nothing to install
 
 ## Database
 
-The `db` service in `lorien.config.ts` opens `data/petstore.db` (git-ignored),
+The `db` provider in `providers/db.ts` opens `data/petstore.db` (git-ignored) once at boot,
 creating and seeding it with a few pets the first time. Delete the file to start
 over, or set `PETSTORE_DB` to another path. Tests use `PETSTORE_DB=:memory:`, so
 each run gets a fresh, seeded database. Needs Node 22.13 or newer.
@@ -33,6 +33,9 @@ each run gets a fresh, seeded database. Needs Node 22.13 or newer.
 
 - `workflows/` — HTTP routes as `.workflow` JSON files, with saved requests in `*.requests.json`
 - `nodes/` — typed compute units, with test cases in `*.cases.json`
-- `src/db.ts` — the SQLite pet store behind the `db` service
-- `lorien.config.ts` — service registry
+- `providers/` — dependencies injected into every node, one file each:
+  - `db.ts` — the SQLite pet store (singleton); its SQL lives in `providers/db/`
+  - `logger.ts` — a per-request logger that tags lines with the request id (scoped)
+- `lib/schemas.ts` — zod schemas shared by nodes
+- `lorien.config.ts` — build target
 - `src/server.ts` — dev entry (uses `startLorienServer`)

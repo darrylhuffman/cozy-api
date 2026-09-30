@@ -25,7 +25,7 @@ describe("emitWorkflow — header & imports", () => {
     expect(source).toMatch(/import type \{ Hono, Context \} from "hono"/)
   })
 
-  it("imports lorien.config.js with the right `../` prefix for the file depth", () => {
+  it("imports providers.gen.js and nodes with the right `../` prefix for the file depth", () => {
     // dist/workflows/users/create.gen.ts → root is 3 levels up.
     const { source } = emitWorkflow({
       workflow: wf({
@@ -40,7 +40,8 @@ describe("emitWorkflow — header & imports", () => {
       }),
       relativePath: "users/create",
     })
-    expect(source).toMatch(/import config from "\.\.\/\.\.\/\.\.\/lorien\.config\.js"/)
+    // providers.gen.ts sits at the dist root, one level below the project root.
+    expect(source).toMatch(/import \{ singletons \} from "\.\.\/\.\.\/providers\.gen\.js"/)
     expect(source).toMatch(/import foo from "\.\.\/\.\.\/\.\.\/nodes\/foo\.js"/)
   })
 
@@ -103,7 +104,7 @@ describe("emitWorkflow — handler shape", () => {
     expect(source).toMatch(/context: \{ requestId, timestamp: Date\.now\(\) \}/)
   })
 
-  it("emits resolveServices helper and uses it inside the handler", () => {
+  it("hands handlers the boot-time singletons when nothing is created per request", () => {
     const { source } = emitWorkflow({
       workflow: wf({
         lorien: 1,
@@ -116,10 +117,30 @@ describe("emitWorkflow — handler shape", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/function resolveServices/)
+    expect(source).toMatch(/const services = singletons/)
+    expect(source).not.toMatch(/openScope/)
+  })
+
+  it("opens and disposes a provider scope per request when providers need one", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: {
+            uses: "@core/http-request",
+            values: { path: "/", method: "GET" },
+          },
+        },
+      }),
+      relativePath: "x",
+      perRequestProviders: true,
+    })
+    expect(source).toMatch(/import \{ openScope \} from "\.\.\/providers\.gen\.js"/)
     expect(source).toMatch(
-      /const services = resolveServices\(\{ requestId, timestamp: Date\.now\(\) \}\)/,
+      /const scope = await openScope\(\{ requestId, timestamp: Date\.now\(\) \}\)/,
     )
+    expect(source).toMatch(/const services = scope\.values/)
+    expect(source).toMatch(/finally \{\n\s+void scope\.dispose\(\)/)
   })
 
   it("emits a `as never` cast on the node.run services & config args", () => {

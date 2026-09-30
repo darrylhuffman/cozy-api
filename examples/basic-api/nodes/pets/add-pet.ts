@@ -1,7 +1,6 @@
 import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
-import type { PetStoreDb } from "../../src/db.js"
-import { petSchema, petStatusSchema } from "../../src/schemas.js"
+import { petSchema, petStatusSchema } from "../../lib/schemas.js"
 
 export default defineNode({
   name: "Add Pet",
@@ -20,11 +19,7 @@ export default defineNode({
    * @param input - The pet's name, species and optional starting status.
    * @returns The stored pet, with the id the database assigned.
    */
-  async run({ name, species, status }, services) {
-    const { db, logger } = services as {
-      db: PetStoreDb
-      logger: { info(msg: string, fields?: Record<string, unknown>): void }
-    }
+  async run({ name, species, status }, { db, logger }) {
     const pet = await db.addPet({ name, species, status })
     logger.info("pet added", { id: pet.id, name: pet.name })
     return { pet }

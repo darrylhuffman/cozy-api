@@ -1,7 +1,14 @@
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, resolve } from "node:path"
-import { loadWorkspace, validateWorkflow } from "@darrylondil/lorien-runtime"
-import { emitIndex, emitWorkflow } from "../codegen/index.js"
+import {
+  findProviderFiles,
+  importLegacyServices,
+  importProviders,
+  loadWorkspace,
+  planProviders,
+  validateWorkflow,
+} from "@darrylondil/lorien-runtime"
+import { type EmitProviderInfo, emitIndex, emitProviders, emitWorkflow } from "../codegen/index.js"
 import { generateServicesTypes } from "../generate-services-types.js"
 import { bundleServer } from "./bundle-server.js"
 
@@ -37,6 +44,56 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
     }
   }
 
+  // Providers: import each (without creating it) to learn its lifetime and deps.
+  const providerFiles = await findProviderFiles(root)
+  const imported = await importProviders(root)
+  for (const e of imported.errors) {
+    console.error(`✗ ${e.path}: ${e.message}`)
+    errors.push({ workflow: e.path, message: e.message })
+  }
+  let legacyServices: Record<string, unknown> = {}
+  try {
+    legacyServices = await importLegacyServices(root)
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    console.error(`✗ lorien.config.ts: ${message}`)
+    errors.push({ workflow: "lorien.config.ts", message })
+  }
+  const legacyNames = Object.keys(legacyServices)
+  const plan = planProviders(
+    Object.entries(imported.providers).map(([name, p]) => ({
+      name,
+      lifetime: p.lifetime,
+      uses: p.uses,
+    })),
+    legacyNames,
+  )
+  for (const message of plan.errors) {
+    console.error(`✗ providers: ${message}`)
+    errors.push({ workflow: "providers", message })
+  }
+  const providerInfos: EmitProviderInfo[] = plan.order.map((name) => {
+    const p = imported.providers[name]!
+    return {
+      name,
+      path: providerFiles.find((f) => f.name === name)!.path,
+      lifetime: p.lifetime,
+      uses: p.uses,
+      hasEnv: p.env !== undefined,
+      hasDispose: typeof p.dispose === "function",
+    }
+  })
+  const providersGen = emitProviders({
+    providers: providerInfos,
+    legacy: {
+      values: legacyNames.filter((n) => typeof legacyServices[n] !== "function"),
+      factories: legacyNames.filter((n) => typeof legacyServices[n] === "function"),
+    },
+  })
+  await writeFile(join(outDir, "providers.gen.ts"), providersGen.source, "utf-8")
+  if (providerInfos.length > 0)
+    console.log(`✓ ${providerInfos.length} provider(s) → dist/providers.gen.ts`)
+
   // Load workflows
   const ws = await loadWorkspace(root)
   if (ws.errors.length > 0) {
@@ -63,7 +120,11 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
     // Strip ".workflow" extension and the leading "workflows/" prefix (relativePath
     // is workspace-root-relative; codegen output is rooted at <outDir>/workflows/).
     const basePath = wf.relativePath.replace(/^workflows\//, "").replace(/\.workflow$/, "")
-    const { source } = emitWorkflow({ workflow: wf.file, relativePath: basePath })
+    const { source } = emitWorkflow({
+      workflow: wf.file,
+      relativePath: basePath,
+      perRequestProviders: providersGen.perRequest,
+    })
 
     // Slugify directory segments for the output path: [id] -> _id_
     const slugifiedPath = slugifyPath(basePath)
@@ -76,7 +137,10 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
 
   // Emit dist/index.ts
   if (successfulPaths.length > 0) {
-    const { source: indexSource } = emitIndex({ workflowPaths: successfulPaths })
+    const { source: indexSource } = emitIndex({
+      workflowPaths: successfulPaths,
+      disposeOnExit: providerInfos.some((p) => p.lifetime === "singleton" && p.hasDispose),
+    })
     const indexPath = join(outDir, "index.ts")
     await writeFile(indexPath, indexSource, "utf-8")
     console.log(`✓ dist/index.ts`)

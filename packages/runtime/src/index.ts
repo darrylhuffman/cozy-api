@@ -40,14 +40,43 @@ export type { RunWorkflowOptions, WorkflowRunResult } from "./exec/run.js"
 export { runWorkflow } from "./exec/run.js"
 export type { ExecutionPlan } from "./exec/topology.js"
 export { computeExecutionPlan } from "./exec/topology.js"
-// Services
+// Providers
+export type {
+  CreateProviderContainerOptions,
+  ProviderContainer,
+  ProviderScope,
+} from "./providers/container.js"
+export { createProviderContainer, readProviderEnvs } from "./providers/container.js"
+export type {
+  AnyProvider,
+  DefineProviderInput,
+  EnvSchema,
+  ProvidedValue,
+  Provider,
+  ProviderCreateContext,
+  ProviderLifetime,
+} from "./providers/define-provider.js"
+export { defineProvider, isProvider } from "./providers/define-provider.js"
+export type { ImportProvidersResult, LoadProvidersOptions, ProviderFile } from "./providers/load.js"
+export {
+  findProviderFiles,
+  importLegacyServices,
+  importProviders,
+  loadProviders,
+  providerName,
+} from "./providers/load.js"
+export type { ProviderPlan, ProviderPlanEntry } from "./providers/plan.js"
+export { planProviders } from "./providers/plan.js"
+// Services (legacy lorien.config.ts)
 export { createServiceResolver } from "./services/resolve.js"
 export type { ServiceResolver, ServicesConfig } from "./services/types.js"
 // Core types
 export type {
   AnyNodeOrTrigger,
   Disposable,
+  MockProviders,
   Node,
+  Providers,
   ServiceContext,
   Services,
   ServiceValue,
