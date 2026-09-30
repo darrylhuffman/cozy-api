@@ -47,3 +47,27 @@ test("runs workflow tests, mocks included, from the Tests tab", async ({ ide }) 
   await ide.getByRole("tab", { name: /Mocks/ }).click()
   await expect(ide.getByLabel("Error message")).toHaveValue("database is locked")
 })
+
+test("picks a check's field from the response shape instead of typing a path", async ({ ide }) => {
+  await openAddPet(ide)
+  await ide.getByRole("tab", { name: "Run" }).click()
+  await ide.getByTestId("saved-requests").getByText("Adds a pet").click()
+  await expect(ide.getByLabel("Request name")).toHaveValue("Adds a pet")
+  const rows = ide.getByTestId("assertion-row")
+  await expect(rows).toHaveCount(5)
+
+  await ide.getByRole("button", { name: "+ Add check" }).click()
+  const row = rows.nth(5)
+  await row.getByRole("button", { name: "Pick a field" }).click()
+  // The body's fields come from AddPet's output schema, typed.
+  const picker = ide.getByTestId("check-picker")
+  await expect(picker.getByRole("button", { name: /^species\s*string$/ })).toBeVisible()
+  await picker.getByRole("button", { name: /^species/ }).click()
+  await expect(row.getByTestId("check-subject")).toContainText("species")
+  await row.getByLabel("Expected value").fill("dog")
+
+  await ide.getByRole("button", { name: "Send" }).click()
+  const results = ide.getByRole("list", { name: "Check results" })
+  await expect(results).toContainText('body.species equals "dog"', { timeout: 20_000 })
+  await expect(ide.getByTestId("request-result")).toContainText("Passed")
+})

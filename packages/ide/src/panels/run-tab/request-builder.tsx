@@ -8,9 +8,17 @@ import { activeEnvironment, useEnvironments } from "@/store/environments"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { requestIdFromName, useRequestCollections } from "@/store/request-collections"
 import { useRequestEditor } from "@/store/request-editor"
+import { useSchemasStore } from "@/store/schemas"
 import { AssertionsEditor } from "./assertions-editor"
 import { BodyEditor } from "./body-editor"
 import { BodyTypeTabs } from "./body-type-tabs"
+import {
+  type CheckShapes,
+  mergeSchemas,
+  nodeShapes,
+  responseBodySchema,
+  schemaFromValue,
+} from "./check-paths"
 import { KeyValueGrid } from "./key-value-grid"
 import { methodTone } from "./method-tone"
 import { MocksEditor } from "./mocks-editor"
@@ -38,6 +46,7 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
   const mocks = useRequestEditor((s) => s.mocks)
   const nodeIds = useWorkflowNodeIds()
   const lastResult = useRequestEditor((s) => s.lastResult)
+  const shapes = useCheckShapes()
 
   const actions = useRequestActions(workflowPath)
   const [tab, setTab] = useState<BuilderTab>("body")
@@ -202,7 +211,7 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
         </div>
         <AssertionsEditor
           value={expect}
-          nodeIds={nodeIds.all}
+          shapes={shapes}
           onChange={(next) => useRequestEditor.getState().setExpect(next)}
         />
       </section>
@@ -222,6 +231,25 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
         />
       )}
     </div>
+  )
+}
+
+/**
+ * What checks can read: the body the workflow's Response nodes send (from
+ * their sources' schemas, plus the last response's own fields), the headers
+ * last seen, and each node's input and output.
+ */
+function useCheckShapes(): CheckShapes {
+  const workflow = useLiveWorkflowStore((s) => s.workflow)
+  const schemas = useSchemasStore((s) => s.schemas)
+  const response = useRequestEditor((s) => s.lastResult?.response)
+  return useMemo(
+    () => ({
+      body: mergeSchemas([responseBodySchema(workflow, schemas), schemaFromValue(response?.body)]),
+      headers: Object.keys(response?.headers ?? {}),
+      nodes: nodeShapes(workflow, schemas),
+    }),
+    [workflow, schemas, response],
   )
 }
 
