@@ -126,10 +126,7 @@ test("Settings switches the theme for the chrome and the canvas", async ({ ide: 
   await page.getByRole("radio", { name: "Dracula" }).click()
   await page.keyboard.press("Escape")
   // React Flow tags the canvas with its own .dark class; the theme must still reach it.
-  const canvasBg = await page
-    .locator(".react-flow")
-    .evaluate((el) => getComputedStyle(el).getPropertyValue("--xy-background-color").trim())
-  expect(canvasBg).toBe("#282a36")
+  await expect(page.locator(".react-flow")).toHaveCSS("background-color", "rgb(40, 42, 54)")
   await page.reload()
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dracula")
 })
