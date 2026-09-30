@@ -1,9 +1,16 @@
 import type { Context, Hono } from "hono"
 import { resolveCoreNode } from "../core/registry.js"
-import type { LifecycleEmitter } from "../exec/lifecycle.js"
+import { LifecycleEmitter } from "../exec/lifecycle.js"
 import { runWorkflow, type WorkflowRunResult } from "../exec/run.js"
 import { computeExecutionPlan } from "../exec/topology.js"
 import type { ProviderContainer } from "../providers/container.js"
+import {
+  type NodeMock,
+  type RunTrace,
+  TEST_HEADER,
+  TRACE_HEADER,
+  TRACE_PATH,
+} from "../requests/types.js"
 import type { AnyNodeOrTrigger, Services } from "../types.js"
 import { validateWorkflow } from "../workflow/validate.js"
 import { withRunContext } from "./console-capture.js"
@@ -34,9 +41,65 @@ export interface MountOptions {
   /** A fixed services bag, used when there is no `providers` container. */
   services?: Services
   debug?: DebugIntegration
+  /**
+   * Honour the `x-lorien-test` header: apply its node mocks and record a trace
+   * served at `/__lorien/traces/:id`. For the IDE and `lorien test` only;
+   * never turn this on for a deployed server.
+   */
+  testHooks?: boolean
+}
+
+/** How many traces to keep; a test fetches its trace straight after the response. */
+const MAX_TRACES = 200
+
+function parseTestHeader(raw: string): { mocks: Record<string, NodeMock> } {
+  const parsed = JSON.parse(decodeURIComponent(raw)) as { mocks?: unknown }
+  const mocks = parsed?.mocks
+  if (mocks !== undefined && (typeof mocks !== "object" || mocks === null || Array.isArray(mocks)))
+    throw new Error("mocks must be an object")
+  return { mocks: (mocks ?? {}) as Record<string, NodeMock> }
+}
+
+/** Records what each node received, returned or threw during one run. */
+function recordTrace(
+  lifecycle: LifecycleEmitter,
+  mocks: Record<string, NodeMock>,
+): { trace: RunTrace; stop: () => void } {
+  const trace: RunTrace = { nodes: {} }
+  const offs = [
+    lifecycle.on("before-node", (e) => {
+      trace.nodes[e.nodeId] = { input: e.input, ...(mocks[e.nodeId] ? { mocked: true } : {}) }
+    }),
+    lifecycle.on("after-node", (e) => {
+      const entry = trace.nodes[e.nodeId]
+      if (entry) entry.output = e.output
+    }),
+    lifecycle.on("error", (e) => {
+      const entry = trace.nodes[e.nodeId]
+      if (entry) entry.error = e.error?.message ?? String(e.error)
+    }),
+  ]
+  return {
+    trace,
+    stop: () => {
+      for (const off of offs) off()
+    },
+  }
 }
 
 export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: MountOptions): void {
+  const traces = new Map<string, RunTrace>()
+  if (opts.testHooks) {
+    app.get(`${TRACE_PATH}:id`, (c) => {
+      const trace = traces.get(c.req.param("id"))
+      return trace ? c.json(trace) : c.json({ error: "trace not found" }, 404)
+    })
+  }
+  const keepTrace = (id: string, trace: RunTrace) => {
+    traces.set(id, trace)
+    if (traces.size > MAX_TRACES) traces.delete(traces.keys().next().value as string)
+  }
+
   for (const wf of workflows) {
     const { errors, depsByNode } = validateWorkflow(wf.file)
     if (errors.length > 0) {
@@ -81,6 +144,21 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
           headers[k] = v
         })
 
+        // Test hooks: mocks in, trace out. Ignored entirely unless enabled.
+        let test: { mocks: Record<string, NodeMock> } | null = null
+        const testHeader = headers[TEST_HEADER]
+        delete headers[TEST_HEADER]
+        if (opts.testHooks && testHeader !== undefined) {
+          try {
+            test = parseTestHeader(testHeader)
+          } catch (e) {
+            return new Response(
+              JSON.stringify({ error: `Bad ${TEST_HEADER} header: ${(e as Error).message}` }),
+              { status: 400, headers: { "content-type": "application/json" } },
+            )
+          }
+        }
+
         const request: RequestEnvelope = {
           method: c.req.method,
           path: url.pathname,
@@ -90,6 +168,14 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
         }
 
         const run = opts.debug?.buildRun(runId, wf.relativePath, nodeId, request)
+        const lifecycle = run?.lifecycle ?? (test ? new LifecycleEmitter() : undefined)
+        const recorder = test && lifecycle ? recordTrace(lifecycle, test.mocks) : null
+        const traceHeaders = (): Record<string, string> => {
+          if (!recorder) return {}
+          recorder.stop()
+          keepTrace(runId, recorder.trace)
+          return { [TRACE_HEADER]: runId }
+        }
 
         let scope: Awaited<ReturnType<ProviderContainer["open"]>> | null = null
         try {
@@ -111,7 +197,8 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
               },
               services,
               resolveNode: (uses) => resolveCoreNode(uses) ?? opts.nodes[uses] ?? null,
-              ...(run?.lifecycle ? { lifecycle: run.lifecycle } : {}),
+              ...(lifecycle ? { lifecycle } : {}),
+              ...(test ? { mocks: test.mocks } : {}),
               ...(run?.onBeforeNode ? { onBeforeNode: run.onBeforeNode } : {}),
               ...(run?.onAfterNode ? { onAfterNode: run.onAfterNode } : {}),
             }),
@@ -122,6 +209,7 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
             headers: {
               "content-type": "application/json",
               ...result.headers,
+              ...traceHeaders(),
             },
           })
         } catch (err) {
@@ -129,7 +217,7 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
           const msg = err instanceof Error ? err.message : String(err)
           return new Response(JSON.stringify({ error: msg }), {
             status: 500,
-            headers: { "content-type": "application/json" },
+            headers: { "content-type": "application/json", ...traceHeaders() },
           })
         } finally {
           void scope?.dispose()

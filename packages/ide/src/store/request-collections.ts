@@ -102,6 +102,24 @@ export const useRequestCollections = create<State>((set, get) => {
   }
 })
 
+/** Workflow tests (saved requests) for one workflow: how many exist, ran and passed. */
+export function workflowTestSummary(
+  s: Pick<State, "byWorkflow" | "results">,
+  workflowPath: string,
+): { total: number; run: number; passed: number } | null {
+  const requests = s.byWorkflow[workflowPath]?.collection.requests
+  if (!requests || requests.length === 0) return null
+  let run = 0
+  let passed = 0
+  for (const req of requests) {
+    const r = s.results[resultKey(workflowPath, req.id)]
+    if (!r) continue
+    run++
+    if (r.passed) passed++
+  }
+  return { total: requests.length, run, passed }
+}
+
 /** A readable, unique id for a new request: "Creates a user" → "createsAUser". */
 export function requestIdFromName(name: string, taken: string[]): string {
   const words = name.match(/[A-Za-z0-9]+/g) ?? []

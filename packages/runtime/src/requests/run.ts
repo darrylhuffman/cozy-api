@@ -1,12 +1,17 @@
 import { evaluateAssertions } from "./assert.js"
 import { type InterpolationContext, interpolate, interpolateDeep } from "./interpolate.js"
 import { readPath } from "./path.js"
-import type {
-  AssertionResult,
-  RequestRunResult,
-  ResolvedRequest,
-  ResponseSnapshot,
-  SavedRequest,
+import {
+  type AssertionResult,
+  type NodeMock,
+  type RequestRunResult,
+  type ResolvedRequest,
+  type ResponseSnapshot,
+  type RunTrace,
+  type SavedRequest,
+  TEST_HEADER,
+  TRACE_HEADER,
+  TRACE_PATH,
 } from "./types.js"
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>
@@ -103,6 +108,34 @@ function capture(req: SavedRequest, res: ResponseSnapshot): Record<string, strin
   return out
 }
 
+/** True when the request needs the server to apply mocks or record a trace. */
+export function needsTrace(req: SavedRequest): boolean {
+  return (
+    Object.keys(req.mocks ?? {}).length > 0 || (req.expect ?? []).some((a) => a.target === "node")
+  )
+}
+
+function testHeaderValue(mocks: Record<string, NodeMock>): string {
+  return encodeURIComponent(JSON.stringify({ mocks }))
+}
+
+async function fetchTrace(
+  doFetch: FetchLike,
+  requestUrl: string,
+  id: string,
+): Promise<RunTrace | undefined> {
+  try {
+    const res = await doFetch(new URL(TRACE_PATH + encodeURIComponent(id), requestUrl).toString(), {
+      method: "GET",
+    })
+    if (!res.ok) return undefined
+    const trace = (await res.json()) as RunTrace
+    return trace && typeof trace.nodes === "object" ? trace : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Sends one saved request and checks its assertions. With no `expect` list,
  * a request passes when it gets a non-error (< 400) response.
@@ -134,12 +167,18 @@ export async function runSavedRequest(
     request: resolved,
     missingVariables: [...missing],
   }
+  const traced = needsTrace(req)
+  const mocks = traced
+    ? (interpolateDeep(req.mocks ?? {}, { vars: opts.vars ?? {} }) as Record<string, NodeMock>)
+    : {}
   let response: ResponseSnapshot
   const startedAt = Date.now()
   try {
     const res = await doFetch(resolved.url, {
       method: resolved.method,
-      headers: resolved.headers,
+      headers: traced
+        ? { ...resolved.headers, [TEST_HEADER]: testHeaderValue(mocks) }
+        : resolved.headers,
       ...(resolved.body !== undefined && !["GET", "HEAD"].includes(resolved.method)
         ? { body: resolved.body }
         : {}),
@@ -148,10 +187,26 @@ export async function runSavedRequest(
   } catch (e) {
     return { ...base, error: (e as Error).message, assertions: [], captured: {}, passed: false }
   }
-  const assertions: AssertionResult[] = evaluateAssertions(req.expect, response)
+  const traceId = traced ? response.headers[TRACE_HEADER] : undefined
+  const trace = traceId ? await fetchTrace(doFetch, resolved.url, traceId) : undefined
+  const assertions: AssertionResult[] = evaluateAssertions(req.expect, response, trace)
   const passed =
     req.expect && req.expect.length > 0 ? assertions.every((a) => a.pass) : response.status < 400
-  return { ...base, response, assertions, captured: capture(req, response), passed }
+  const result: RequestRunResult = {
+    ...base,
+    response,
+    assertions,
+    captured: capture(req, response),
+    passed,
+    ...(trace ? { trace } : {}),
+  }
+  // A server that ignored the mocks ran the real nodes, so the result can't be trusted.
+  if (!trace && Object.keys(mocks).length > 0) {
+    result.error =
+      "This request has mocks, but the server didn't apply them. Mocks work in the lorien IDE and `lorien test`."
+    result.passed = false
+  }
+  return result
 }
 
 export interface RunCollectionOptions extends RunRequestOptions {

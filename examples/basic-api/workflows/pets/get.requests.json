@@ -38,6 +38,13 @@
           "path": "error",
           "op": "contains",
           "value": "not found"
+        },
+        {
+          "target": "node",
+          "node": "FindPet",
+          "path": "output.status",
+          "op": "equals",
+          "value": 404
         }
       ]
     },

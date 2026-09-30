@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest"
 import { requestIdFromName } from "@/store/request-collections"
 import { formatValue, parseValue } from "./assertions-editor"
-import { formToSavedRequest, savedRequestToForm } from "./saved-request-form"
+import {
+  formToSavedRequest,
+  mocksToRows,
+  rowsToMocks,
+  savedRequestToForm,
+} from "./saved-request-form"
 
 const meta = { id: "x", name: "X", expect: [], capture: [] as Array<[string, string]> }
 
@@ -62,5 +67,31 @@ describe("helpers", () => {
     expect(parseValue('"quoted"')).toBe('"quoted"')
     expect(formatValue({ a: 1 })).toBe('{"a":1}')
     expect(formatValue("x")).toBe("x")
+  })
+})
+
+describe("mocks", () => {
+  it("round-trips outputs and errors through editor rows", () => {
+    const mocks = { FindPet: { output: { status: 404 } }, Audit: { error: "down" } }
+    const rows = mocksToRows(mocks)
+    expect(rows).toEqual([
+      { node: "FindPet", kind: "output", text: '{"status":404}' },
+      { node: "Audit", kind: "error", text: "down" },
+    ])
+    expect(rowsToMocks(rows)).toEqual({ mocks })
+    const req = { id: "x", name: "X", method: "GET", path: "/p", mocks }
+    expect(
+      formToSavedRequest(savedRequestToForm(req, null), { ...meta, mocks: rows }).request,
+    ).toEqual(req)
+  })
+
+  it("explains mock outputs that are not a JSON object", () => {
+    expect(rowsToMocks([{ node: "A", kind: "output", text: "{nope" }]).error).toMatch(
+      /Mock for A is not valid JSON/,
+    )
+    expect(rowsToMocks([{ node: "A", kind: "output", text: "[1]" }]).error).toBe(
+      "Mock for A must be a JSON object of the node's outputs.",
+    )
+    expect(rowsToMocks([])).toEqual({ mocks: undefined })
   })
 })

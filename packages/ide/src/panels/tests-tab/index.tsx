@@ -7,10 +7,11 @@ import { useSchemas } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
 import { NodeCasesGroup } from "./node-cases-group"
+import { WorkflowTests } from "./workflow-tests"
 
 /**
- * Test cases for every local node the active workflow uses. The selected
- * node's group opens first. Saved API requests live in the Run tab.
+ * The active workflow's tests: workflow tests (its saved requests, run end to
+ * end) and the cases of every local node it uses, the selected node's first.
  */
 export function TestsTab() {
   const workflow = useLiveWorkflowStore((s) => s.workflow)
@@ -34,7 +35,7 @@ export function TestsTab() {
   if (!workflow) {
     return (
       <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
-        Open a workflow to see and run its node tests.
+        Open a workflow to see and run its tests.
       </div>
     )
   }
@@ -46,11 +47,13 @@ export function TestsTab() {
 
   return (
     <div className="flex flex-col gap-2 text-xs" data-testid="tests-tab">
-      <div className="flex items-center gap-2">
+      {workflowPath && <WorkflowTests key={workflowPath} workflowPath={workflowPath} />}
+      <div className="mt-2 flex items-center gap-2">
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Node tests</div>
         <div className="flex-1" />
         <button
           type="button"
+          aria-label="Run all node tests"
           disabled={nodes.length === 0 || anyRunning}
           onClick={() => void useNodeCases.getState().run(nodes.map((n) => n.file))}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent disabled:opacity-40"

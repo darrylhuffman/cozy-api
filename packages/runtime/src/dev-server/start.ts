@@ -16,6 +16,11 @@ export interface StartServerOptions {
   nodes?: Record<string, AnyNodeOrTrigger>
   /** Optional lifecycle subscriber. */
   lifecycle?: LifecycleEmitter
+  /**
+   * Apply node mocks and record traces for request tests (`x-lorien-test`).
+   * `lorien test` turns this on; leave it off for a deployed server.
+   */
+  testHooks?: boolean
   /** Default true; if false, errors throw instead of being logged + skipped. */
   lenient?: boolean
 }
@@ -58,6 +63,7 @@ export async function startLorienServer(opts: StartServerOptions = {}): Promise<
     nodes,
     providers,
     ...(opts.lifecycle ? { lifecycle: opts.lifecycle } : {}),
+    ...(opts.testHooks ? { testHooks: true } : {}),
   })
   return app
 }

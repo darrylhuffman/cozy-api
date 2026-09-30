@@ -7,7 +7,7 @@ import { buildApp } from "./server.js"
 // Runs the saved requests the team keeps in workflows/**/*.requests.json (the
 // IDE's Run tab edits them) against the app in-process — no server needed.
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
-const runs = await runRequestCollections({ root, app: await buildApp() })
+const runs = await runRequestCollections({ root, app: await buildApp({ testHooks: true }) })
 
 for (const run of runs) {
   if (run.error) test(run.path, () => expect.fail(run.error))

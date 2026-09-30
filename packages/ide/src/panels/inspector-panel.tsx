@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { type InspectorTab, useInspectorTab } from "@/store/inspector-tab"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
+import { useRequestCollections, workflowTestSummary } from "@/store/request-collections"
 import { useSchemas } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
@@ -60,8 +61,14 @@ export function InspectorPanel() {
   )
 }
 
-/** "passed/run" for the active workflow's node tests, once any have run. */
+/** "passed/run" for the active workflow's workflow and node tests, once any have run. */
 function TestsCount() {
+  const liveTabId = useLiveWorkflowStore((s) => s.tabId)
+  const workflowPath = useTabsStore((s) => s.tabs.find((t) => t.id === liveTabId)?.path ?? "")
+  const flow = useRequestCollections((s) => {
+    const sum = workflowTestSummary(s, workflowPath)
+    return sum ? `${sum.passed}/${sum.run}` : "0/0"
+  })
   const files = useLiveWorkflowStore((s) => {
     const seen = new Set<string>()
     for (const inst of Object.values(s.workflow?.nodes ?? {})) {
@@ -80,7 +87,9 @@ function TestsCount() {
         failed += sum.failed
       }
     }
-    return passed + failed === 0 ? "" : `${passed}/${passed + failed}`
+    const [flowPassed = 0, flowRun = 0] = flow.split("/").map(Number)
+    const run = passed + failed + flowRun
+    return run === 0 ? "" : `${passed + flowPassed}/${run}`
   })
   if (!key) return null
   const [passed, run] = key.split("/")

@@ -7,6 +7,7 @@ import { useDebugSessionStore } from "@/store/debug-session"
 import { activeEnvironment, useEnvironments } from "@/store/environments"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
+import { useRequestCollections, workflowTestSummary } from "@/store/request-collections"
 import { useSchemas, useSchemasStore } from "@/store/schemas"
 import { useTabsStore } from "@/store/tabs"
 import { diagnoseWorkflow } from "@/workflow/diagnose"
@@ -35,12 +36,17 @@ export function StatusBar() {
 
   const byNode = useNodeCases((s) => s.byNode)
   const results = useNodeCases((s) => s.results)
+  const liveTabId = useLiveWorkflowStore((s) => s.tabId)
+  const workflowPath = useTabsStore((s) => s.tabs.find((t) => t.id === liveTabId)?.path ?? "")
+  const byWorkflow = useRequestCollections((s) => s.byWorkflow)
+  const requestResults = useRequestCollections((s) => s.results)
   const tests = useMemo(() => {
     if (!workflow) return null
     const seen = new Set<string>()
-    let run = 0
-    let passed = 0
-    let total = 0
+    const flow = workflowTestSummary({ byWorkflow, results: requestResults }, workflowPath)
+    let run = flow?.run ?? 0
+    let passed = flow?.passed ?? 0
+    let total = flow?.total ?? 0
     for (const inst of Object.values(workflow.nodes)) {
       const file = nodeFileForUses(inst.uses)
       if (!file || seen.has(file)) continue
@@ -52,7 +58,7 @@ export function StatusBar() {
       passed += sum.passed
     }
     return total === 0 ? null : { run, passed }
-  }, [workflow, byNode, results])
+  }, [workflow, byNode, results, byWorkflow, requestResults, workflowPath])
 
   const activeTab = useTabsStore((s) => s.tabs.find((t) => t.id === s.activeId))
   const canShowShortcuts = useCommandEnabled("help.shortcuts")
@@ -94,7 +100,7 @@ export function StatusBar() {
             "flex items-center gap-1",
             tests.run > 0 && (tests.passed === tests.run ? "text-success" : "text-destructive"),
           )}
-          title="Node tests in this workflow"
+          title="Workflow and node tests in this workflow"
         >
           <FlaskConical className="h-3 w-3" />
           {tests.run === 0 ? "not run" : `${tests.passed}/${tests.run}`}

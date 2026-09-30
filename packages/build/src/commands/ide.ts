@@ -122,7 +122,8 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
     cors({
       origin: (origin) => (isLoopbackOriginString(origin) ? origin : null),
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["content-type", "authorization"],
+      allowHeaders: ["content-type", "authorization", "x-lorien-test"],
+      exposeHeaders: ["x-lorien-trace"],
     }),
   )
 
@@ -440,6 +441,7 @@ function buildAppForWorkspace(params: {
     nodes: params.loadedNodes,
     providers: params.loadedProviders,
     debug: params.debug,
+    testHooks: true,
   })
   // Static SPA — must be inside the build helper so it survives hot-reload.
   app.use(

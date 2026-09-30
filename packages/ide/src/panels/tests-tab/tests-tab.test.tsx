@@ -149,7 +149,7 @@ describe("Tests tab", () => {
     )
     render(<TestsTab />)
     await screen.findByText("Saves a user")
-    fireEvent.click(screen.getByRole("button", { name: "Run all" }))
+    fireEvent.click(screen.getByRole("button", { name: "Run all node tests" }))
     expect((await screen.findByRole("alert")).textContent).toMatch(/tsx is not installed/)
   })
 

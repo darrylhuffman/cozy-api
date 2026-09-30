@@ -62,7 +62,7 @@ export function registerTest(program: Command): void {
 
 async function defaultStartApp(root: string) {
   await registerTsxFromWorkspace(root)
-  return startLorienServer({ root })
+  return startLorienServer({ root, testHooks: true })
 }
 
 async function defaultRunCases(root: string, filter?: string) {

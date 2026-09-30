@@ -8,8 +8,9 @@ import type { Hono } from "hono"
 const __filename = fileURLToPath(import.meta.url)
 const root = join(dirname(__filename), "..")
 
-export async function buildApp(): Promise<Hono> {
-  return startLorienServer({ root })
+/** `testHooks` lets request tests mock nodes and check steps; keep it off when serving. */
+export async function buildApp(opts: { testHooks?: boolean } = {}): Promise<Hono> {
+  return startLorienServer({ root, ...opts })
 }
 
 function isEntryPoint(): boolean {
