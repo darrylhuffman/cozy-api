@@ -148,6 +148,9 @@ describe("saved requests", () => {
     expect(url).toBe("http://localhost:3000/users")
     expect((init as RequestInit).headers).toMatchObject({ Authorization: "Bearer t0k" })
     expect(useRequestHistoryStore.getState().entries).toHaveLength(1)
+    // The run request becomes the open one, with its result under the builder.
+    expect(useRequestEditor.getState().editingId).toBe("createsAUser")
+    await waitFor(() => expect(useRequestEditor.getState().lastResult?.passed).toBe(true))
   })
 
   it("Run all runs every request in order and counts failures", async () => {

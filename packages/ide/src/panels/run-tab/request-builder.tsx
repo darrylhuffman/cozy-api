@@ -119,10 +119,12 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
         <div
           role="tablist"
           aria-label="Request parts"
-          className="flex overflow-x-auto border-b border-border text-xs"
+          className="flex flex-wrap gap-0.5 border-b border-border pb-2 text-xs"
         >
           {tabs.map((t) => {
             const active = tab === t.id
+            // Body's kind is shown by the picker below; the rest show a count when set.
+            const showHint = t.id !== "body" && t.hint !== "0"
             return (
               <button
                 key={t.id}
@@ -131,14 +133,23 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
                 aria-selected={active}
                 onClick={() => setTab(t.id)}
                 className={cn(
-                  "-mb-px flex shrink-0 items-center gap-1 whitespace-nowrap border-b-2 px-2 py-1.5",
+                  "flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 transition-colors",
                   active
-                    ? "border-primary font-semibold text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground",
+                    ? "bg-primary/15 font-semibold text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
               >
                 {t.label}
-                <span className="font-normal text-muted-foreground">{t.hint}</span>
+                {showHint && (
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 font-mono text-[10px] font-medium leading-4",
+                      active ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {t.hint}
+                  </span>
+                )}
               </button>
             )
           })}

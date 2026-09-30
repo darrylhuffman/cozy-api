@@ -9,6 +9,11 @@ test("runs the workflow's saved requests from the Run tab", async ({ ide }) => {
   const rows = ide.getByTestId("runs-row")
   await expect(rows).toHaveCount(3)
   await expect(rows.first()).toHaveAttribute("aria-current", "true")
+
+  // Playing one saved request opens it in the builder below.
+  await ide.getByTestId("saved-requests").getByText("Adds a pet").hover()
+  await ide.getByRole("button", { name: "Run Adds a pet" }).click()
+  await expect(ide.getByLabel("Request name")).toHaveValue("Adds a pet")
 })
 
 test("runs a node's test cases from the Tests tab and badges the node", async ({ ide }) => {
