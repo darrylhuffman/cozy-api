@@ -103,6 +103,13 @@
         {
           "target": "body",
           "path": "error",
+          "op": "equals",
+          "value": "Internal Server Error"
+        },
+        {
+          "target": "node",
+          "node": "AddPet",
+          "path": "error",
           "op": "contains",
           "value": "database is locked"
         },

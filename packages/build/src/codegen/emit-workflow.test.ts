@@ -315,8 +315,8 @@ describe("emitWorkflow — parallel waves", () => {
       relativePath: "x",
     })
     // inputs.parse() is called for each parallel node before allSettled
-    expect(source).toMatch(/const _aInput = foo\.inputs\.parse\(\{ x: req_outputs\.body \}\)/)
-    expect(source).toMatch(/const _bInput = bar\.inputs\.parse\(\{ x: req_outputs\.body \}\)/)
+    expect(source).toMatch(/const _aInput = parseInput\(foo\.inputs, \{ x: req_outputs\.body \}, \{"x":"body"\}\)/)
+    expect(source).toMatch(/const _bInput = parseInput\(bar\.inputs, \{ x: req_outputs\.body \}, \{"x":"body"\}\)/)
     expect(source).toMatch(/Promise\.allSettled\(\[/)
     expect(source).toMatch(/a_settled/)
     expect(source).toMatch(/b_settled/)
@@ -388,7 +388,7 @@ describe("emitWorkflow — http-request method/path resolution", () => {
     expect(source).toMatch(/app\.on\("POST", "\/items",/)
   })
 
-  it("defaults to GET / when neither values nor in supply method/path", () => {
+  it("defaults to GET on the workflow's folder when values don't set method/path", () => {
     const { source } = emitWorkflow({
       workflow: wf({
         lorien: 1,
@@ -396,9 +396,9 @@ describe("emitWorkflow — http-request method/path resolution", () => {
           req: { uses: "@core/http-request" },
         },
       }),
-      relativePath: "x",
+      relativePath: "rooms/list",
     })
-    expect(source).toMatch(/app\.on\("GET", "\/",/)
+    expect(source).toMatch(/app\.on\("GET", "\/rooms",/)
   })
 })
 
@@ -443,7 +443,7 @@ describe("emitWorkflow — whole-object `in` (string form)", () => {
     // The raw value is captured from request_outputs.body
     expect(source).toMatch(/const _saveInputRaw = request_outputs\.body/)
     // Then validated through the node's Zod schema
-    expect(source).toMatch(/const _saveInput = saveUser\.inputs\.parse\(_saveInputRaw\)/)
+    expect(source).toMatch(/const _saveInput = parseInput\(saveUser\.inputs, _saveInputRaw, "body"\)/)
     // run() still gets the validated input
     expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/)
     expect(source).toMatch(/_saveInput as never/)
@@ -511,9 +511,9 @@ describe("emitWorkflow — full example matches the spec shape", () => {
     })
     expect(source).toMatch(/import saveUser from "\.\.\/\.\.\/\.\.\/nodes\/users\/save-user\.js"/)
     expect(source).toMatch(/export function register\(app: Hono\): void/)
-    // inputs.parse() is called before run() — validation is embedded in emitted code
+    // Input is parsed before run(); request values that fail it answer 400.
     expect(source).toMatch(
-      /const _saveInput = saveUser\.inputs\.parse\(\{ email: request_outputs\.body\.email, password: request_outputs\.body\.password \}\)/,
+      /const _saveInput = parseInput\(saveUser\.inputs, \{ email: request_outputs\.body\.email, password: request_outputs\.body\.password \}, \{"email":"body\.email","password":"body\.password"\}\)/,
     )
     expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/)
     expect(source).toMatch(/_saveInput as never/)
@@ -611,7 +611,7 @@ describe("emitWorkflow — variables", () => {
       writeFileSync(join(dir, "dist", "providers.gen.js"), "export const singletons = {}\n")
       writeFileSync(
         join(dir, "nodes", "greet.js"),
-        `export default { inputs: { parse: (v) => v }, run: async ({ name, role, max }) => ({ text: name + " is " + role + " (" + max + ")" }) }\n`,
+        `export default { inputs: { parse: (v) => v, safeParse: (v) => ({ success: true, data: v }) }, run: async ({ name, role, max }) => ({ text: name + " is " + role + " (" + max + ")" }) }\n`,
       )
       const genPath = join(dir, "dist", "workflows", "greet.gen.ts")
       writeFileSync(genPath, source)
@@ -621,6 +621,77 @@ describe("emitWorkflow — variables", () => {
       gen.register(app)
       const res = await app.request("/greet?name=Ada")
       expect(await res.json()).toBe("Ada is admin (3)")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("emitWorkflow — when and request validation", () => {
+  it("branches like the interpreter and answers 400 for a bad request value", async () => {
+    const workflow = wf({
+      lorien: 1,
+      nodes: {
+        Request: {
+          uses: "@core/http-request",
+          values: { path: "/rooms/:id/book", method: "POST" },
+        },
+        FindRoom: { uses: "./nodes/find-room", in: { id: "Request.params.id" } },
+        NotFound: {
+          uses: "@core/response",
+          when: "!FindRoom.found",
+          values: { status: 404, body: { error: "room not found" } },
+        },
+        Guests: { uses: "./nodes/guests", when: "FindRoom.found", in: { n: "Request.query.n" } },
+        Book: { uses: "./nodes/book", in: { room: "FindRoom.room", guests: "Guests.n" } },
+        Booked: { uses: "@core/response", in: { body: "Book" }, values: { status: 201 } },
+      },
+    })
+    const { source } = emitWorkflow({ workflow, relativePath: "book" })
+    expect(source).toContain(`const Guests_ran = Boolean(FindRoom_outputs?.found)`)
+    expect(source).toContain(`const Book_ran = Guests_ran`)
+    expect(source).toContain(`if (!FindRoom_outputs?.found) {`)
+
+    const dir = mkdtempSync(join(tmpdir(), "lorien-emit-when-"))
+    try {
+      mkdirSync(join(dir, "dist", "workflows"), { recursive: true })
+      mkdirSync(join(dir, "nodes"), { recursive: true })
+      writeFileSync(join(dir, "dist", "providers.gen.js"), "export const singletons = {}\n")
+      const passThrough = `{ parse: (v) => v, safeParse: (v) => ({ success: true, data: v }) }`
+      writeFileSync(
+        join(dir, "nodes", "find-room.js"),
+        `export default { inputs: ${passThrough}, run: async ({ id }) => id === "r1" ? { found: true, room: "Oak" } : { found: false } }\n`,
+      )
+      // Like z.object({ n: z.coerce.number() }): "abc" fails at ["n"].
+      writeFileSync(
+        join(dir, "nodes", "guests.js"),
+        `export default { inputs: { safeParse: (v) => Number.isNaN(Number(v.n)) ? { success: false, error: { issues: [{ path: ["n"], message: "expected number" }] } } : { success: true, data: { n: Number(v.n) } } }, run: async ({ n }) => ({ n }) }\n`,
+      )
+      writeFileSync(
+        join(dir, "nodes", "book.js"),
+        `export default { inputs: ${passThrough}, run: async ({ room, guests }) => ({ room, guests }) }\n`,
+      )
+      const genPath = join(dir, "dist", "workflows", "book.gen.ts")
+      writeFileSync(genPath, source)
+      const { Hono } = await import("hono")
+      const gen = await import(pathToFileURL(genPath).href)
+      const app = new Hono()
+      gen.register(app)
+
+      const booked = await app.request("/rooms/r1/book?n=2", { method: "POST" })
+      expect(booked.status).toBe(201)
+      expect(await booked.json()).toEqual({ room: "Oak", guests: 2 })
+
+      const missing = await app.request("/rooms/nope/book?n=abc", { method: "POST" })
+      expect(missing.status).toBe(404)
+      expect(await missing.json()).toEqual({ error: "room not found" })
+
+      const bad = await app.request("/rooms/r1/book?n=abc", { method: "POST" })
+      expect(bad.status).toBe(400)
+      expect(await bad.json()).toEqual({
+        error: "Invalid request",
+        issues: [{ path: "query.n", message: "expected number" }],
+      })
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

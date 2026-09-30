@@ -102,7 +102,7 @@ describe("workflow tests with test hooks", () => {
         mocks: { AddPet: { error: "database is locked" } },
         expect: [
           { target: "status", op: "equals", value: 500 },
-          { target: "body", path: "error", op: "contains", value: "database is locked" },
+          { target: "body", path: "detail", op: "contains", value: "database is locked" },
           { target: "node", node: "AddPet", path: "error", op: "contains", value: "locked" },
           { target: "node", node: "Response", op: "notExists" },
         ],

@@ -1,8 +1,9 @@
 import type { NodeMock } from "../requests/types.js"
 import type { AnyNodeOrTrigger, Node, Services } from "../types.js"
+import { dataDependencies, nodeDependencies, parseWhen } from "../workflow/dependencies.js"
 import { parseReference } from "../workflow/reference.js"
-import type { WorkflowFile } from "../workflow/types.js"
-import { NodeRunError } from "./errors.js"
+import type { NodeInstance, WorkflowFile } from "../workflow/types.js"
+import { NodeRunError, type RequestIssue, RequestValidationError } from "./errors.js"
 import type { LifecycleEmitter } from "./lifecycle.js"
 import type { ExecutionPlan } from "./topology.js"
 
@@ -82,23 +83,7 @@ function computeExecutionSet(
   // Build deps adjacency to walk upstream ancestors.
   const depsOf = new Map<string, Set<string>>()
   for (const [id, inst] of Object.entries(workflow.nodes)) {
-    const deps = new Set<string>()
-    if (inst.in !== undefined) {
-      if (typeof inst.in === "string") {
-        const ref = parseReference(inst.in)
-        if (ref) deps.add(ref.nodeId)
-      } else {
-        for (const raw of Object.values(inst.in)) {
-          if (typeof raw !== "string") continue
-          const ref = parseReference(raw)
-          if (ref) deps.add(ref.nodeId)
-        }
-      }
-    }
-    if (inst.after) {
-      for (const t of inst.after) deps.add(t)
-    }
-    depsOf.set(id, deps)
+    depsOf.set(id, new Set(nodeDependencies(inst)))
   }
 
   // Foreign triggers: every trigger in the workflow that ISN'T the firing one.
@@ -141,11 +126,20 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<WorkflowRun
   const execSet = computeExecutionSet(workflow, plan, triggerNodeId)
 
   let responseResult: WorkflowRunResult | null = null
+  // Nodes whose `when` was false, or that read a skipped node's outputs.
+  const skipped = new Set<string>()
 
   for (const wave of plan.waves) {
     const tasks: Promise<void>[] = []
+    // Responses that ran in this wave, in wave order: the first one answers.
+    const responses: Array<WorkflowRunResult | null> = []
     for (const nodeId of wave) {
       if (!execSet.has(nodeId)) continue
+      if (nodeId !== triggerNodeId && isSkipped(nodeId, workflow, outputs, skipped)) {
+        skipped.add(nodeId)
+        lifecycle?.emit({ type: "skipped", nodeId })
+        continue
+      }
       if (nodeId === triggerNodeId) {
         lifecycle?.emit({ type: "before-node", nodeId, input: {} })
         if (opts.onBeforeNode) {
@@ -170,9 +164,10 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<WorkflowRun
         }
         continue
       }
+      const slot = responses.push(null) - 1
       tasks.push(
         runOneNode(nodeId, opts, outputs, lifecycle).then((res) => {
-          if (res?.kind === "response") responseResult = res.value
+          if (res?.kind === "response") responses[slot] = res.value
         }),
       )
     }
@@ -186,6 +181,7 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<WorkflowRun
       const rejection = settled.find((s) => s.status === "rejected")
       if (rejection) throw (rejection as PromiseRejectedResult).reason
     }
+    responseResult = responses.find((r) => r !== null) ?? null
     if (responseResult) break
   }
 
@@ -193,6 +189,55 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<WorkflowRun
 
   if (responseResult) return responseResult
   return { status: 200, body: null, headers: {} }
+}
+
+/**
+ * True when a node shouldn't run: it reads the outputs of a skipped node, or
+ * its `when` reference is falsy (truthy, with a leading `!`).
+ */
+function isSkipped(
+  nodeId: string,
+  workflow: WorkflowFile,
+  outputs: Map<string, Record<string, unknown>>,
+  skipped: Set<string>,
+): boolean {
+  const inst = workflow.nodes[nodeId]
+  if (!inst) return false
+  if (dataDependencies(inst).some((dep) => skipped.has(dep))) return true
+  if (inst.when === undefined) return false
+  const when = parseWhen(inst.when)
+  if (!when) return false
+  let v: unknown = outputs.get(when.ref.nodeId)
+  for (const seg of when.ref.path) v = (v as Record<string, unknown> | null | undefined)?.[seg]
+  return Boolean(v) === when.negate
+}
+
+/**
+ * The failed issues whose values came straight from the trigger (the HTTP
+ * request), located in the request: `in.minCapacity: "Request.query.minCapacity"`
+ * failing becomes "query.minCapacity".
+ */
+function requestIssues(
+  instance: NodeInstance,
+  triggerNodeId: string,
+  issues: Array<{ path: PropertyKey[]; message: string }>,
+): RequestIssue[] {
+  const out: RequestIssue[] = []
+  for (const issue of issues) {
+    const path = issue.path.map(String)
+    let ref: ReturnType<typeof parseReference> = null
+    let rest = path
+    if (typeof instance.in === "string") {
+      ref = parseReference(instance.in)
+    } else {
+      const raw = path[0] !== undefined ? instance.in?.[path[0]] : undefined
+      ref = raw !== undefined ? parseReference(raw) : null
+      rest = path.slice(1)
+    }
+    if (ref?.nodeId !== triggerNodeId) continue
+    out.push({ path: [...ref.path, ...rest].join("."), message: issue.message })
+  }
+  return out
 }
 
 interface RunNodeResult {
@@ -319,6 +364,8 @@ async function runOneNode(
   if (nodeDef.inputs) {
     const result = (nodeDef as Node).inputs.safeParse(input)
     if (!result.success) {
+      const fromRequest = requestIssues(instance, opts.triggerNodeId, result.error.issues)
+      if (fromRequest.length > 0) throw new RequestValidationError(nodeId, fromRequest)
       const issue = result.error.issues[0]
       const path = issue?.path?.join(".") ?? "<root>"
       const message = issue?.message ?? "validation failed"

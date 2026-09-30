@@ -1,4 +1,11 @@
-import { parseReference, type WorkflowFile } from "@darrylondil/lorien-runtime"
+import {
+  dataDependencies,
+  nodeDependencies,
+  parseReference,
+  parseWhen,
+  type WorkflowFile,
+  workflowRoutes,
+} from "@darrylondil/lorien-runtime"
 
 /**
  * Result of generating a single workflow's .gen.ts source.
@@ -69,11 +76,9 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   }
 
   // Find all http-request triggers in this workflow.
-  const triggers: TriggerInfo[] = []
-  for (const [nodeId, inst] of Object.entries(workflow.nodes)) {
-    if (inst.uses !== "@core/http-request") continue
-    triggers.push(getHttpRequestMeta(nodeId, inst))
-  }
+  // `method` and `path` are literals under `values:`; the route is fixed at
+  // build time. A missing path defaults to the workflow's folder.
+  const triggers: TriggerInfo[] = workflowRoutes(workflow, `workflows/${relativePath}.workflow`)
 
   // Build a stable map from `uses` to local identifier.
   const sortedUses = [...userUses].sort()
@@ -115,6 +120,10 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   lines.push(renderTypes())
   lines.push("")
   lines.push(renderReadJsonBodyHelper())
+  if (triggers.some((t) => requestSourcedNodes(workflow, t.nodeId).size > 0)) {
+    lines.push("")
+    lines.push(renderParseInputHelper())
+  }
 
   for (const trigger of triggers) {
     lines.push("")
@@ -146,33 +155,6 @@ interface TriggerInfo {
   nodeId: string
   path: string
   method: string
-}
-
-/**
- * Extracts method + path for an @core/http-request node instance.
- *
- * `method` and `path` are user-typed literals that live under `values:`. The
- * route is fixed at build time — references in `in:` would resolve per-request,
- * which doesn't fit Hono's static route registration, so we don't read them
- * here. If a user wires `in.method`/`in.path`, they need a different setup
- * (we'd warn, but for now: silently fall back to defaults).
- */
-function getHttpRequestMeta(nodeId: string, inst: { values?: unknown }): TriggerInfo {
-  const values =
-    typeof inst.values === "object" && inst.values !== null && !Array.isArray(inst.values)
-      ? (inst.values as Record<string, unknown>)
-      : {}
-
-  const method = (values.method as string | undefined) ?? "GET"
-  const path = (values.path as string | undefined) ?? "/"
-
-  if (!method || !path) {
-    throw new Error(
-      `@core/http-request "${nodeId}" needs method and path — set them under values: { method, path }`,
-    )
-  }
-
-  return { nodeId, path, method: method.toUpperCase() }
 }
 
 function renderReadJsonBodyHelper(): string {
@@ -242,23 +224,27 @@ function renderRun(
     slicedDeps.set(id, filtered)
   }
   const waves = computeWaves(slicedDeps)
-  const hasResponse = hasResponseInSlice(workflow, sliceIds)
+  const ctx: RunContext = {
+    workflow,
+    usesToIdent,
+    triggerId: trigger.nodeId,
+    conditional: conditionalNodes(workflow, waves, trigger.nodeId),
+  }
+  const checksRequest = requestSourcedNodes(workflow, trigger.nodeId).size > 0
 
-  lines.push(`/** ${trigger.method} ${trigger.path} */`)
-  lines.push(
-    `export async function ${runFnName(trigger.nodeId)}(trigger: HttpTrigger, services: unknown): Promise<WorkflowResult> {`,
-  )
-  lines.push(`  const ${outputsVar(trigger.nodeId)} = trigger`)
+  const body: string[] = []
+  body.push(`const ${outputsVar(trigger.nodeId)} = trigger`)
   // Variables are constants: their value is written straight into the code.
   const variableIds = [...sliceIds].filter((id) => workflow.nodes[id]?.uses === VARIABLE).sort()
   for (const id of variableIds) {
     const value = workflow.nodes[id]?.values?.value
-    lines.push(
-      `  const ${outputsVar(id)} = { value: ${value === undefined ? "undefined" : JSON.stringify(value)} }`,
+    body.push(
+      `const ${outputsVar(id)} = { value: ${value === undefined ? "undefined" : JSON.stringify(value)} }`,
     )
   }
 
   let waveNum = 0
+  let returned = false
   for (const wave of waves) {
     const interesting = wave.filter(
       (id) => id !== trigger.nodeId && workflow.nodes[id]?.uses !== VARIABLE,
@@ -270,30 +256,48 @@ function renderRun(
     const computeIds = interesting.filter((id) => workflow.nodes[id]?.uses !== "@core/response")
 
     if (computeIds.length === 1) {
-      lines.push("")
-      lines.push(`  // Wave ${waveNum}: ${computeIds[0]}`)
-      lines.push(...renderSingleNodeCall(workflow, computeIds[0]!, usesToIdent, "  "))
+      body.push("")
+      body.push(`// Wave ${waveNum}: ${computeIds[0]}`)
+      body.push(...renderSingleNodeCall(ctx, computeIds[0]!))
     } else if (computeIds.length > 1) {
-      lines.push("")
-      lines.push(`  // Wave ${waveNum}: ${computeIds.join(", ")} (parallel)`)
-      lines.push(...renderParallelWave(workflow, computeIds, usesToIdent, "  "))
+      body.push("")
+      body.push(`// Wave ${waveNum}: ${computeIds.join(", ")} (parallel)`)
+      body.push(...renderParallelWave(ctx, computeIds))
     }
 
-    if (responseIds.length > 0) {
-      // First response in the wave wins (sorted ordering for determinism).
-      const responseId = responseIds[0]!
-      lines.push("")
-      lines.push(`  // Response`)
-      lines.push(...renderResponseReturn(workflow, responseId, "  "))
-      break
+    // The first response in the wave that runs answers (sorted for determinism).
+    for (const responseId of responseIds) {
+      body.push("")
+      body.push(ctx.conditional.has(responseId) ? `// Response ${responseId}, when it runs` : `// Response`)
+      body.push(...renderResponseReturn(ctx, responseId))
+      if (!ctx.conditional.has(responseId)) {
+        returned = true
+        break
+      }
     }
+    if (returned) break
   }
 
-  if (!hasResponse) {
-    lines.push("")
-    lines.push(`  return { status: 200, headers: {}, body: null }`)
+  if (!returned) {
+    body.push("")
+    body.push(`return { status: 200, headers: {}, body: null }`)
   }
 
+  lines.push(`/** ${trigger.method} ${trigger.path} */`)
+  lines.push(
+    `export async function ${runFnName(trigger.nodeId)}(trigger: HttpTrigger, services: unknown): Promise<WorkflowResult> {`,
+  )
+  if (checksRequest) {
+    // A bad value from the request is the client's mistake: answer 400.
+    lines.push(`  try {`)
+    lines.push(...body.map((l) => (l ? `    ${l}` : l)))
+    lines.push(`  } catch (e) {`)
+    lines.push(`    if (e instanceof InvalidRequest) return e.result`)
+    lines.push(`    throw e`)
+    lines.push(`  }`)
+  } else {
+    lines.push(...body.map((l) => (l ? `  ${l}` : l)))
+  }
   lines.push(`}`)
   return lines
 }
@@ -393,94 +397,109 @@ function renderGuards(count: number, perRequest: boolean): string[] {
   return lines
 }
 
-function hasResponseInSlice(workflow: WorkflowFile, sliceIds: Set<string>): boolean {
-  for (const id of sliceIds) {
-    if (workflow.nodes[id]?.uses === "@core/response") return true
-  }
-  return false
+interface RunContext {
+  workflow: WorkflowFile
+  usesToIdent: Map<string, string>
+  triggerId: string
+  /** Nodes that may be skipped: they have a `when`, or read a node that may be. */
+  conditional: Set<string>
 }
 
-function renderSingleNodeCall(
-  workflow: WorkflowFile,
-  nodeId: string,
-  usesToIdent: Map<string, string>,
-  indent: string,
-): string[] {
-  const inst = workflow.nodes[nodeId]!
-  const ident = usesToIdent.get(inst.uses)
-  if (!ident) throw new Error(`emit-workflow: no identifier for uses \`${inst.uses}\``)
+/** `<schema>.parse(...)`, or `parseInput(...)` when some of the input comes from the request. */
+function renderParse(ctx: RunContext, nodeId: string, ident: string, inputExpr: string): string {
+  const sources = requestSources(ctx.workflow, nodeId, ctx.triggerId)
+  return sources === null
+    ? `${ident}.inputs.parse(${inputExpr})`
+    : `parseInput(${ident}.inputs, ${inputExpr}, ${JSON.stringify(sources)})`
+}
+
+function identFor(ctx: RunContext, nodeId: string): string {
+  const uses = ctx.workflow.nodes[nodeId]!.uses
+  const ident = ctx.usesToIdent.get(uses)
+  if (!ident) throw new Error(`emit-workflow: no identifier for uses \`${uses}\``)
+  return ident
+}
+
+function renderSingleNodeCall(ctx: RunContext, nodeId: string): string[] {
+  const inst = ctx.workflow.nodes[nodeId]!
+  const ident = identFor(ctx, nodeId)
   const outVar = outputsVar(nodeId)
   const inputVar = `_${nodeId}Input`
   const inputRawVar = `_${nodeId}InputRaw`
   const inputExpr = renderInputExpr(inst.in, inst.values)
 
+  // A node that may be skipped runs (and parses its input) only when it runs;
+  // skipped, it has no outputs.
+  if (ctx.conditional.has(nodeId)) {
+    const ran = ranVar(nodeId)
+    return [
+      `const ${ran} = ${renderRanExpr(ctx, nodeId)}`,
+      `const ${outVar} = (${ran}`,
+      `  ? await ${ident}.run(`,
+      `      ${renderParse(ctx, nodeId, ident, inputExpr)} as never,`,
+      `      services as never,`,
+      `      undefined as never,`,
+      `    )`,
+      `  : {}) as Record<string, unknown>`,
+    ]
+  }
+
   // Whole-object form: source is a reference expression (already a JS access
   // chain). Emit a raw alias for clarity, then run through inputs.parse().
   if (typeof inst.in === "string") {
     return [
-      `${indent}const ${inputRawVar} = ${inputExpr}`,
-      `${indent}const ${inputVar} = ${ident}.inputs.parse(${inputRawVar})`,
-      `${indent}const ${outVar} = (await ${ident}.run(`,
-      `${indent}  ${inputVar} as never,`,
-      `${indent}  services as never,`,
-      `${indent}  undefined as never,`,
-      `${indent})) as Record<string, unknown>`,
+      `const ${inputRawVar} = ${inputExpr}`,
+      `const ${inputVar} = ${renderParse(ctx, nodeId, ident, inputRawVar)}`,
+      `const ${outVar} = (await ${ident}.run(`,
+      `  ${inputVar} as never,`,
+      `  services as never,`,
+      `  undefined as never,`,
+      `)) as Record<string, unknown>`,
     ]
   }
 
   return [
-    `${indent}const ${inputVar} = ${ident}.inputs.parse(${inputExpr})`,
-    `${indent}const ${outVar} = (await ${ident}.run(`,
-    `${indent}  ${inputVar} as never,`,
-    `${indent}  services as never,`,
-    `${indent}  undefined as never,`,
-    `${indent})) as Record<string, unknown>`,
+    `const ${inputVar} = ${renderParse(ctx, nodeId, ident, inputExpr)}`,
+    `const ${outVar} = (await ${ident}.run(`,
+    `  ${inputVar} as never,`,
+    `  services as never,`,
+    `  undefined as never,`,
+    `)) as Record<string, unknown>`,
   ]
 }
 
-function renderParallelWave(
-  workflow: WorkflowFile,
-  nodeIds: string[],
-  usesToIdent: Map<string, string>,
-  indent: string,
-): string[] {
+function renderParallelWave(ctx: RunContext, nodeIds: string[]): string[] {
   const lines: string[] = []
   // Emit inputs.parse() for each node before the allSettled block.
   for (const id of nodeIds) {
-    const inst = workflow.nodes[id]!
-    const ident = usesToIdent.get(inst.uses)
-    if (!ident) throw new Error(`emit-workflow: no identifier for uses \`${inst.uses}\``)
-    const inputVar = `_${id}Input`
-    const inputExpr = renderInputExpr(inst.in, inst.values)
-    lines.push(`${indent}const ${inputVar} = ${ident}.inputs.parse(${inputExpr})`)
+    const inst = ctx.workflow.nodes[id]!
+    const parse = renderParse(ctx, id, identFor(ctx, id), renderInputExpr(inst.in, inst.values))
+    if (ctx.conditional.has(id)) {
+      lines.push(`const ${ranVar(id)} = ${renderRanExpr(ctx, id)}`)
+      lines.push(`const _${id}Input = ${ranVar(id)} ? ${parse} : undefined`)
+    } else {
+      lines.push(`const _${id}Input = ${parse}`)
+    }
   }
   const settledNames = nodeIds.map((id) => `${id}_settled`)
-  lines.push(`${indent}const [${settledNames.join(", ")}] = await Promise.allSettled([`)
+  lines.push(`const [${settledNames.join(", ")}] = await Promise.allSettled([`)
   for (const id of nodeIds) {
-    const inst = workflow.nodes[id]!
-    const ident = usesToIdent.get(inst.uses)
-    if (!ident) throw new Error(`emit-workflow: no identifier for uses \`${inst.uses}\``)
-    const inputVar = `_${id}Input`
-    lines.push(
-      `${indent}  ${ident}.run(${inputVar} as never, services as never, undefined as never),`,
-    )
+    const call = `${identFor(ctx, id)}.run(_${id}Input as never, services as never, undefined as never)`
+    lines.push(ctx.conditional.has(id) ? `  ${ranVar(id)} ? ${call} : {},` : `  ${call},`)
   }
-  lines.push(`${indent}])`)
-  lines.push(
-    `${indent}const _rejection = [${settledNames.join(", ")}].find((r) => r.status === "rejected")`,
-  )
-  lines.push(`${indent}if (_rejection) throw (_rejection as PromiseRejectedResult).reason`)
+  lines.push(`])`)
+  lines.push(`const _rejection = [${settledNames.join(", ")}].find((r) => r.status === "rejected")`)
+  lines.push(`if (_rejection) throw (_rejection as PromiseRejectedResult).reason`)
   for (const id of nodeIds) {
-    const outVar = outputsVar(id)
     lines.push(
-      `${indent}const ${outVar} = (${id}_settled as PromiseFulfilledResult<unknown>).value as Record<string, unknown>`,
+      `const ${outputsVar(id)} = (${id}_settled as PromiseFulfilledResult<unknown>).value as Record<string, unknown>`,
     )
   }
   return lines
 }
 
-function renderResponseReturn(workflow: WorkflowFile, nodeId: string, indent: string): string[] {
-  const inst = workflow.nodes[nodeId]!
+function renderResponseReturn(ctx: RunContext, nodeId: string): string[] {
+  const inst = ctx.workflow.nodes[nodeId]!
 
   let bodyExpr: string
   let statusExpr: string
@@ -517,13 +536,135 @@ function renderResponseReturn(workflow: WorkflowFile, nodeId: string, indent: st
           : `{}`
   }
 
-  return [
-    `${indent}return {`,
-    `${indent}  status: ((${statusExpr}) as number | undefined) ?? 200,`,
-    `${indent}  headers: ((${headersExpr}) as Record<string, string> | undefined) ?? {},`,
-    `${indent}  body: ${bodyExpr},`,
-    `${indent}}`,
+  const ret = [
+    `return {`,
+    `  status: ((${statusExpr}) as number | undefined) ?? 200,`,
+    `  headers: ((${headersExpr}) as Record<string, string> | undefined) ?? {},`,
+    `  body: ${bodyExpr},`,
+    `}`,
   ]
+  if (!ctx.conditional.has(nodeId)) return ret
+  return [`if (${renderRanExpr(ctx, nodeId)}) {`, ...ret.map((l) => `  ${l}`), `}`]
+}
+
+function ranVar(nodeId: string): string {
+  return `${nodeId.replace(/[^a-zA-Z0-9_$]/g, "_")}_ran`
+}
+
+/**
+ * Whether a conditional node runs: every conditional node it reads ran, and
+ * its `when` holds. Mirrors the interpreter's skip rule.
+ */
+function renderRanExpr(ctx: RunContext, nodeId: string): string {
+  const inst = ctx.workflow.nodes[nodeId]!
+  const parts = dataDependencies(inst)
+    .filter((d) => ctx.conditional.has(d))
+    .sort()
+    .map(ranVar)
+  const when = inst.when !== undefined ? parseWhen(inst.when) : null
+  if (when) {
+    const chain =
+      outputsVar(when.ref.nodeId) +
+      when.ref.path.map((seg) => `?.${seg}`).join("")
+    parts.push(when.negate ? `!${chain}` : `Boolean(${chain})`)
+  }
+  return parts.length > 0 ? parts.join(" && ") : "true"
+}
+
+/** Nodes that may be skipped at run time, found in wave order. */
+function conditionalNodes(
+  workflow: WorkflowFile,
+  waves: string[][],
+  triggerId: string,
+): Set<string> {
+  const out = new Set<string>()
+  for (const wave of waves) {
+    for (const id of wave) {
+      const inst = workflow.nodes[id]
+      if (!inst || id === triggerId || inst.uses === VARIABLE) continue
+      if (inst.when !== undefined || dataDependencies(inst).some((d) => out.has(d))) out.add(id)
+    }
+  }
+  return out
+}
+
+/**
+ * Where a node's input comes from the request, located in the request: a
+ * field name → "query.minCapacity" map, or one prefix ("body") when the whole
+ * input is a request value. Null when none of it does.
+ */
+function requestSources(
+  workflow: WorkflowFile,
+  nodeId: string,
+  triggerId: string,
+): string | Record<string, string> | null {
+  const inst = workflow.nodes[nodeId]
+  if (!inst || inst.in === undefined) return null
+  if (typeof inst.in === "string") {
+    const ref = parseReference(inst.in)
+    return ref?.nodeId === triggerId ? ref.path.join(".") : null
+  }
+  const out: Record<string, string> = {}
+  for (const [field, raw] of Object.entries(inst.in)) {
+    const ref = parseReference(raw)
+    if (ref?.nodeId === triggerId) out[field] = ref.path.join(".")
+  }
+  return Object.keys(out).length > 0 ? out : null
+}
+
+/** User nodes that read part of their input straight from this trigger. */
+function requestSourcedNodes(workflow: WorkflowFile, triggerId: string): Set<string> {
+  const out = new Set<string>()
+  for (const [id, inst] of Object.entries(workflow.nodes)) {
+    if (inst.uses.startsWith("@core/")) continue
+    if (requestSources(workflow, id, triggerId) !== null) out.add(id)
+  }
+  return out
+}
+
+function renderParseInputHelper(): string {
+  return [
+    `/** A request value failed a node's schema; the route answers 400 with the issues. */`,
+    `class InvalidRequest extends Error {`,
+    `  constructor(readonly issues: Array<{ path: string; message: string }>) {`,
+    `    super("Invalid request")`,
+    `  }`,
+    `  get result(): WorkflowResult {`,
+    `    return { status: 400, headers: {}, body: { error: "Invalid request", issues: this.issues } }`,
+    `  }`,
+    `}`,
+    ``,
+    `interface InputSchema {`,
+    `  safeParse(input: unknown): {`,
+    `    success: boolean`,
+    `    data?: unknown`,
+    `    error?: { issues: Array<{ path: PropertyKey[]; message: string }> }`,
+    `  }`,
+    `}`,
+    ``,
+    `/**`,
+    ` * Parses a node's input. Issues on values from the request become an`,
+    ` * InvalidRequest (400); anything else is a bug and throws as usual.`,
+    ` */`,
+    `function parseInput(`,
+    `  schema: InputSchema,`,
+    `  input: unknown,`,
+    `  fromRequest: string | Record<string, string>,`,
+    `): unknown {`,
+    `  const result = schema.safeParse(input)`,
+    `  if (result.success) return result.data`,
+    `  const issues: Array<{ path: string; message: string }> = []`,
+    `  for (const issue of result.error?.issues ?? []) {`,
+    `    const path = issue.path.map(String)`,
+    `    const base = typeof fromRequest === "string" ? fromRequest : fromRequest[path[0] ?? ""]`,
+    `    if (base === undefined) continue`,
+    `    const rest = typeof fromRequest === "string" ? path : path.slice(1)`,
+    `    issues.push({ path: [base, ...rest].filter(Boolean).join("."), message: issue.message })`,
+    `  }`,
+    `  if (issues.length > 0) throw new InvalidRequest(issues)`,
+    `  throw result.error`,
+    `}`,
+  ].join("\n")
 }
 
 /**
@@ -644,25 +785,7 @@ function outputsVar(nodeId: string): string {
 function buildDepsByNode(wf: WorkflowFile): Map<string, Set<string>> {
   const depsByNode = new Map<string, Set<string>>()
   for (const [id, inst] of Object.entries(wf.nodes)) {
-    const deps = new Set<string>()
-    if (inst.in !== undefined) {
-      if (typeof inst.in === "string") {
-        const ref = parseReference(inst.in)
-        if (ref && wf.nodes[ref.nodeId]) deps.add(ref.nodeId)
-      } else {
-        for (const raw of Object.values(inst.in)) {
-          if (typeof raw !== "string") continue
-          const ref = parseReference(raw)
-          if (ref && wf.nodes[ref.nodeId]) deps.add(ref.nodeId)
-        }
-      }
-    }
-    if (inst.after) {
-      for (const t of inst.after) {
-        if (wf.nodes[t]) deps.add(t)
-      }
-    }
-    depsByNode.set(id, deps)
+    depsByNode.set(id, new Set(nodeDependencies(inst).filter((d) => wf.nodes[d])))
   }
   return depsByNode
 }

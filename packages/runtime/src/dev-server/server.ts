@@ -1,5 +1,6 @@
 import type { Context, Hono, MiddlewareHandler } from "hono"
 import { resolveCoreNode } from "../core/registry.js"
+import { RequestValidationError } from "../exec/errors.js"
 import { LifecycleEmitter } from "../exec/lifecycle.js"
 import { runWorkflow, type WorkflowRunResult } from "../exec/run.js"
 import { computeExecutionPlan } from "../exec/topology.js"
@@ -14,6 +15,7 @@ import {
   TRACE_PATH,
 } from "../requests/types.js"
 import type { AnyNodeOrTrigger, Services } from "../types.js"
+import { findRouteConflicts, workflowRoutes } from "../workflow/routes.js"
 import { validateWorkflow } from "../workflow/validate.js"
 import { withRunContext } from "./console-capture.js"
 import type { RequestEnvelope } from "./debug-protocol.js"
@@ -114,6 +116,16 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
     if (traces.size > MAX_TRACES) traces.delete(traces.keys().next().value as string)
   }
 
+  // A route served twice would silently go to whichever registered first:
+  // mount neither, and say which files clash.
+  const clashing = new Set<string>()
+  for (const conflict of findRouteConflicts(workflows)) {
+    console.error(
+      `[lorien] ${conflict.method} ${conflict.path} is served by more than one workflow; skipping all of them: ${conflict.sources.join(", ")}`,
+    )
+    for (const source of conflict.sources) clashing.add(source)
+  }
+
   for (const wf of workflows) {
     const { errors, depsByNode } = validateWorkflow(wf.file)
     if (errors.length > 0) {
@@ -122,11 +134,8 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
       continue
     }
 
-    for (const [nodeId, inst] of Object.entries(wf.file.nodes)) {
-      if (inst.uses !== "@core/http-request") continue
-      const values = (inst.values ?? {}) as Record<string, unknown>
-      const path = (values.path as string | undefined) ?? "/"
-      const method = ((values.method as string | undefined) ?? "GET").toUpperCase()
+    for (const { nodeId, method, path } of workflowRoutes(wf.file, wf.relativePath)) {
+      if (clashing.has(`${wf.relativePath}#${nodeId}`)) continue
 
       const projectedFile = buildTriggerSlice(wf.file, nodeId, depsByNode)
       const { depsByNode: sliceDeps } = validateWorkflow(projectedFile)
@@ -233,8 +242,18 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
           })
         } catch (err) {
           opts.debug?.onError(runId, err, Date.now() - startedAt)
-          const msg = err instanceof Error ? err.message : String(err)
-          return c.newResponse(JSON.stringify({ error: msg }), 500, {
+          if (err instanceof RequestValidationError) {
+            return c.newResponse(
+              JSON.stringify({ error: "Invalid request", issues: err.issues }),
+              400,
+              { "content-type": "application/json", ...traceHeaders() },
+            )
+          }
+          // Same body as a built server's, plus the message as `detail` so it's
+          // readable while developing. Built servers log it instead of sending it.
+          console.error(`[lorien] ${method} ${url.pathname} failed:`, err)
+          const detail = err instanceof Error ? err.message : String(err)
+          return c.newResponse(JSON.stringify({ error: "Internal Server Error", detail }), 500, {
             "content-type": "application/json",
             ...traceHeaders(),
           })

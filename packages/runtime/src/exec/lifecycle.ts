@@ -3,6 +3,8 @@ export type LifecycleEvent =
   | { type: "after-node"; nodeId: string; output: Record<string, unknown>; durationMs: number }
   | { type: "edge-fired"; from: string; to: string; value: unknown }
   | { type: "error"; nodeId: string; error: Error }
+  /** The node didn't run: its `when` was false, or it reads a skipped node. */
+  | { type: "skipped"; nodeId: string }
   | { type: "complete"; totalMs: number }
 
 export type LifecycleEventType = LifecycleEvent["type"]

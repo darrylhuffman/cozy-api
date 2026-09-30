@@ -109,6 +109,8 @@ export interface NodeInstance {
    */
   values?: Record<string, unknown>
   after?: string[]
+  /** Runs the node only when this reference is truthy ("Room.found"), or falsy with a leading "!". */
+  when?: string
   label?: string
 }
 
