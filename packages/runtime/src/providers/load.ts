@@ -1,4 +1,4 @@
-import { readdir, stat } from "node:fs/promises"
+import { readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { ServiceValue, WorkflowConfig } from "../types.js"
@@ -7,42 +7,89 @@ import {
   createProviderContainer,
   type ProviderContainer,
 } from "./container.js"
-import { type AnyProvider, isProvider } from "./define-provider.js"
+import { type AnyProvider, isProvider, selectorProblem } from "./define-provider.js"
 
 export interface ProviderFile {
-  /** The name nodes read it by: `http-client.ts` becomes `httpClient`. */
+  /** Its `selector`: the name nodes read it by. */
   name: string
-  /** Project-relative path, e.g. `providers/db.ts`. */
+  /** Project-relative path, e.g. `providers/db.ts` or `providers/aws/s3.ts`. */
   path: string
 }
 
-const PROVIDER_FILE = /^([A-Za-z][\w-]*)\.(ts|mts|js|mjs)$/
+export interface ScanProvidersResult {
+  files: ProviderFile[]
+  errors: Array<{ path: string; message: string }>
+}
+
+const SOURCE_FILE = /\.(ts|mts|js|mjs)$/
 const SKIP = /\.(test|spec|test-d)\.[mc]?[jt]s$|\.d\.[mc]?ts$/
+const DEFINES_PROVIDER = /\bdefineProvider\s*\(/
+const SELECTOR_LITERAL = /\bselector\s*:\s*(["'`])([^"'`\n]*)\1/
 
 /**
- * Lists `providers/*.ts`. Only files directly inside `providers/` are
- * providers; subfolders (`providers/db/`) hold code private to one provider.
+ * Finds every provider under `providers/`, in any folder: a file that calls
+ * `defineProvider(...)`. Each is named by its `selector`, read from the source
+ * without importing it, so helper files next to a provider never run.
  */
+export async function scanProviderFiles(root: string): Promise<ScanProvidersResult> {
+  const files: ProviderFile[] = []
+  const errors: ScanProvidersResult["errors"] = []
+  const bySelector = new Map<string, string>()
+  for (const path of await walk(root, "providers")) {
+    let source: string
+    try {
+      source = await readFile(join(root, path), "utf-8")
+    } catch {
+      continue
+    }
+    if (!DEFINES_PROVIDER.test(source)) continue
+    const selector = SELECTOR_LITERAL.exec(source)?.[2]
+    if (selector === undefined) {
+      errors.push({
+        path,
+        message: 'defineProvider needs a selector written as a string, e.g. selector: "db"',
+      })
+      continue
+    }
+    const problem = selectorProblem(selector)
+    if (problem) {
+      errors.push({ path, message: problem })
+      continue
+    }
+    const taken = bySelector.get(selector)
+    if (taken) {
+      errors.push({ path, message: `selector "${selector}" is already used by ${taken}` })
+      continue
+    }
+    bySelector.set(selector, path)
+    files.push({ name: selector, path })
+  }
+  return { files, errors }
+}
+
+/** The providers `scanProviderFiles` finds, without its errors. */
 export async function findProviderFiles(root: string): Promise<ProviderFile[]> {
+  return (await scanProviderFiles(root)).files
+}
+
+/** Project-relative source files under `dir`, sorted, tests and typings skipped. */
+async function walk(root: string, dir: string): Promise<string[]> {
   let entries: import("node:fs").Dirent[]
   try {
-    entries = await readdir(join(root, "providers"), { withFileTypes: true })
+    entries = await readdir(join(root, dir), { withFileTypes: true })
   } catch {
     return []
   }
-  const out: ProviderFile[] = []
+  const out: string[] = []
   for (const e of entries) {
-    if (!e.isFile() || SKIP.test(e.name)) continue
-    const m = PROVIDER_FILE.exec(e.name)
-    if (!m) continue
-    out.push({ name: providerName(m[1]!), path: `providers/${e.name}` })
+    const rel = `${dir}/${e.name}`
+    if (e.isDirectory()) {
+      if (e.name !== "node_modules" && !e.name.startsWith(".")) out.push(...(await walk(root, rel)))
+    } else if (e.isFile() && SOURCE_FILE.test(e.name) && !SKIP.test(e.name)) {
+      out.push(rel)
+    }
   }
-  return out.sort((a, b) => a.path.localeCompare(b.path))
-}
-
-/** `http-client` → `httpClient`. */
-export function providerName(fileBase: string): string {
-  return fileBase.replace(/[-_]+([A-Za-z0-9])/g, (_, c: string) => c.toUpperCase())
+  return out.sort()
 }
 
 export interface ImportProvidersResult {
@@ -52,16 +99,20 @@ export interface ImportProvidersResult {
 
 export async function importProviders(root: string): Promise<ImportProvidersResult> {
   const providers: Record<string, AnyProvider> = {}
-  const errors: ImportProvidersResult["errors"] = []
-  for (const f of await findProviderFiles(root)) {
+  const scan = await scanProviderFiles(root)
+  const errors: ImportProvidersResult["errors"] = [...scan.errors]
+  for (const f of scan.files) {
     try {
       const mod = (await import(pathToFileURL(join(root, f.path)).href)) as { default?: unknown }
       if (!isProvider(mod.default)) {
         errors.push({ path: f.path, message: "default export is not a defineProvider(...)" })
         continue
       }
-      if (providers[f.name]) {
-        errors.push({ path: f.path, message: `another file already provides "${f.name}"` })
+      if (mod.default.selector !== f.name) {
+        errors.push({
+          path: f.path,
+          message: `selector must be the string "${f.name}" itself, not built at runtime`,
+        })
         continue
       }
       providers[f.name] = mod.default
@@ -114,7 +165,7 @@ export async function loadProviders(
   }
   if (Object.keys(legacy).length > 0) {
     console.warn(
-      `[lorien] services in lorien.config.ts are deprecated; move each to providers/<name>.ts ` +
+      `[lorien] services in lorien.config.ts are deprecated; move each to a defineProvider in providers/ ` +
         `(${Object.keys(legacy).join(", ")})`,
     )
   }

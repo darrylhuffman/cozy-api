@@ -6,7 +6,7 @@ export interface Logger {
 
 /** A logger per request, so every line carries the request id. */
 export default defineProvider({
-  name: "Request logger",
+  selector: "logger",
   lifetime: "scoped",
   create: ({ request }): Logger => ({
     info: (msg, fields) => console.log("[info]", msg, { requestId: request?.requestId, ...fields }),

@@ -328,6 +328,8 @@ export function FilesPanel() {
           void useProvidersStore.getState().refresh()
           openCodeFile(path)
         }}
+        defaultFolder={menu.tree === "providers" ? menu.folder : "providers"}
+        providersTree={providers}
       />
       <NewNodeDialog
         open={dialog === "new-lib-file"}

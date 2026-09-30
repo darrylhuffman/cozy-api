@@ -236,8 +236,8 @@ describe("FilesPanel — providers and lib", () => {
     render(<FilesPanel />)
     await waitFor(() => expect(screen.getByText("db.ts")).toBeInTheDocument())
     fireEvent.click(screen.getByRole("button", { name: "New provider" }))
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "http-client" } })
-    expect(screen.getByText("httpClient")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Selector"), { target: { value: "http-client" } })
+    expect(screen.getByText(`providers["http-client"]`)).toBeInTheDocument()
     fireEvent.click(screen.getByLabelText("Scoped"))
     fireEvent.click(screen.getByRole("button", { name: "Create" }))
     await waitFor(() =>
@@ -248,5 +248,6 @@ describe("FilesPanel — providers and lib", () => {
       .mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!
     expect(put[0]).toContain(encodeURIComponent("providers/http-client.ts"))
     expect((put[1] as RequestInit).body).toContain(`lifetime: "scoped"`)
+    expect((put[1] as RequestInit).body).toContain(`selector: "http-client"`)
   })
 })

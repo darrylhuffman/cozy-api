@@ -15,8 +15,8 @@ export interface ProviderInfo {
   name: string
   /** Project-relative path, e.g. "providers/db.ts". */
   path: string
-  /** `name` from defineProvider, for display. */
-  label?: string
+  /** The doc comment above `export default defineProvider(...)`, for display. */
+  description?: string
   color?: string
   lifetime: "singleton" | "scoped" | "transient"
   uses: string[]
@@ -48,7 +48,7 @@ export interface ProvidersIntrospection {
 }
 
 /**
- * Reads `providers/*.ts` and `nodes/**` statically (TypeScript's parser, no
+ * Reads the providers under `providers/` and `nodes/**` statically (TypeScript's parser, no
  * import), so the IDE always sees the files as they are on disk: each
  * provider's lifetime, deps, env vars and packages, and which providers each
  * node's `run` reads.
@@ -77,7 +77,9 @@ export async function introspectProviders(
       f.path.replace(/^providers\//, "").replace(/\.[mc]?[jt]s$/, ""),
     )
     const packages = new Set(info.packages)
+    const providerPaths = new Set(files.map((p) => p.path))
     for (const abs of await walkTs(privateDir)) {
+      if (providerPaths.has(toPosix(relative(root, abs)))) continue
       for (const p of importedPackages(await readFile(abs, "utf-8"))) packages.add(p)
     }
     providers.push({
@@ -142,11 +144,12 @@ export function parseProvider(
   }
   const def = defineCallArgument(sf, "defineProvider")
   if (!def) return out
+  const description = docComment(sf, def)
+  if (description) out.description = description
   for (const prop of def.properties) {
     const key = propName(prop)
     if (!key) continue
     const init = ts.isPropertyAssignment(prop) ? prop.initializer : undefined
-    if (key === "name" && init && ts.isStringLiteralLike(init)) out.label = init.text
     if (key === "color" && init && ts.isStringLiteralLike(init)) out.color = init.text
     if (key === "lifetime" && init && ts.isStringLiteralLike(init)) {
       if (init.text === "scoped" || init.text === "transient") out.lifetime = init.text
@@ -158,6 +161,25 @@ export function parseProvider(
     if (key === "env" && init) out.env = envVars(init, env)
   }
   return out
+}
+
+/** The JSDoc block right above the statement holding `node`, as plain text. */
+function docComment(sf: ts.SourceFile, node: ts.Node): string | undefined {
+  let stmt: ts.Node = node
+  while (stmt.parent && !ts.isSourceFile(stmt.parent)) stmt = stmt.parent
+  const ranges = ts.getLeadingCommentRanges(sf.text, stmt.getFullStart()) ?? []
+  const last = ranges.at(-1)
+  if (!last) return undefined
+  const text = sf.text.slice(last.pos, last.end)
+  if (!text.startsWith("/**")) return undefined
+  const body = text
+    .slice(3, -2)
+    .split("\n")
+    .map((line) => line.replace(/^\s*\*? ?/, "").trim())
+  // Stop at the first tag (@example, @see): the prose above it is the description.
+  const tag = body.findIndex((line) => line.startsWith("@"))
+  const prose = (tag === -1 ? body : body.slice(0, tag)).join(" ").replace(/\s+/g, " ").trim()
+  return prose || undefined
 }
 
 /** Keys of `z.object({ ... })`, with whether each is set, defaulted or optional. */
@@ -190,7 +212,8 @@ function envVars(expr: ts.Expression, env: Record<string, string | undefined>): 
 
 /**
  * Provider names a node's `run` reads: destructured from its second
- * parameter (`run(input, { db })`) or accessed on it (`providers.db`).
+ * parameter (`run(input, { db })`, `{ "my-db": myDb }`) or accessed on it
+ * (`providers.db`, `providers["my-db"]`).
  */
 export function providersReadByNode(source: string, known: ReadonlySet<string>): string[] {
   const sf = ts.createSourceFile("node.ts", source, ts.ScriptTarget.Latest, true)
@@ -231,6 +254,14 @@ function readsFromRun(def: ts.ObjectLiteralExpression, paramIndex: number): stri
         n.expression.text === id
       ) {
         used.add(n.name.text)
+      }
+      if (
+        ts.isElementAccessExpression(n) &&
+        ts.isIdentifier(n.expression) &&
+        n.expression.text === id &&
+        ts.isStringLiteralLike(n.argumentExpression)
+      ) {
+        used.add(n.argumentExpression.text)
       }
       if (ts.isVariableDeclaration(n) && ts.isObjectBindingPattern(n.name) && n.initializer) {
         const init = ts.isAsExpression(n.initializer) ? n.initializer.expression : n.initializer

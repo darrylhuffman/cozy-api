@@ -1,15 +1,21 @@
 import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import type { FileFolder } from "@/data/mock-files"
 import { createWorkspaceFile, type ProviderLifetime } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { LIFETIME_HELP } from "@/store/providers"
-import { providerName, providerTemplate } from "./provider-template"
+import { LIFETIME_HELP, useProvidersStore } from "@/store/providers"
+import { FolderPicker } from "./folder-picker"
+import { providerTemplate, SELECTOR_PATTERN, selectorRead } from "./provider-template"
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Called with the new file's path, e.g. "providers/db.ts". */
   onCreated: (path: string) => void
+  /** Folder to create it in, e.g. "providers/aws". */
+  defaultFolder?: string
+  /** The providers tree, to pick another folder. */
+  providersTree?: FileFolder
 }
 
 const LIFETIMES: { value: ProviderLifetime; label: string }[] = [
@@ -18,32 +24,48 @@ const LIFETIMES: { value: ProviderLifetime; label: string }[] = [
   { value: "transient", label: "Transient" },
 ]
 
-/** Creates `providers/<name>.ts`: a database, logger or client every node can read. */
-export function NewProviderDialog({ open, onOpenChange, onCreated }: Props) {
+/**
+ * Creates `<folder>/<selector>.ts`: a database, logger or client every node
+ * can read by its selector.
+ */
+export function NewProviderDialog({
+  open,
+  onOpenChange,
+  onCreated,
+  defaultFolder = "providers",
+  providersTree,
+}: Props) {
   const [name, setName] = useState("")
+  const [folder, setFolder] = useState(defaultFolder)
   const [lifetime, setLifetime] = useState<ProviderLifetime>("singleton")
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
       setName("")
+      setFolder(defaultFolder)
       setLifetime("singleton")
       setError(null)
     }
-  }, [open])
+  }, [open, defaultFolder])
 
-  const bare = name.trim().replace(/\.ts$/, "")
-  const valid = /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(bare)
+  const selector = name.trim()
+  const valid = SELECTOR_PATTERN.test(selector)
+  const taken = useProvidersStore((s) => s.providers.find((p) => p.name === selector))
 
   async function handleCreate() {
     setError(null)
     if (!valid) {
-      setError("Use letters, numbers, - or _, starting with a letter")
+      setError("Start with a letter, then use letters, digits, - or _")
       return
     }
-    const path = `providers/${bare}.ts`
+    if (taken) {
+      setError(`${taken.path} already uses this selector`)
+      return
+    }
+    const path = `${folder}/${selector}.ts`
     try {
-      await createWorkspaceFile(path, providerTemplate(bare, lifetime))
+      await createWorkspaceFile(path, providerTemplate(selector, lifetime))
       onOpenChange(false)
       onCreated(path)
     } catch (e) {
@@ -69,32 +91,47 @@ export function NewProviderDialog({ open, onOpenChange, onCreated }: Props) {
           <div className="space-y-3">
             <div className="space-y-1">
               <label htmlFor="new-provider-name" className="text-xs text-muted-foreground">
-                Name
+                Selector
               </label>
-              <div className="flex items-stretch overflow-hidden rounded-md border border-input bg-transparent focus-within:ring-1 focus-within:ring-ring">
-                <span className="flex select-none items-center bg-muted px-2 py-1 text-sm text-muted-foreground">
-                  providers/
-                </span>
-                <input
-                  id="new-provider-name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="db"
-                  autoFocus
-                  className="min-w-0 flex-1 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted-foreground"
-                />
-                <span className="flex select-none items-center bg-muted px-2 py-1 text-sm text-muted-foreground">
-                  .ts
-                </span>
+              <input
+                id="new-provider-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="db"
+                autoFocus
+                spellCheck={false}
+                className="w-full rounded-md border border-input bg-transparent px-2 py-1 font-mono text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
+              />
+              <div className="text-xs text-muted-foreground">
+                {valid ? (
+                  <>
+                    Nodes read it as{" "}
+                    <code className="font-mono text-foreground">{selectorRead(selector)}</code>
+                    {selector.includes("-") && ". camelCase reads without quotes"}
+                    {taken && (
+                      <span className="text-destructive">, but {taken.path} already uses it</span>
+                    )}
+                  </>
+                ) : (
+                  "The name nodes read it by: letters, digits, - or _, starting with a letter"
+                )}
               </div>
-              {valid && (
-                <div className="text-xs text-muted-foreground">
-                  Nodes read it as{" "}
-                  <code className="font-mono text-foreground">{providerName(bare)}</code>
-                </div>
-              )}
             </div>
+            {providersTree && (
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Folder</div>
+                <FolderPicker root={providersTree} value={folder} onChange={setFolder} />
+              </div>
+            )}
+            {valid && (
+              <div className="text-xs text-muted-foreground">
+                Creates{" "}
+                <code className="font-mono text-foreground">
+                  {folder}/{selector}.ts
+                </code>
+              </div>
+            )}
             <fieldset className="space-y-1">
               <legend className="mb-1 text-xs text-muted-foreground">Lifetime</legend>
               <div className="flex gap-1">
@@ -132,7 +169,7 @@ export function NewProviderDialog({ open, onOpenChange, onCreated }: Props) {
             </button>
             <button
               type="submit"
-              disabled={bare.length === 0}
+              disabled={selector.length === 0}
               className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
             >
               Create

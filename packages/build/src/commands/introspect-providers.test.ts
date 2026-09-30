@@ -15,8 +15,14 @@ import { z } from "zod"
 import pg from "pg"
 import { open } from "./db/open.js"
 
+/**
+ * The main Postgres pool.
+ * Shared by every request.
+ *
+ * @example db.query("select 1")
+ */
 export default defineProvider({
-  name: "Postgres",
+  selector: "db",
   color: "sky",
   uses: ["logger"],
   env: z.object({
@@ -33,7 +39,7 @@ export default defineProvider({
 describe("parseProvider", () => {
   it("reads lifetime, deps, env status, dispose and packages", () => {
     expect(parseProvider(DB, "providers/db.ts", { DB_NAME: "pets" })).toEqual({
-      label: "Postgres",
+      description: "The main Postgres pool. Shared by every request.",
       color: "sky",
       lifetime: "singleton",
       uses: ["logger"],
@@ -60,7 +66,7 @@ describe("parseProvider", () => {
 })
 
 describe("providersReadByNode", () => {
-  const known = new Set(["db", "logger", "clock"])
+  const known = new Set(["db", "logger", "clock", "my-db"])
 
   it("reads destructured providers, renamed or not", () => {
     const src = `export default defineNode({ async run(input, { db, logger: log }) { return {} } })`
@@ -75,6 +81,15 @@ describe("providersReadByNode", () => {
       },
     })`
     expect(providersReadByNode(src, known)).toEqual(["clock", "db"])
+  })
+
+  it("reads dashed selectors, quoted in a destructure or in brackets", () => {
+    expect(
+      providersReadByNode(`export default defineNode({ run(i, { "my-db": db }) {} })`, known),
+    ).toEqual(["my-db"])
+    expect(
+      providersReadByNode(`export default defineNode({ run(i, p) { p["my-db"].get() } })`, known),
+    ).toEqual(["my-db"])
   })
 
   it("ignores names that are not providers and nodes without a second parameter", () => {
@@ -109,13 +124,14 @@ describe("introspectProviders", () => {
       join(dir, "providers", "db", "open.ts"),
       `import Database from "better-sqlite3"\n`,
     )
+    mkdirSync(join(dir, "providers", "obs"))
     writeFileSync(
-      join(dir, "providers", "logger.ts"),
-      `export default defineProvider({ lifetime: "scoped", create: () => console })\n`,
+      join(dir, "providers", "obs", "logger.ts"),
+      `export default defineProvider({ selector: "logger", lifetime: "scoped", create: () => console })\n`,
     )
     writeFileSync(
       join(dir, "nodes", "pets", "add-pet.ts"),
-      `export default defineNode({ run: async (input, { db, logger }) => ({}) })\n`,
+      `export default defineNode({ run: async (input, p) => p.db.get(p["logger"]) })\n`,
     )
     writeFileSync(
       join(dir, "nodes", "hello.ts"),

@@ -4,15 +4,15 @@ import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { z } from "zod"
 import { createProviderContainer } from "./container.js"
-import { defineProvider } from "./define-provider.js"
-import { findProviderFiles, providerName } from "./load.js"
+import { defineProvider, selectorProblem } from "./define-provider.js"
+import { scanProviderFiles } from "./load.js"
 import { planProviders } from "./plan.js"
 
 const request = { requestId: "r1", timestamp: 0 }
 
 describe("defineProvider", () => {
   it("defaults to a singleton with no deps", () => {
-    const p = defineProvider({ create: () => 1 })
+    const p = defineProvider({ selector: "p", create: () => 1 })
     expect(p.kind).toBe("provider")
     expect(p.lifetime).toBe("singleton")
     expect(p.uses).toEqual([])
@@ -58,12 +58,17 @@ describe("createProviderContainer", () => {
   it("creates singletons once, scoped per request, transient per read", async () => {
     const counts = { single: 0, scoped: 0, transient: 0 }
     const container = createProviderContainer({
-      single: defineProvider({ create: () => ({ n: ++counts.single }) }),
+      single: defineProvider({ selector: "single", create: () => ({ n: ++counts.single }) }),
       scoped: defineProvider({
+        selector: "scoped",
         lifetime: "scoped",
         create: ({ request }) => ({ n: ++counts.scoped, id: request?.requestId }),
       }),
-      transient: defineProvider({ lifetime: "transient", create: () => ++counts.transient }),
+      transient: defineProvider({
+        selector: "transient",
+        lifetime: "transient",
+        create: () => ++counts.transient,
+      }),
     })
     const a = await container.open(request)
     const b = await container.open({ requestId: "r2", timestamp: 0 })
@@ -79,10 +84,12 @@ describe("createProviderContainer", () => {
     const container = createProviderContainer(
       {
         url: defineProvider({
+          selector: "url",
           env: z.object({ DB_URL: z.string(), POOL: z.coerce.number().default(4) }),
           create: ({ env }) => `${env.DB_URL}?pool=${env.POOL}`,
         }),
         client: defineProvider({
+          selector: "client",
           uses: ["url"],
           create: ({ providers }) => ({ connectedTo: providers.url }),
         }),
@@ -96,7 +103,11 @@ describe("createProviderContainer", () => {
   it("names every missing env var at boot", async () => {
     const container = createProviderContainer(
       {
-        db: defineProvider({ env: z.object({ DATABASE_URL: z.string() }), create: () => 1 }),
+        db: defineProvider({
+          selector: "db",
+          env: z.object({ DATABASE_URL: z.string() }),
+          create: () => 1,
+        }),
       },
       { env: {} },
     )
@@ -106,9 +117,19 @@ describe("createProviderContainer", () => {
   it("disposes scoped values per request and singletons on dispose, newest first", async () => {
     const disposed: string[] = []
     const container = createProviderContainer({
-      a: defineProvider({ create: () => "a", dispose: (v) => void disposed.push(v) }),
-      b: defineProvider({ uses: ["a"], create: () => "b", dispose: (v) => void disposed.push(v) }),
+      a: defineProvider({
+        selector: "a",
+        create: () => "a",
+        dispose: (v) => void disposed.push(v),
+      }),
+      b: defineProvider({
+        selector: "b",
+        uses: ["a"],
+        create: () => "b",
+        dispose: (v) => void disposed.push(v),
+      }),
       s: defineProvider({
+        selector: "s",
         lifetime: "scoped",
         create: () => "s",
         dispose: (v) => void disposed.push(v),
@@ -134,7 +155,7 @@ describe("createProviderContainer", () => {
   it("lets overrides replace providers without creating them", async () => {
     const create = vi.fn(() => "real")
     const container = createProviderContainer(
-      { db: defineProvider({ create }) },
+      { db: defineProvider({ selector: "db", create }) },
       { overrides: { db: "fake" } },
     )
     const scope = await container.open(request)
@@ -144,27 +165,81 @@ describe("createProviderContainer", () => {
 
   it("rejects a transient provider that creates asynchronously", async () => {
     const container = createProviderContainer({
-      t: defineProvider({ lifetime: "transient", create: async () => 1 }),
+      t: defineProvider({ selector: "t", lifetime: "transient", create: async () => 1 }),
     })
     const scope = await container.open(request)
     expect(() => scope.values.t).toThrow(/must create its value synchronously/)
   })
 })
 
-describe("findProviderFiles", () => {
+describe("scanProviderFiles", () => {
   let dir: string
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-  it("lists top-level provider files only, camelCasing their names", async () => {
+  const provider = (selector: string) =>
+    `import { defineProvider } from "@darrylondil/lorien-runtime"\nexport default defineProvider({ selector: "${selector}", create: () => 1 })\n`
+
+  it("finds providers in any folder by their selector, skipping helpers and tests", async () => {
     dir = mkdtempSync(join(tmpdir(), "lorien-providers-"))
     mkdirSync(join(dir, "providers", "db"), { recursive: true })
-    for (const f of ["db.ts", "http-client.ts", "db.test.ts", "types.d.ts", "db/open.ts"]) {
-      writeFileSync(join(dir, "providers", f), "export {}\n")
+    mkdirSync(join(dir, "providers", "aws"), { recursive: true })
+    const files: Record<string, string> = {
+      "db.ts": provider("db"),
+      "db/open.ts": "export function open() {}\n",
+      "aws/s3.ts": provider("s3-bucket"),
+      "db.test.ts": provider("db"),
+      "types.d.ts": "export {}\n",
     }
-    expect(await findProviderFiles(dir)).toEqual([
-      { name: "db", path: "providers/db.ts" },
-      { name: "httpClient", path: "providers/http-client.ts" },
+    for (const [f, text] of Object.entries(files)) writeFileSync(join(dir, "providers", f), text)
+    expect(await scanProviderFiles(dir)).toEqual({
+      files: [
+        { name: "s3-bucket", path: "providers/aws/s3.ts" },
+        { name: "db", path: "providers/db.ts" },
+      ],
+      errors: [],
+    })
+  })
+
+  it("reports a missing, invalid or duplicate selector", async () => {
+    dir = mkdtempSync(join(tmpdir(), "lorien-providers-"))
+    mkdirSync(join(dir, "providers"), { recursive: true })
+    writeFileSync(join(dir, "providers", "a.ts"), provider("db"))
+    writeFileSync(join(dir, "providers", "b.ts"), provider("db"))
+    writeFileSync(join(dir, "providers", "c.ts"), provider("my db"))
+    writeFileSync(
+      join(dir, "providers", "d.ts"),
+      "import { defineProvider } from 'x'\nexport default defineProvider({ create: () => 1 })\n",
+    )
+    const { files, errors } = await scanProviderFiles(dir)
+    expect(files).toEqual([{ name: "db", path: "providers/a.ts" }])
+    expect(errors.map((e) => `${e.path}: ${e.message}`)).toEqual([
+      'providers/b.ts: selector "db" is already used by providers/a.ts',
+      expect.stringContaining('providers/c.ts: selector "my db" must start with a letter'),
+      expect.stringContaining("providers/d.ts: defineProvider needs a selector"),
     ])
-    expect(providerName("rate_limiter")).toBe("rateLimiter")
+  })
+})
+
+describe("selectorProblem", () => {
+  it("allows camelCase, PascalCase, snake_case and dashes", () => {
+    for (const s of ["db", "PetStore", "rate_limiter", "http-client", "s3"]) {
+      expect(selectorProblem(s)).toBeNull()
+    }
+  })
+
+  it("refuses empty, badly formed and reserved selectors", () => {
+    for (const s of [
+      "",
+      "1db",
+      "_db",
+      "my db",
+      "db.users",
+      "a".repeat(65),
+      "constructor",
+      "then",
+    ]) {
+      expect(selectorProblem(s)).not.toBeNull()
+    }
+    expect(() => defineProvider({ selector: "", create: () => 1 })).toThrow(/selector is required/)
   })
 })
