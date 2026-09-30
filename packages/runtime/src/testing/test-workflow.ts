@@ -6,7 +6,8 @@ import type { WorkflowFile } from "../workflow/types.js"
 import { validateWorkflow } from "../workflow/validate.js"
 
 export interface RequestInput {
-  body: unknown
+  /** The parsed body; `null` when omitted, like a request without one. */
+  body?: unknown
   params?: Record<string, string>
   query?: Record<string, string>
   headers?: Record<string, string>
@@ -41,7 +42,7 @@ export async function testWorkflow(
     plan,
     triggerNodeId,
     triggerOutputs: {
-      body: opts.request.body,
+      body: opts.request.body ?? null,
       params: opts.request.params ?? {},
       query: opts.request.query ?? {},
       headers: opts.request.headers ?? {},

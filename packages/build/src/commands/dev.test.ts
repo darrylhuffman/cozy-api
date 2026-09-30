@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { delimiter, join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { runDev, runDevWithIde } from "./dev.js"
 
@@ -126,5 +126,14 @@ describe("runDevWithIde", () => {
     expect(spawnImpl).toHaveBeenCalledOnce()
     expect(result.exitCode).toBe(0)
     errSpy.mockRestore()
+  })
+})
+
+describe("withProjectBin", () => {
+  it("puts the project's .bin first, under the path variable's existing name", async () => {
+    const { withProjectBin } = await import("./dev.js")
+    const env = withProjectBin("/p", { Path: `/usr/bin` })
+    expect(Object.keys(env)).toEqual(["Path"])
+    expect(env.Path).toBe(`${join("/p", "node_modules", ".bin")}${delimiter}/usr/bin`)
   })
 })

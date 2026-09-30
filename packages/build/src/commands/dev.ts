@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process"
 import { stat } from "node:fs/promises"
-import { join, resolve } from "node:path"
+import { delimiter, join, resolve } from "node:path"
 import type { Command } from "commander"
 import { generateServicesTypes } from "../generate-services-types.js"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
@@ -100,7 +100,7 @@ export async function runDevServer(opts: RunDevOptions): Promise<RunDevResult> {
   return new Promise<RunDevResult>((resolveResult) => {
     const child = spawnFn("tsx", args, {
       cwd: opts.root,
-      env: { ...process.env, PORT: String(port) },
+      env: { ...withProjectBin(opts.root, process.env), PORT: String(port) },
       stdio: "inherit",
       shell: process.platform === "win32",
     })
@@ -142,6 +142,17 @@ export async function runDevWithIde(opts: {
   console.log("Both services started. Ctrl-C to stop.")
   // Then start the dev server — tsx logs alongside the IDE startup line.
   return runDevServer(devOpts)
+}
+
+/**
+ * `env` with the project's node_modules/.bin first on the path, so its own
+ * tsx is found even when lorien runs outside a package script. Keeps the
+ * variable's existing name (`Path` on Windows).
+ */
+export function withProjectBin(root: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const key = Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH"
+  const bin = join(root, "node_modules", ".bin")
+  return { ...env, [key]: env[key] ? `${bin}${delimiter}${env[key]}` : bin }
 }
 
 /**
