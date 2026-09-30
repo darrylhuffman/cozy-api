@@ -466,7 +466,18 @@ export type GitStatus =
       conflictsElsewhere: number
       /** Set while a merge waits to be committed. */
       merging: { branch: string | null; message: string } | null
+      /** The commit the branch points at, or null before the first commit. */
+      head: { hash: string; subject: string } | null
     }
+
+/** A `git stash` entry; stashes belong to the whole repository. */
+export interface GitStash {
+  /** 0 for the newest. */
+  index: number
+  message: string
+  /** Unix seconds. */
+  time: number
+}
 
 export type ConflictSide = "modified" | "added" | "deleted"
 
@@ -565,8 +576,8 @@ export function pullBranch(): Promise<GitStatus> {
   return postGit("/api/git/pull", {}, "Pulling")
 }
 
-export function pushBranch(): Promise<GitStatus> {
-  return postGit("/api/git/push", {}, "Pushing")
+export function pushBranch(opts: { force?: boolean } = {}): Promise<GitStatus> {
+  return postGit("/api/git/push", opts, "Pushing")
 }
 
 export function mergeBranch(branch: string): Promise<GitStatus> {
@@ -585,10 +596,41 @@ export function resolveConflict(
   return postGit("/api/git/resolve", { path, ...how }, `Resolving ${path}`)
 }
 
-export async function commitStaged(message: string): Promise<GitCommit> {
+/** Throws away unstaged changes; new files are deleted. */
+export function discardChanges(paths: string[]): Promise<GitStatus> {
+  return postGit("/api/git/discard", { paths }, "Discarding changes")
+}
+
+/** Replaces a file's staged content (for staging or unstaging one change). */
+export function setStagedContent(path: string, content: string): Promise<GitStatus> {
+  return postGit("/api/git/set-index", { path, content }, `Staging ${path}`)
+}
+
+export function undoLastCommit(): Promise<GitStatus> {
+  return postGit("/api/git/undo-commit", {}, "Undoing the last commit")
+}
+
+export async function fetchStashes(): Promise<GitStash[]> {
+  const { stashes } = await getJson<{ stashes: GitStash[] }>("/api/git/stashes", "Reading stashes")
+  return stashes
+}
+
+export function stashChanges(opts: { message?: string; untracked?: boolean }): Promise<GitStatus> {
+  return postGit("/api/git/stash", opts, "Stashing")
+}
+
+export function stashAction(index: number, action: "apply" | "pop" | "drop"): Promise<GitStatus> {
+  const verb = action === "drop" ? "Dropping" : action === "pop" ? "Popping" : "Applying"
+  return postGit("/api/git/stash-action", { index, action }, `${verb} the stash`)
+}
+
+export async function commitStaged(
+  message: string,
+  opts: { amend?: boolean; all?: boolean } = {},
+): Promise<GitCommit> {
   const { commit } = await postGit<{ commit: GitCommit }>(
     "/api/git/commit",
-    { message },
+    { message, ...opts },
     "Committing",
   )
   return commit

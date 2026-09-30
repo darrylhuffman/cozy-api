@@ -6,6 +6,7 @@ import {
   Cloud,
   GitBranch,
   GitMerge,
+  MoreHorizontal,
   Plus,
   RefreshCw,
 } from "lucide-react"
@@ -14,6 +15,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import type { GitBranch as Branch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useGitStore } from "@/store/git"
+import { forcePush, undoLastCommit } from "./actions"
+import { ButtonMenu } from "./menus"
 import { ago } from "./source-control-panel"
 
 /**
@@ -24,8 +27,12 @@ export function BranchBar() {
   const status = useGitStore((s) => s.status)
   const busy = useGitStore((s) => s.busy)
   const syncing = useGitStore((s) => s.syncing)
+  const stashes = useGitStore((s) => s.stashes)
   if (!status?.repo) return null
   const merging = status.merging !== null
+  const blocked = busy || merging
+  const dirty = status.staged.length > 0 || status.changes.length > 0
+  const git = useGitStore.getState
 
   const iconButton = (
     label: string,
@@ -84,6 +91,64 @@ export function BranchBar() {
           () => void useGitStore.getState().push(),
         )
       )}
+      <ButtonMenu
+        label="More Source Control actions"
+        items={[
+          {
+            label: "Sync (pull, then push)",
+            run: () => void git().sync(),
+            disabled: blocked || !status.upstream,
+          },
+          { label: "Pull", run: () => void git().pull(), disabled: blocked || !status.upstream },
+          {
+            label: status.upstream ? "Push" : "Publish branch",
+            run: () => void git().push(),
+            disabled: blocked || !status.branch,
+          },
+          {
+            label: "Force push…",
+            run: () => void forcePush(),
+            disabled: blocked || !status.upstream,
+            destructive: true,
+          },
+          { label: "Fetch", run: () => void git().fetch(), disabled: busy },
+          null,
+          {
+            label: "Undo last commit",
+            run: () => void undoLastCommit(),
+            disabled: blocked || !status.head,
+          },
+          null,
+          { label: "Stash changes", run: () => void git().stash(), disabled: blocked || !dirty },
+          {
+            label: "Stash changes (tracked files only)",
+            run: () => void git().stash({ untracked: false }),
+            disabled:
+              blocked ||
+              (status.staged.length === 0 && !status.changes.some((c) => c.status !== "U")),
+          },
+          {
+            label: "Pop latest stash",
+            run: () => void git().stashAction(0, "pop"),
+            disabled: blocked || stashes.length === 0,
+          },
+          {
+            label: "Apply latest stash",
+            run: () => void git().stashAction(0, "apply"),
+            disabled: blocked || stashes.length === 0,
+          },
+        ]}
+        trigger={
+          <button
+            type="button"
+            aria-label="More actions"
+            title="More actions"
+            className="flex h-6 items-center rounded px-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <MoreHorizontal className="size-3.5" />
+          </button>
+        }
+      />
     </div>
   )
 }
