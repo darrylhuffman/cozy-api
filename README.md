@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="docs/images/logo.svg" alt="A gold ring around a green leaf" width="120" height="120" />
+<img src="docs/images/logo.svg" alt="lorien" width="72" height="72" />
 
 # lorien
 
-_API workflows, woven in Lórien._
+<img src="docs/images/ring.svg" alt="" width="16" height="16" align="absmiddle" /> <i>API workflows, woven in Lórien.</i>
 
 **Typed, visual HTTP APIs that you and your AI agents can both see into.**
 
