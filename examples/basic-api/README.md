@@ -21,6 +21,25 @@ creating and seeding it with a few pets the first time. Delete the file to start
 over, or set `PETSTORE_DB` to another path. Tests use `PETSTORE_DB=:memory:`, so
 each run gets a fresh, seeded database. Needs Node 22.13 or newer.
 
+## Tests
+
+Every node and every workflow ships with tests:
+
+- **Node cases** (`nodes/**/*.cases.json`): one node, given inputs, with services
+  mocked where it helps. The IDE's **Tests** tab edits and runs them.
+- **Workflow tests** (`workflows/**/*.requests.json`): saved requests that call each
+  workflow over HTTP, chain values between calls with `capture`, and check the
+  response. They cover the happy path, 404s, 409s and invalid input. The IDE runs
+  them from the **Run** tab, and `lorien test` runs them in CI. They create the pets
+  they change, so they pass again and again against the IDE's persistent database.
+- **Workflow code tests** (`workflows/**/*.test.ts`): Vitest runs each workflow
+  in-process with `traceWorkflow` against a fresh in-memory pet store. They check
+  what each node received and returned (for example, that `?status=` reaches List
+  Pets' `status` input), which a saved request can't see. `src/workflow-test-kit.ts`
+  loads the workflow, the nodes and the services.
+
+`pnpm test` runs all of them.
+
 ## Scripts
 
 - `pnpm dev` — start the dev server (tsx src/server.ts)
