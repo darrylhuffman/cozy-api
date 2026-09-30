@@ -1,7 +1,9 @@
 import type { Monaco } from "@monaco-editor/react"
 import { fetchWorkspaceTypes } from "@/lib/api"
+import { subscribeToFileEvents } from "@/lib/events"
 
 let loading: Promise<void> | null = null
+let watching = false
 
 /**
  * Makes Monaco's TypeScript service check node files the way the project's
@@ -32,16 +34,42 @@ export function setupWorkspaceTypes(monaco: Monaco): Promise<void> {
   // Keep every open model in the program so cross-file edits are seen at once.
   ts.typescriptDefaults.setEagerModelSync(true)
 
-  loading = fetchWorkspaceTypes()
-    .then((files) => {
-      ts.typescriptDefaults.setExtraLibs(
-        files.map((f) => ({ content: f.content, filePath: `file:///${f.path}` })),
-      )
-    })
-    .catch(() => {
-      // Offline or an older server without the endpoint: keep the editor
-      // usable and let the next editor mount try again.
-      loading = null
-    })
+  loading = loadExtraLibs(monaco).catch(() => {
+    // Offline or an older server without the endpoint: keep the editor
+    // usable and let the next editor mount try again.
+    loading = null
+  })
+  watchProviderFiles(monaco)
   return loading
+}
+
+async function loadExtraLibs(monaco: Monaco): Promise<void> {
+  const files = await fetchWorkspaceTypes()
+  monaco.typescript.typescriptDefaults.setExtraLibs(
+    files.map((f) => ({ content: f.content, filePath: `file:///${f.path}` })),
+  )
+}
+
+/** Wait for the server to regenerate `.lorien/types/providers.d.ts` first. */
+export const TYPES_REFRESH_DEBOUNCE_MS = 500
+
+/**
+ * Adding, removing or editing a provider (or a `lib/` file) changes the types
+ * nodes see, so re-read the workspace types; a new `providers/cache.ts` then
+ * types `cache` in every node without reloading the page.
+ */
+function watchProviderFiles(monaco: Monaco): void {
+  if (watching) return
+  watching = true
+  let timer: ReturnType<typeof setTimeout> | null = null
+  subscribeToFileEvents((e) => {
+    if (!e.path.startsWith("providers/") && !e.path.startsWith("lib/")) return
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      timer = null
+      void loadExtraLibs(monaco).catch(() => {
+        // Keep the last good types.
+      })
+    }, TYPES_REFRESH_DEBOUNCE_MS)
+  })
 }

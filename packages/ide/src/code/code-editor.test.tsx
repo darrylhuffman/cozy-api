@@ -39,12 +39,21 @@ vi.mock("@/lib/events", () => ({
   subscribeToFileEvents: vi.fn(() => () => {}),
 }))
 
+/**
+ * Delivers a file event to the editor. It subscribes first, on mount; the
+ * providers store behind the context bar subscribes once the file has loaded.
+ */
+function emitFileEvent(event: Parameters<Parameters<typeof subscribeToFileEvents>[0]>[0]) {
+  vi.mocked(subscribeToFileEvents).mock.calls[0]![0](event)
+}
+
 function resetStore() {
   useTabsStore.setState({ tabs: [], activeWorkflowId: null, activeCodeId: null })
   useCodeDrafts.setState({ drafts: {} })
 }
 
 beforeEach(() => {
+  vi.mocked(subscribeToFileEvents).mockClear()
   capturedOnMount = null
   resetStore()
   useTabsStore.getState().openTab({ id: "test-tab", title: "foo.ts", kind: "node" })
@@ -208,8 +217,7 @@ describe("CodeEditor", () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(
       new Response(JSON.stringify({ path: "nodes/foo.ts", content: "theirs" }), { status: 200 }),
     )
-    const listener = vi.mocked(subscribeToFileEvents).mock.calls.at(-1)![0]
-    act(() => listener({ type: "change", path: "nodes/foo.ts" }))
+    act(() => emitFileEvent({ type: "change", path: "nodes/foo.ts" }))
     await waitFor(() => expect(screen.getByText(/changed on disk/i)).toBeInTheDocument())
     expect(screen.getByTestId("monaco-stub")).toHaveTextContent("mine")
     fireEvent.click(screen.getByRole("button", { name: "Reload from disk" }))
@@ -224,8 +232,7 @@ describe("CodeEditor", () => {
         status: 200,
       }),
     )
-    const listener = vi.mocked(subscribeToFileEvents).mock.calls.at(-1)![0]
-    act(() => listener({ type: "change", path: "nodes/foo.ts" }))
+    act(() => emitFileEvent({ type: "change", path: "nodes/foo.ts" }))
     await waitFor(() =>
       expect(screen.getByTestId("monaco-stub")).toHaveTextContent("updated by agent"),
     )

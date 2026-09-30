@@ -401,3 +401,63 @@ describe("ide command — workflow hot-reload", () => {
     expect(await r2.text()).toBe('"v2"')
   }, 8000)
 })
+
+describe("providers in the workspace API", () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "lorien-ide-providers-"))
+    mkdirSync(join(dir, "providers", "db"), { recursive: true })
+    mkdirSync(join(dir, "lib"), { recursive: true })
+    mkdirSync(join(dir, "nodes"), { recursive: true })
+    writeFileSync(
+      join(dir, "providers", "db.ts"),
+      `export default defineProvider({ create: () => ({}) })\n`,
+    )
+    writeFileSync(join(dir, "providers", "db", "open.ts"), "export {}\n")
+    writeFileSync(join(dir, "lib", "schemas.ts"), "export {}\n")
+    writeFileSync(
+      join(dir, "nodes", "list.ts"),
+      `export default defineNode({ run: async (i, { db }) => ({}) })\n`,
+    )
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it("lists providers (top level only) and lib in the tree", async () => {
+    const { createIdeApp } = await import("./ide.js")
+    const res = await createIdeApp(dir).request("/api/workspace/tree")
+    const tree = (await res.json()) as Record<string, { children: unknown[] }>
+    const flat = (n: unknown): string[] => {
+      const node = n as { type: string; kind?: string; path?: string; children?: unknown[] }
+      return node.type === "file"
+        ? [`${node.kind}:${node.path}`]
+        : (node.children ?? []).flatMap(flat)
+    }
+    expect(flat(tree.providers).sort()).toEqual([
+      "code:providers/db/open.ts",
+      "provider:providers/db.ts",
+    ])
+    expect(flat(tree.lib)).toEqual(["code:lib/schemas.ts"])
+  })
+
+  it("GET /api/workspace/providers reports who reads each provider", async () => {
+    const { createIdeApp } = await import("./ide.js")
+    const res = await createIdeApp(dir).request("/api/workspace/providers")
+    const json = (await res.json()) as { providers: { name: string; usedBy: string[] }[] }
+    expect(json.providers).toMatchObject([{ name: "db", usedBy: ["nodes/list.ts"] }])
+  })
+
+  it("creates the first file of a folder that does not exist yet", async () => {
+    rmSync(join(dir, "providers"), { recursive: true })
+    const { createIdeApp } = await import("./ide.js")
+    const res = await createIdeApp(dir).request(
+      `/api/workspace/file?path=${encodeURIComponent("providers/cache.ts")}&create=true`,
+      { method: "PUT", body: "export {}\n" },
+    )
+    expect(res.status).toBe(200)
+    expect(readFileSync(join(dir, "providers", "cache.ts"), "utf-8")).toBe("export {}\n")
+  })
+})

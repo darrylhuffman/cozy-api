@@ -1,12 +1,12 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { useShallow } from "zustand/react/shallow"
-import type { FileKind } from "@/data/mock-files"
 
 export interface OpenTab {
   id: string // file id from the tree
   title: string // display label
-  kind: FileKind
+  /** "node" is every code tab (nodes, providers, lib). */
+  kind: "workflow" | "node"
   path?: string // relative path from workspace root (e.g., "workflows/users/create.workflow")
   dirty?: boolean // true when the tab has unsaved changes
 }

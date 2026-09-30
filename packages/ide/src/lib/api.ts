@@ -9,6 +9,9 @@ export interface WorkspaceInfo {
 export interface WorkspaceTree {
   workflows: FileFolder
   nodes: FileFolder
+  /** Missing from servers older than the providers explorer. */
+  providers?: FileFolder
+  lib?: FileFolder
 }
 
 export interface WorkspaceFile {
@@ -199,6 +202,36 @@ export async function fetchWorkspaceSchemas(): Promise<Record<string, NodeSchema
     "Loading node schemas",
   )
   return schemas
+}
+
+export type ProviderLifetime = "singleton" | "scoped" | "transient"
+
+export interface ProviderInfo {
+  /** The name nodes read it by, e.g. "db". */
+  name: string
+  /** e.g. "providers/db.ts". */
+  path: string
+  /** `name` from defineProvider, for display. */
+  label?: string
+  color?: string
+  lifetime: ProviderLifetime
+  uses: string[]
+  /** Env vars its schema declares; "missing" means the IDE's process doesn't have it. */
+  env: { key: string; status: "set" | "default" | "optional" | "missing" }[]
+  hasDispose: boolean
+  packages: string[]
+  /** Node files that read it, e.g. "nodes/pets/add-pet.ts". */
+  usedBy: string[]
+}
+
+export interface WorkspaceProviders {
+  providers: ProviderInfo[]
+  /** Node `uses` key ("./nodes/pets/add-pet") → the providers its `run` reads. */
+  nodes: Record<string, string[]>
+}
+
+export async function fetchWorkspaceProviders(): Promise<WorkspaceProviders> {
+  return getJson<WorkspaceProviders>("/api/workspace/providers", "Loading providers")
 }
 
 export interface WorkspaceTypeFile {

@@ -32,6 +32,7 @@ import { confirmAction } from "@/store/confirm"
 import { type NodeStatus, useDebugSessionStore } from "@/store/debug-session"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
+import { useWorkspaceProviders } from "@/store/providers"
 import { useSchemas, useSchemasStore } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
 import { CANVAS_GRID, useSettings } from "@/store/settings"
@@ -134,6 +135,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [saveError, setSaveError] = useState<string | null>(null)
   const schemas = useSchemas()
+  useWorkspaceProviders()
   const schemasError = useSchemasStore((s) => s.error)
   const schemasLoaded = useSchemasStore((s) => s.loaded)
   const [paletteOpen, setPaletteOpen] = useState(false)

@@ -1,11 +1,12 @@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import type { TreeKind } from "./files-panel"
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   x: number
   y: number
-  tree: "workflows" | "nodes"
+  tree: TreeKind
   onNewFolder: () => void
   onNewItem: () => void
 }
@@ -15,7 +16,7 @@ interface Props {
  * trigger pattern used by canvas-context-menu and node-context-menu.
  */
 export function TreeContextMenu({ open, onOpenChange, x, y, tree, onNewFolder, onNewItem }: Props) {
-  const itemLabel = tree === "workflows" ? "New workflow…" : "New node…"
+  const itemLabel = ITEM_LABEL[tree]
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -43,6 +44,13 @@ export function TreeContextMenu({ open, onOpenChange, x, y, tree, onNewFolder, o
       </PopoverContent>
     </Popover>
   )
+}
+
+const ITEM_LABEL: Record<TreeKind, string> = {
+  workflows: "New workflow…",
+  nodes: "New node…",
+  providers: "New provider…",
+  lib: "New file…",
 }
 
 function MenuItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {

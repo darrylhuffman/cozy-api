@@ -10,7 +10,9 @@ vi.mock("@xyflow/react", () => ({
 }))
 
 import type { NodeInstance } from "@/lib/api"
+import { resetProvidersStore, useProvidersStore } from "@/store/providers"
 import { useSelectionStore } from "@/store/selection"
+import { useTabsStore } from "@/store/tabs"
 import type { NodePorts, PortNode } from "./derive-ports.js"
 import { WorkflowNode } from "./workflow-node.js"
 
@@ -849,5 +851,40 @@ describe("WorkflowNode", () => {
       render(<WorkflowNode data={makeData("a", { uses: "./nodes/a" }, base(), { tests: null })} />)
       expect(screen.queryByTestId("node-tests-badge")).toBeNull()
     })
+  })
+})
+
+describe("WorkflowNode — providers", () => {
+  afterEach(() => resetProvidersStore())
+
+  it("shows a chip for each provider the node reads, which opens its file", () => {
+    useProvidersStore.setState({
+      providers: [
+        {
+          name: "db",
+          path: "providers/db.ts",
+          lifetime: "singleton",
+          uses: [],
+          env: [],
+          hasDispose: false,
+          packages: [],
+          usedBy: ["nodes/pets/add-pet.ts"],
+        },
+      ],
+      nodes: { "./nodes/pets/add-pet": ["db"] },
+      loaded: true,
+    })
+    render(
+      <WorkflowNode
+        data={makeData(
+          "add-pet",
+          { uses: "./nodes/pets/add-pet" },
+          { inputs: emptyInputRoot, outputs: [] },
+        )}
+      />,
+    )
+    const footer = screen.getByTestId("node-footer")
+    fireEvent.click(within(footer).getByRole("button", { name: "db" }))
+    expect(useTabsStore.getState().activeCodeId).toBe("providers/db.ts")
   })
 })
