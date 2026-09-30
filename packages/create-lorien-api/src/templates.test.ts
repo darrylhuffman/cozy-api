@@ -6,6 +6,7 @@ import {
   renderGitignore,
   renderHelloWorkflow,
   renderLorienConfig,
+  lorienRange,
   renderPackageJson,
   renderReadme,
   renderSayHelloNode,
@@ -26,14 +27,22 @@ describe("template renderers", () => {
     expect(pkg.scripts["dev:server"]).toBe("lorien dev --no-ide")
     expect(pkg.scripts.build).toBe("lorien build")
     expect(pkg.scripts.start).toBe("node dist/index.js")
-    expect(pkg.devDependencies["@darrylondil/lorien-build"]).toBe("latest")
-    expect(pkg.devDependencies["@darrylondil/lorien-runtime"]).toBe("latest")
+    // The release line this scaffolder belongs to, never "latest".
+    expect(pkg.devDependencies["@darrylondil/lorien-build"]).toMatch(/^\^\d+\.\d+\.0$/)
+    expect(pkg.devDependencies["@darrylondil/lorien-runtime"]).toBe(
+      pkg.devDependencies["@darrylondil/lorien-build"],
+    )
     expect(pkg.dependencies.hono).toMatch(/^\^/)
   })
 
   it("package.json keeps vitest on 4.0, which npm 10 can install", () => {
     const pkg = JSON.parse(renderPackageJson(ctx))
     expect(pkg.devDependencies.vitest).toMatch(/^~4\.0\./)
+  })
+
+  it("lorienRange asks for the scaffolder's release line", () => {
+    expect(lorienRange("0.2.1")).toBe("^0.2.0")
+    expect(lorienRange("1.4.0")).toBe("^1.4.0")
   })
 
   it("tsconfig.json parses as JSON with strict + NodeNext", () => {

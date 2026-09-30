@@ -1,6 +1,23 @@
+import { createRequire } from "node:module"
+
 export interface TemplateContext {
   name: string
 }
+
+/**
+ * The lorien packages are released together, so a new project asks for the
+ * release line this scaffolder came from (`^0.2.0`), not `latest`, which an
+ * install without a lockfile would move to the next breaking release.
+ */
+export function lorienRange(version: string): string {
+  const [major = "0", minor = "0"] = version.split(".")
+  return `^${major}.${minor}.0`
+}
+
+// src/templates.ts and dist/templates.js both sit one level below package.json.
+const LORIEN_RANGE = lorienRange(
+  (createRequire(import.meta.url)("../package.json") as { version: string }).version,
+)
 
 /**
  * Canonical authoring guide for AI agents working in a lorien project.
@@ -322,8 +339,8 @@ export function renderPackageJson(ctx: TemplateContext): string {
       zod: "^4.4.3",
     },
     devDependencies: {
-      "@darrylondil/lorien-build": "latest",
-      "@darrylondil/lorien-runtime": "latest",
+      "@darrylondil/lorien-build": LORIEN_RANGE,
+      "@darrylondil/lorien-runtime": LORIEN_RANGE,
       "@types/node": "^25.9.1",
       tsx: "^4.20.0",
       typescript: "^6.0.3",
