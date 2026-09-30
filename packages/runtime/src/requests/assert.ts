@@ -101,21 +101,41 @@ function subjectOf(
   }
 }
 
+/** Options for {@link evaluateAssertion}. */
+export interface EvaluateOptions {
+  /**
+   * The server is known not to record traces (a built server), so node checks
+   * are skipped instead of failed.
+   */
+  skipNodeChecks?: boolean
+}
+
 /**
- * Checks one assertion. `node` checks read `trace`; without one (the server
- * didn't record it) they fail and say why.
+ * Checks one assertion. `node` checks read `trace`; without one they fail and
+ * say why, or are skipped when the server can't record traces.
  */
 export function evaluateAssertion(
   a: Assertion,
   res: ResponseSnapshot,
   trace?: RunTrace,
+  opts: EvaluateOptions = {},
 ): AssertionResult {
   if (a.target === "node" && !trace) {
+    if (opts.skipNodeChecks) {
+      const skipped = "this server doesn't record traces"
+      return {
+        assertion: a,
+        pass: true,
+        actual: undefined,
+        skipped,
+        message: `${describeAssertion(a)}: skipped, ${skipped}`,
+      }
+    }
     return {
       assertion: a,
       pass: false,
       actual: undefined,
-      message: `${describeAssertion(a)}: node checks need the lorien IDE or \`lorien test\`; this server did not record a trace`,
+      message: `${describeAssertion(a)}: the server sent no trace with its ${res.status} response. Node checks need the dev server (the IDE, \`lorien dev\` or \`lorien test\`) and a route that handled the request`,
     }
   }
   const { found, value } = subjectOf(a, res, trace)
@@ -183,6 +203,7 @@ export function evaluateAssertions(
   list: Assertion[] | undefined,
   res: ResponseSnapshot,
   trace?: RunTrace,
+  opts: EvaluateOptions = {},
 ): AssertionResult[] {
-  return (list ?? []).map((a) => evaluateAssertion(a, res, trace))
+  return (list ?? []).map((a) => evaluateAssertion(a, res, trace, opts))
 }

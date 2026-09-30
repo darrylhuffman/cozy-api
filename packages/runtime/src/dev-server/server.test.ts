@@ -47,6 +47,45 @@ describe("mountWorkflows", () => {
     expect(body).toBe(7)
   })
 
+  it("answers 400 to a body that isn't valid JSON, and treats an empty one as no body", async () => {
+    const echo = defineNode({
+      inputs: z.object({ title: z.string().optional() }),
+      outputs: z.object({ title: z.string().optional() }),
+      async run(input) {
+        return input
+      },
+    })
+    const wf: LoadedWorkflow = {
+      absolutePath: "/fake/workflows/echo.workflow",
+      relativePath: "echo.workflow",
+      file: parseWorkflow({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/echo", method: "POST" } },
+          echo: { uses: "./echo", in: { title: "req.body.title" } },
+          res: { uses: "@core/response", in: { body: "echo" }, values: { status: 200 } },
+        },
+      }),
+    }
+    const app = new Hono()
+    mountWorkflows(app, [wf], { nodes: { "./echo": echo }, services: {} })
+    const post = (body: string) =>
+      app.request("/echo", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      })
+
+    const bad = await post("{bad json")
+    expect(bad.status).toBe(400)
+    expect(await bad.json()).toEqual({
+      error: "Invalid request",
+      issues: [{ path: "body", message: "Body is not valid JSON" }],
+    })
+    const empty = await post("")
+    expect(empty.status).toBe(200)
+  })
+
   it("registers multiple triggers in a single workflow as independent routes", async () => {
     const wf: LoadedWorkflow = {
       absolutePath: "/fake/users.workflow",

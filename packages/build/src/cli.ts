@@ -10,6 +10,7 @@ import { registerImportOpenapi } from "./commands/import-openapi.js"
 import { registerInit } from "./commands/init.js"
 import { registerTest } from "./commands/test.js"
 import { registerTypes } from "./commands/types.js"
+import { loadProjectEnv } from "./env.js"
 
 /** This package's version; dist/cli.js and src/cli.ts both sit one level below package.json. */
 const VERSION = (createRequire(import.meta.url)("../package.json") as { version: string }).version
@@ -20,6 +21,11 @@ function createProgram(): Command {
     .name("lorien")
     .description("Build, dev, and OpenAPI tools for lorien projects")
     .version(VERSION)
+    // Provider env comes from the project's .env for every command, not just dev.
+    .hook("preAction", (_program, action) => {
+      const { root } = action.opts<{ root?: string }>()
+      loadProjectEnv(root ?? process.cwd())
+    })
 
   registerBuild(program)
   registerCheck(program)

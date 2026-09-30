@@ -63,6 +63,8 @@ export interface MountOptions {
 const SCOPE_KEY = "lorien.scope"
 /** The request id middleware's scope was opened with, so the run uses the same one. */
 const RUN_ID_KEY = "lorien.runId"
+/** Set once the workflow handler starts, so the leading middleware knows whether it ran. */
+const HANDLED_KEY = "lorien.handled"
 type Scope = Awaited<ReturnType<ProviderContainer["open"]>>
 
 /** How many traces to keep; a test fetches its trace straight after the response. */
@@ -142,6 +144,7 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
       const plan = computeExecutionPlan(projectedFile, sliceDeps)
 
       const handler = async (c: Context): Promise<Response> => {
+        c.set(HANDLED_KEY as never, true as never)
         const runId =
           (c.get(RUN_ID_KEY as never) as string | undefined) ??
           opts.debug?.newRunId() ??
@@ -151,10 +154,19 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
         let body: unknown = null
         const contentType = c.req.header("content-type") ?? ""
         if (contentType.includes("application/json")) {
-          try {
-            body = await c.req.json()
-          } catch {
-            body = null
+          const text = await c.req.text()
+          if (text.trim() !== "") {
+            try {
+              body = JSON.parse(text)
+            } catch {
+              return c.json(
+                {
+                  error: "Invalid request",
+                  issues: [{ path: "body", message: "Body is not valid JSON" }],
+                },
+                400,
+              )
+            }
           }
         } else if (c.req.raw.body) {
           body = await c.req.text()
@@ -287,6 +299,16 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
           await next()
         } finally {
           void scope?.dispose()
+        }
+        // Middleware answered before the workflow ran: no node ran, and a test
+        // checking that ("CreateBook did not run") still gets a trace to read.
+        if (
+          opts.testHooks &&
+          c.req.header(TEST_HEADER) !== undefined &&
+          !c.get(HANDLED_KEY as never)
+        ) {
+          keepTrace(runId, { nodes: {} })
+          c.res.headers.set(TRACE_HEADER, runId)
         }
       }
       const run = chain.map(

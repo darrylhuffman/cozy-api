@@ -159,13 +159,18 @@ interface TriggerInfo {
 
 function renderReadJsonBodyHelper(): string {
   return [
+    `/** Stands in for a JSON body that doesn't parse, so the route can answer 400. */`,
+    `const INVALID_JSON = Symbol("invalid JSON")`,
+    ``,
     `async function readJsonBody(c: Context): Promise<unknown> {`,
     `  const contentType = c.req.header("content-type") ?? ""`,
     `  if (contentType.includes("application/json")) {`,
+    `    const text = await c.req.text()`,
+    `    if (text.trim() === "") return null`,
     `    try {`,
-    `      return await c.req.json()`,
+    `      return JSON.parse(text)`,
     `    } catch {`,
-    `      return null`,
+    `      return INVALID_JSON`,
     `    }`,
     `  }`,
     `  if (c.req.raw.body) {`,
@@ -324,8 +329,14 @@ function renderRoute(trigger: TriggerInfo, perRequest: boolean, guarded: boolean
       ? `    const requestId = c.get("lorien.requestId" as never) as string`
       : `    const requestId = crypto.randomUUID()`,
   )
+  lines.push(`    const body = await readJsonBody(c)`)
+  lines.push(`    if (body === INVALID_JSON) {`)
+  lines.push(
+    `      return c.json({ error: "Invalid request", issues: [{ path: "body", message: "Body is not valid JSON" }] }, 400)`,
+  )
+  lines.push(`    }`)
   lines.push(`    const trigger: HttpTrigger = {`)
-  lines.push(`      body: await readJsonBody(c),`)
+  lines.push(`      body,`)
   lines.push(`      params: c.req.param(),`)
   lines.push(`      query: Object.fromEntries(new URL(c.req.url).searchParams.entries()),`)
   lines.push(`      headers: Object.fromEntries(c.req.raw.headers.entries()),`)
@@ -726,7 +737,9 @@ function renderReferenceValue(raw: unknown): string {
   const { nodeId, path } = ref
   const base = outputsVar(nodeId)
   if (path.length === 0) return base
-  return base + path.map((seg) => `.${seg}`).join("")
+  // Optional chaining, like the interpreter: a missing body or field reads as
+  // undefined and fails the node's input schema instead of throwing.
+  return base + path.map((seg) => `?.${seg}`).join("")
 }
 
 /**

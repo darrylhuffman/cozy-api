@@ -1,3 +1,4 @@
+export type { EvaluateOptions } from "./assert.js"
 export {
   deepEqual,
   describeAssertion,
@@ -6,7 +7,12 @@ export {
   typeOf,
 } from "./assert.js"
 export type { InterpolationContext } from "./interpolate.js"
-export { interpolate, interpolateDeep, referencedVariables } from "./interpolate.js"
+export {
+  interpolate,
+  interpolateDeep,
+  interpolateExpected,
+  referencedVariables,
+} from "./interpolate.js"
 export {
   collectionPathFor,
   mergeEnvironments,
@@ -18,5 +24,12 @@ export {
 } from "./parse.js"
 export { parsePath, readPath } from "./path.js"
 export type { FetchLike, RunCollectionOptions, RunRequestOptions } from "./run.js"
-export { needsTrace, resolveRequest, runRequests, runSavedRequest, toSnapshot } from "./run.js"
+export {
+  needsTrace,
+  resolveRequest,
+  runRequests,
+  runSavedRequest,
+  serverHasTestHooks,
+  toSnapshot,
+} from "./run.js"
 export * from "./types.js"

@@ -36,6 +36,8 @@ export interface RunTestResult {
   exitCode: number
   passed: number
   failed: number
+  /** Saved requests not sent because the server can't apply their mocks. */
+  skipped: number
   runs: CollectionRunResult[]
   nodeCases: NodeCaseFileResult[]
 }
@@ -77,7 +79,29 @@ export async function runTest(
   deps: RunTestDeps = {},
 ): Promise<RunTestResult> {
   const root = resolve(opts.root)
-  const log = deps.log ?? ((line: string) => console.log(line))
+  const stdout = console.log
+  const log = deps.log ?? ((line: string) => stdout(line))
+  // With --json, stdout is only the JSON: the app's own logging goes to stderr.
+  const restoreConsole = opts.json ? logsToStderr() : () => {}
+  try {
+    return await runTestInner(root, opts, deps, log)
+  } finally {
+    restoreConsole()
+  }
+}
+
+function logsToStderr(): () => void {
+  const saved = { log: console.log, info: console.info, debug: console.debug }
+  console.log = console.info = console.debug = console.error
+  return () => Object.assign(console, saved)
+}
+
+async function runTestInner(
+  root: string,
+  opts: TestCommandOptions,
+  deps: RunTestDeps,
+  log: (line: string) => void,
+): Promise<RunTestResult> {
   let runs: CollectionRunResult[] = []
   let nodeCases: NodeCaseFileResult[] = []
 
@@ -106,18 +130,25 @@ export async function runTest(
     }
   } catch (e) {
     log(`lorien test: ${(e as Error).message}`)
-    return { exitCode: 1, passed: 0, failed: 0, runs, nodeCases }
+    return { exitCode: 1, passed: 0, failed: 0, skipped: 0, runs, nodeCases }
   }
 
   let passed = 0
   let failed = 0
-  for (const f of [...nodeCases, ...runs]) {
+  let skipped = 0
+  for (const f of nodeCases) {
     if (f.error) failed++
     for (const r of f.results) r.passed ? passed++ : failed++
   }
+  for (const f of runs) {
+    if (f.error) failed++
+    for (const r of f.results) r.skipped ? skipped++ : r.passed ? passed++ : failed++
+  }
 
   if (opts.json) {
-    log(JSON.stringify({ passed, failed, check: check.findings, nodeCases, runs }, null, 2))
+    log(
+      JSON.stringify({ passed, failed, skipped, check: check.findings, nodeCases, runs }, null, 2),
+    )
   } else if (runs.length === 0 && nodeCases.length === 0) {
     log(
       "No tests found. Add node cases from the IDE's Tests tab (nodes/**/*.cases.json) or save requests from the Run tab (workflows/**/*.requests.json).",
@@ -135,13 +166,27 @@ export async function runTest(
       log(run.path)
       if (run.error) log(`  ✗ ${run.error}`)
       for (const r of run.results) {
+        if (r.skipped) {
+          log(`  - ${r.name} (skipped: ${r.skipped})`)
+          continue
+        }
         const ms = r.response ? ` (${r.response.durationMs}ms)` : ""
         log(`  ${r.passed ? "✓" : "✗"} ${r.name}${ms}`)
         for (const reason of failureSummary(r)) log(`      ${reason}`)
+        const skippedChecks = r.assertions.filter((a) => a.skipped).length
+        if (skippedChecks > 0)
+          log(`      ${skippedChecks} node check(s) skipped: this server doesn't record traces`)
       }
     }
     log("")
-    log(`${passed} passed, ${failed} failed`)
+    log(`${passed} passed, ${failed} failed${skipped > 0 ? `, ${skipped} skipped` : ""}`)
   }
-  return { exitCode: failed > 0 || check.errors > 0 ? 1 : 0, passed, failed, runs, nodeCases }
+  return {
+    exitCode: failed > 0 || check.errors > 0 ? 1 : 0,
+    passed,
+    failed,
+    skipped,
+    runs,
+    nodeCases,
+  }
 }

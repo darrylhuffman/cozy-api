@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Hono } from "hono"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { runTest } from "./test.js"
 
 let dir: string
@@ -65,6 +65,25 @@ describe("lorien test", () => {
       { startApp: async () => app(), runCases: async () => [], log },
     )
     expect(JSON.parse(lines.join("\n"))).toMatchObject({ passed: 1, failed: 0 })
+  })
+
+  it("keeps the app's logging off stdout with --json", async () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {})
+    const chatty = new Hono()
+    chatty.post("/users", (c) => {
+      console.log("POST /users → 201")
+      return c.json({ id: "u1" }, 201)
+    })
+    try {
+      await runTest(
+        { root: dir, json: true },
+        { startApp: async () => chatty, runCases: async () => [], log },
+      )
+      expect(stderr).toHaveBeenCalledWith("POST /users → 201")
+    } finally {
+      stderr.mockRestore()
+    }
+    expect(JSON.parse(lines.join("\n"))).toMatchObject({ passed: 1, failed: 0, skipped: 0 })
   })
 
   it("says how to create requests when there are none", async () => {

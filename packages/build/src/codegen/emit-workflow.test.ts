@@ -102,7 +102,12 @@ describe("emitWorkflow — handler shape", () => {
     })
     expect(source).toMatch(/const trigger: HttpTrigger = \{/)
     expect(source).toMatch(/const req_outputs = trigger/)
-    expect(source).toMatch(/body: await readJsonBody\(c\)/)
+    expect(source).toMatch(/const body = await readJsonBody\(c\)/)
+    // Malformed JSON answers 400, like the dev server.
+    expect(source).toMatch(
+      /if \(body === INVALID_JSON\) \{\n\s+return c\.json\(\{ error: "Invalid request"/,
+    )
+    expect(source).toMatch(/\n\s+body,\n/)
     expect(source).toMatch(/params: c\.req\.param\(\)/)
     expect(source).toMatch(/query: Object\.fromEntries\(new URL\(c\.req\.url\)\.searchParams/)
     expect(source).toMatch(/headers: Object\.fromEntries\(c\.req\.raw\.headers\.entries\(\)\)/)
@@ -186,7 +191,7 @@ describe("emitWorkflow — input value resolution", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/x: req_outputs\.body/)
+    expect(source).toMatch(/x: req_outputs\?\.body/)
   })
 
   it("resolves a nested-path reference into chained property access", () => {
@@ -204,7 +209,7 @@ describe("emitWorkflow — input value resolution", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/email: req_outputs\.body\.user\.email/)
+    expect(source).toMatch(/email: req_outputs\?\.body\?\.user\?\.email/)
   })
 
   it("emits literal numbers, booleans, and strings from values: as JS literals", () => {
@@ -271,7 +276,7 @@ describe("emitWorkflow — input value resolution", () => {
       relativePath: "x",
     })
     // The reference wins — the literal 99 is replaced.
-    expect(source).toMatch(/x: req_outputs\.body/)
+    expect(source).toMatch(/x: req_outputs\?\.body/)
     expect(source).not.toMatch(/x: 99/)
   })
 })
@@ -316,10 +321,10 @@ describe("emitWorkflow — parallel waves", () => {
     })
     // inputs.parse() is called for each parallel node before allSettled
     expect(source).toMatch(
-      /const _aInput = parseInput\(foo\.inputs, \{ x: req_outputs\.body \}, \{"x":"body"\}\)/,
+      /const _aInput = parseInput\(foo\.inputs, \{ x: req_outputs\?\.body \}, \{"x":"body"\}\)/,
     )
     expect(source).toMatch(
-      /const _bInput = parseInput\(bar\.inputs, \{ x: req_outputs\.body \}, \{"x":"body"\}\)/,
+      /const _bInput = parseInput\(bar\.inputs, \{ x: req_outputs\?\.body \}, \{"x":"body"\}\)/,
     )
     expect(source).toMatch(/Promise\.allSettled\(\[/)
     expect(source).toMatch(/a_settled/)
@@ -352,7 +357,7 @@ describe("emitWorkflow — response", () => {
     })
     expect(source).toMatch(/return c\.newResponse\(/)
     expect(source).toMatch(/JSON\.stringify\(result\.body\)/)
-    expect(source).toMatch(/body: save_outputs\.user,/)
+    expect(source).toMatch(/body: save_outputs\?\.user,/)
     expect(source).toMatch(/status: \(\(201\) as number \| undefined\) \?\? 200/)
     expect(source).toMatch(/"content-type": "application\/json"/)
   })
@@ -445,7 +450,7 @@ describe("emitWorkflow — whole-object `in` (string form)", () => {
       relativePath: "users/create",
     })
     // The raw value is captured from request_outputs.body
-    expect(source).toMatch(/const _saveInputRaw = request_outputs\.body/)
+    expect(source).toMatch(/const _saveInputRaw = request_outputs\?\.body/)
     // Then validated through the node's Zod schema
     expect(source).toMatch(
       /const _saveInput = parseInput\(saveUser\.inputs, _saveInputRaw, "body"\)/,
@@ -467,7 +472,7 @@ describe("emitWorkflow — whole-object `in` (string form)", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/const _nInputRaw = req_outputs\.body\.user/)
+    expect(source).toMatch(/const _nInputRaw = req_outputs\?\.body\?\.user/)
   })
 
   it("supports @core/response with whole-object `in:` (plucks body/status/headers)", () => {
@@ -483,9 +488,9 @@ describe("emitWorkflow — whole-object `in` (string form)", () => {
       relativePath: "x",
     })
     // body/status/headers are plucked off the whole-object base expression
-    expect(source).toMatch(/body: \(shape_outputs\.result\)\?\.body/)
-    expect(source).toMatch(/\(shape_outputs\.result\)\?\.status/)
-    expect(source).toMatch(/\(shape_outputs\.result\)\?\.headers/)
+    expect(source).toMatch(/body: \(shape_outputs\?\.result\)\?\.body/)
+    expect(source).toMatch(/\(shape_outputs\?\.result\)\?\.status/)
+    expect(source).toMatch(/\(shape_outputs\?\.result\)\?\.headers/)
   })
 })
 
@@ -519,11 +524,11 @@ describe("emitWorkflow — full example matches the spec shape", () => {
     expect(source).toMatch(/export function register\(app: Hono\): void/)
     // Input is parsed before run(); request values that fail it answer 400.
     expect(source).toMatch(
-      /const _saveInput = parseInput\(saveUser\.inputs, \{ email: request_outputs\.body\.email, password: request_outputs\.body\.password \}, \{"email":"body\.email","password":"body\.password"\}\)/,
+      /const _saveInput = parseInput\(saveUser\.inputs, \{ email: request_outputs\?\.body\?\.email, password: request_outputs\?\.body\?\.password \}, \{"email":"body\.email","password":"body\.password"\}\)/,
     )
     expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/)
     expect(source).toMatch(/_saveInput as never/)
-    expect(source).toMatch(/body: save_outputs\.user,/)
+    expect(source).toMatch(/body: save_outputs\?\.user,/)
   })
 })
 

@@ -1,13 +1,30 @@
+import { createRequire } from "node:module"
+
 export interface TemplateContext {
   name: string
 }
+
+/**
+ * The lorien packages are released together, so a new project asks for the
+ * release line this scaffolder came from (`^0.2.0`), not `latest`, which an
+ * install without a lockfile would move to the next breaking release.
+ */
+export function lorienRange(version: string): string {
+  const [major = "0", minor = "0"] = version.split(".")
+  return `^${major}.${minor}.0`
+}
+
+// src/templates.ts and dist/templates.js both sit one level below package.json.
+const LORIEN_RANGE = lorienRange(
+  (createRequire(import.meta.url)("../package.json") as { version: string }).version,
+)
 
 /**
  * Canonical authoring guide for AI agents working in a lorien project.
  * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
  * (with frontmatter wrapper). Single source of truth — both renderers must use this.
  */
-export const SKILL_BODY = `<!-- lorien-skill-version: 5 -->
+export const SKILL_BODY = `<!-- lorien-skill-version: 6 -->
 
 # lorien project guide
 
@@ -175,7 +192,7 @@ What lorien answers for you:
 
 1. Create \`providers/<name>.ts\` (folders are fine: \`providers/aws/s3.ts\`) exporting \`defineProvider({ selector, color, lifetime, env, uses, create, dispose })\`. \`selector\` is required and is the name nodes read it by: a string literal, starting with a letter, then letters, digits, \`_\` or \`-\`. Use camelCase (\`httpClient\`): a dashed selector must be quoted everywhere (\`{ "http-client": http }\`, \`providers["http-client"]\`). Name the file after the selector, and put a one-sentence doc comment above \`defineProvider\` to describe it (the IDE shows it on the provider's card).
 2. \`lifetime\`: \`singleton\` (default, created once at boot: pools, clients), \`scoped\` (once per request: a logger tagged with the request id), or \`transient\` (every read). A singleton may only \`uses\` other singletons.
-3. \`env\` is a zod object of env vars, checked at boot with a clear error. Set them in \`.env\` (loaded by \`lorien dev\`) or the shell. Don't read \`process.env\` in nodes.
+3. \`env\` is a zod object of env vars, checked at boot with a clear error. Set them in \`.env\` (every \`lorien\` command loads it: dev, test, types, build and the IDE; the shell wins) or the shell. A built server doesn't read \`.env\`; set real env vars in production. Don't read \`process.env\` in nodes.
 4. \`create({ env, providers, request })\` returns the value nodes receive. \`providers\` holds the ones listed in \`uses\`; \`request\` (\`requestId\`, \`timestamp\`) is set for scoped and transient providers. \`dispose(value)\` runs at shutdown (or at the end of the request, for scoped).
 5. Nodes destructure it from \`run\`'s second argument. Its type comes from \`.lorien/types/providers.d.ts\`, which \`npm run typecheck\`, \`npm run dev\` and \`npm run build\` regenerate.
 
@@ -270,11 +287,11 @@ Two JSON test files, both run by \`lorien test\` and shown in the IDE's Tests an
 ] }
 \`\`\`
 
-Checks: \`target\` is \`status\`, \`header\`, \`body\`, \`duration\` or \`node\` (a node's \`input\`, \`output\` or \`error\` by \`path\`; \`exists\`/\`notExists\` for whether it ran); \`op\` is \`equals\`, \`notEquals\`, \`contains\`, \`exists\`, \`notExists\`, \`matches\`, \`lessThan\`, \`greaterThan\` or \`type\`. \`path\` reads \`a.b\`, \`items[0].id\` or \`headers["x-id"]\`. \`mocks\` replace a node's output (\`{ "output": {...} }\`) or make it throw (\`{ "error": "..." }\`); naming a node the workflow doesn't have is an error. \`{{name}}\` in the request reads variables from \`lorien.environments.json\` (\`lorien.environments.local.json\` overrides it and stays out of git), from earlier captures, or the built-ins \`$uuid\`, \`$timestamp\`, \`$isoTimestamp\`, \`$randomInt\`. Requests run in order against the dev database, so a request that changes data should create what it changes.
+Checks: \`target\` is \`status\`, \`header\`, \`body\`, \`duration\` or \`node\` (a node's \`input\`, \`output\` or \`error\` by \`path\`; \`exists\`/\`notExists\` for whether it ran); \`op\` is \`equals\`, \`notEquals\`, \`contains\`, \`exists\`, \`notExists\`, \`matches\`, \`lessThan\`, \`greaterThan\` or \`type\`. \`path\` reads \`a.b\`, \`items[0].id\` or \`headers["x-id"]\`. Besides \`body\` (\`kind\` is \`json\`, \`text\`, \`xml\` or \`form\`), a request can set \`query\` and \`headers\` as string maps. \`mocks\` replace a node's output (\`{ "output": {...} }\`) or make it throw (\`{ "error": "..." }\`); naming a node the workflow doesn't have is an error. A request that middleware answers runs no nodes, so \`{ "target": "node", "node": "Insert", "op": "notExists" }\` checks that auth stopped it before any side effect. \`{{name}}\` in the request and in expected values reads variables from \`lorien.environments.json\` (\`lorien.environments.local.json\` overrides it and stays out of git), from earlier captures, or the built-ins \`$uuid\`, \`$timestamp\`, \`$isoTimestamp\`, \`$randomInt\`. Requests run in order against the dev database, so a request that changes data should create what it changes.
 
-\`npx lorien test\` flags: \`--env <name>\`, \`--base-url <url>\` to hit a running server (e.g. the built one), \`--no-nodes\`, \`--no-requests\`, \`--json\`, and an optional name filter.
+\`npx lorien test\` flags: \`--env <name>\`, \`--base-url <url>\` to hit a running server (against a built server, node checks are skipped and requests with mocks aren't sent, since only the dev server can apply them), \`--no-nodes\`, \`--no-requests\`, \`--json\`, and an optional name filter.
 
-**Vitest**, for checks JSON can't express: \`testWorkflow(workflow, { request, nodes, services })\` returns \`{ status, body, headers }\`; \`traceWorkflow\` also records each node (\`trace.at("FindRoom").output\`). Load the pieces with \`parseWorkflowFromString(await readFile(".../x.workflow", "utf-8"))\` and \`(await importNodes(root)).nodes\` from \`@darrylondil/lorien-runtime\`; the helpers come from \`@darrylondil/lorien-runtime/testing\`. Put these tests in \`workflows/**/*.test.ts\`. The scaffolded \`vitest.config.ts\` inlines the runtime so node files load; keep it.
+**Vitest**, for checks JSON can't express: \`testWorkflow(workflow, { request, nodes, services })\` returns \`{ status, body, headers }\`; \`traceWorkflow\` also records each node (\`trace.at("FindRoom").output\`). They run the workflow without middleware, and \`services\` must give every provider the workflow's nodes read; test middleware with saved requests. Load the pieces with \`parseWorkflowFromString(await readFile(".../x.workflow", "utf-8"))\` and \`(await importNodes(root)).nodes\` from \`@darrylondil/lorien-runtime\`; the helpers come from \`@darrylondil/lorien-runtime/testing\`. Put these tests in \`workflows/**/*.test.ts\`. The scaffolded \`vitest.config.ts\` inlines the runtime so node files load; keep it.
 
 ## Renaming and moving
 
@@ -322,8 +339,8 @@ export function renderPackageJson(ctx: TemplateContext): string {
       zod: "^4.4.3",
     },
     devDependencies: {
-      "@darrylondil/lorien-build": "latest",
-      "@darrylondil/lorien-runtime": "latest",
+      "@darrylondil/lorien-build": LORIEN_RANGE,
+      "@darrylondil/lorien-runtime": LORIEN_RANGE,
       "@types/node": "^25.9.1",
       tsx: "^4.20.0",
       typescript: "^6.0.3",

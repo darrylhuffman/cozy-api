@@ -1,7 +1,13 @@
 import { evaluateAssertions } from "./assert.js"
-import { type InterpolationContext, interpolate, interpolateDeep } from "./interpolate.js"
+import {
+  type InterpolationContext,
+  interpolate,
+  interpolateDeep,
+  interpolateExpected,
+} from "./interpolate.js"
 import { readPath } from "./path.js"
 import {
+  type Assertion,
   type AssertionResult,
   type NodeMock,
   type RequestRunResult,
@@ -21,6 +27,11 @@ export interface RunRequestOptions {
   baseUrl: string
   vars?: Record<string, string>
   fetch?: FetchLike
+  /**
+   * False when the server can't apply mocks or record traces (a built
+   * server): requests with mocks aren't sent, and node checks are skipped.
+   */
+  testHooks?: boolean
 }
 
 /** Applies variables and builds the concrete URL, headers and body. */
@@ -167,7 +178,18 @@ export async function runSavedRequest(
     request: resolved,
     missingVariables: [...missing],
   }
-  const traced = needsTrace(req)
+  const hasMocks = Object.keys(req.mocks ?? {}).length > 0
+  if (opts.testHooks === false && hasMocks) {
+    // Sending it would run the real nodes the mocks stand in for.
+    return {
+      ...base,
+      assertions: [],
+      captured: {},
+      passed: true,
+      skipped: "it has mocks, and this server can't apply them",
+    }
+  }
+  const traced = needsTrace(req) && opts.testHooks !== false
   const mocks = traced
     ? (interpolateDeep(req.mocks ?? {}, { vars: opts.vars ?? {} }) as Record<string, NodeMock>)
     : {}
@@ -189,9 +211,18 @@ export async function runSavedRequest(
   }
   const traceId = traced ? response.headers[TRACE_HEADER] : undefined
   const trace = traceId ? await fetchTrace(doFetch, resolved.url, traceId) : undefined
-  const assertions: AssertionResult[] = evaluateAssertions(req.expect, response, trace)
-  const passed =
-    req.expect && req.expect.length > 0 ? assertions.every((a) => a.pass) : response.status < 400
+  // Expected values can use variables too, like a captured id.
+  const expected = (req.expect ?? []).map(
+    (a): Assertion =>
+      a.value === undefined
+        ? a
+        : { ...a, value: interpolateExpected(a.value, { vars: opts.vars ?? {}, missing }) },
+  )
+  base.missingVariables = [...missing]
+  const assertions: AssertionResult[] = evaluateAssertions(expected, response, trace, {
+    skipNodeChecks: opts.testHooks === false,
+  })
+  const passed = expected.length > 0 ? assertions.every((a) => a.pass) : response.status < 400
   const result: RequestRunResult = {
     ...base,
     response,
@@ -202,11 +233,36 @@ export async function runSavedRequest(
   }
   // A server that ignored the mocks ran the real nodes, so the result can't be trusted.
   if (!trace && Object.keys(mocks).length > 0) {
+    const refused = testHookError(response)
     result.error =
-      "This request has mocks, but the server didn't apply them. Mocks work in the lorien IDE and `lorien test`."
+      refused ??
+      "This request has mocks, but the server didn't apply them. Mocks need the dev server (the IDE, `lorien dev` or `lorien test`)."
     result.passed = false
   }
   return result
+}
+
+/** The dev server's reason for rejecting the test header ("mocks name nodes this workflow doesn't have"). */
+function testHookError(res: ResponseSnapshot): string | undefined {
+  const error = (res.body as { error?: unknown } | null)?.error
+  return res.status === 400 && typeof error === "string" && error.startsWith(`Bad ${TEST_HEADER}`)
+    ? error
+    : undefined
+}
+
+/**
+ * Whether the server at `baseUrl` applies mocks and records traces: the dev
+ * server answers its trace endpoint with JSON, a built server doesn't have one.
+ */
+export async function serverHasTestHooks(baseUrl: string, doFetch: FetchLike): Promise<boolean> {
+  try {
+    const res = await doFetch(`${baseUrl.replace(/\/+$/, "")}${TRACE_PATH}probe`, { method: "GET" })
+    const body = (await res.json().catch(() => null)) as { error?: unknown } | null
+    return res.ok || body?.error === "trace not found"
+  } catch {
+    // Unreachable: let the requests themselves report it.
+    return true
+  }
 }
 
 export interface RunCollectionOptions extends RunRequestOptions {

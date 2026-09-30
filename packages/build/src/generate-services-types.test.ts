@@ -71,5 +71,18 @@ describe("generateServicesTypes", () => {
     expect(content).toMatch(/db: ProvidedValue/)
     expect(content).toMatch(/logger: unknown/)
     expect(existsSync(old)).toBe(false)
+    expect(result.errors).toEqual([])
+  })
+
+  it("reports a provider it had to leave out", async () => {
+    mkdirSync(join(dir, "providers"), { recursive: true })
+    writeFileSync(
+      join(dir, "providers", "clock.ts"),
+      `import { defineProvider } from "@darrylondil/lorien-runtime"\nexport default defineProvider({ create: () => Date })\n`,
+    )
+    const result = await generateServicesTypes(dir)
+    expect(result.errors).toEqual([
+      { path: "providers/clock.ts", message: expect.stringMatching(/needs a selector/) },
+    ])
   })
 })

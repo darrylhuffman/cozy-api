@@ -54,6 +54,7 @@ pnpm start
 | `lorien ide` | Open only the IDE |
 | `lorien build` | Generate `dist/` from `workflows/`, `nodes/` and `providers/` |
 | `lorien test` | Run every node case and saved request |
+| `lorien check` | Flag code in the wrong place: a node reading `process.env`, a provider with business logic, a bad selector |
 | `lorien types` | Write `.lorien/types/providers.d.ts` so nodes see each provider's type |
 | `lorien import-openapi` | Generate typed client nodes from an OpenAPI 3.x spec |
 | `lorien init` | Add `AGENTS.md` and the Claude Code skill to an existing project |
