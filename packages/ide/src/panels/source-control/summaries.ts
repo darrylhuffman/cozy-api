@@ -45,6 +45,7 @@ const VERB: Record<GitFileChange["status"], string> = {
   D: "Remove",
   M: "Update",
   R: "Rename",
+  C: "Merge",
 }
 
 /** "add SendWelcome, change SaveUser, remove LegacyAudit" for a workflow's diff. */

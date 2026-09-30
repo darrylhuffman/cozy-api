@@ -28,6 +28,9 @@ export const REVISION_LABEL: Record<GitRevision, string> = {
   HEAD: "HEAD",
   index: "staged",
   worktree: "working copy",
+  base: "common ancestor",
+  ours: "ours",
+  theirs: "theirs",
 }
 
 type Mode = "visual" | "text"

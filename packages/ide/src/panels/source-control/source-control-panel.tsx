@@ -1,18 +1,10 @@
-import {
-  ArrowDown,
-  ArrowUp,
-  FileCode,
-  GitBranch,
-  Minus,
-  Plus,
-  Sparkles,
-  Workflow,
-} from "lucide-react"
+import { FileCode, GitMerge, Minus, Plus, Sparkles, Workflow } from "lucide-react"
 import { useEffect, useState } from "react"
-import type { GitCommit, GitFileChange, GitRevision } from "@/lib/api"
-import { openDiff } from "@/lib/open-diff"
+import type { GitCommit, GitConflict, GitFileChange, GitRevision } from "@/lib/api"
+import { openConflict, openDiff } from "@/lib/open-diff"
 import { cn } from "@/lib/utils"
 import { GIT_LABEL, useGitStore } from "@/store/git"
+import { BranchBar } from "./branch-bar"
 import { suggestCommitMessage, summarize, workflowDiffFor } from "./summaries"
 
 /**
@@ -50,12 +42,16 @@ export function SourceControlPanel() {
     )
   }
 
-  const { staged, changes } = status
-  const canCommit = staged.length > 0 && message.trim() !== "" && !busy
+  const { staged, changes, conflicts, merging } = status
+  const unresolved = conflicts.length + status.conflictsElsewhere
+  const draft = message === "" && merging ? merging.message : message
+  const canCommit = merging
+    ? unresolved === 0 && draft.trim() !== "" && !busy
+    : staged.length > 0 && message.trim() !== "" && !busy
 
   const commit = async () => {
     if (!canCommit) return
-    if (await useGitStore.getState().commit(message)) setMessage("")
+    if (await useGitStore.getState().commit(draft)) setMessage("")
   }
 
   const suggest = async () => {
@@ -69,30 +65,46 @@ export function SourceControlPanel() {
 
   return (
     <Shell>
-      <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-2 text-[12px]">
-        <GitBranch aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 truncate font-mono" data-testid="git-branch">
-          {status.branch ?? "detached HEAD"}
-        </span>
-        {status.upstream && (
-          <span
-            className="flex shrink-0 items-center gap-1 font-mono text-[11px] text-muted-foreground"
-            title={`${status.ahead} to push, ${status.behind} to pull from ${status.upstream}`}
-          >
-            <ArrowUp aria-hidden className="h-3 w-3" />
-            {status.ahead}
-            <ArrowDown aria-hidden className="h-3 w-3" />
-            {status.behind}
+      <BranchBar />
+      {merging && (
+        <div
+          className="mx-3 mb-2 flex flex-col gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-[12px]"
+          data-testid="merge-banner"
+        >
+          <div className="flex items-center gap-1.5">
+            <GitMerge aria-hidden className="size-3.5 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1">
+              Merging <span className="font-mono">{merging.branch ?? "changes"}</span>
+              {status.branch && (
+                <>
+                  {" "}
+                  into <span className="font-mono">{status.branch}</span>
+                </>
+              )}
+            </span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void useGitStore.getState().abortMerge()}
+              className="shrink-0 rounded px-1.5 py-0.5 text-[11.5px] text-muted-foreground hover:bg-accent hover:text-destructive disabled:opacity-45"
+            >
+              Abort
+            </button>
+          </div>
+          <span className="text-[11.5px] text-muted-foreground">
+            {unresolved > 0
+              ? `${unresolved} ${unresolved === 1 ? "conflict" : "conflicts"} to resolve, then commit the merge.`
+              : "All conflicts resolved. Commit the merge to finish."}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 px-3 pb-3">
         <textarea
           aria-label="Commit message"
           placeholder="Message (Ctrl+Enter to commit)"
-          value={message}
-          rows={Math.min(Math.max(message.split("\n").length, 2), 8)}
+          value={draft}
+          rows={Math.min(Math.max(draft.split("\n").length, 2), 8)}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -108,9 +120,11 @@ export function SourceControlPanel() {
           onClick={() => void commit()}
           className="h-8 rounded-md bg-primary text-[12.5px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-45"
         >
-          {staged.length === 0
-            ? "Stage changes to commit"
-            : `Commit ${staged.length} ${staged.length === 1 ? "file" : "files"}`}
+          {merging
+            ? "Commit merge"
+            : staged.length === 0
+              ? "Stage changes to commit"
+              : `Commit ${staged.length} ${staged.length === 1 ? "file" : "files"}`}
         </button>
         <button
           type="button"
@@ -126,7 +140,15 @@ export function SourceControlPanel() {
             {error}
           </p>
         )}
-        {status.stagedElsewhere > 0 && (
+        {status.conflictsElsewhere > 0 && (
+          <p className="text-[12px] text-warning">
+            {status.conflictsElsewhere} conflicted{" "}
+            {status.conflictsElsewhere === 1 ? "file is" : "files are"} outside this workspace.
+            Resolve {status.conflictsElsewhere === 1 ? "it" : "them"} in the repository before
+            committing.
+          </p>
+        )}
+        {!merging && status.stagedElsewhere > 0 && (
           <p className="text-[12px] text-warning">
             {status.stagedElsewhere} {status.stagedElsewhere === 1 ? "file is" : "files are"} staged
             outside this workspace. Commit or unstage {status.stagedElsewhere === 1 ? "it" : "them"}{" "}
@@ -136,6 +158,7 @@ export function SourceControlPanel() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {conflicts.length > 0 && <ConflictSection conflicts={conflicts} />}
         <FileSection
           title="Staged"
           files={staged}
@@ -305,6 +328,61 @@ function useWorkflowSummary(
     }
   }, [file?.path, base, head, status])
   return summary
+}
+
+const SIDE_TEXT: Record<GitConflict["ours"], string> = {
+  modified: "changed",
+  added: "added",
+  deleted: "deleted",
+}
+
+function ConflictSection({ conflicts }: { conflicts: GitConflict[] }) {
+  return (
+    <section aria-label="Conflicts" className="pb-2">
+      <SectionTitle>
+        Conflicts <span className="ml-1 font-normal">{conflicts.length}</span>
+      </SectionTitle>
+      <ul className="px-1.5">
+        {conflicts.map((c) => {
+          const name = c.path.split("/").pop() ?? c.path
+          const dir = c.path.split("/").slice(0, -1).join("/")
+          const isWorkflow = c.path.endsWith(".workflow")
+          return (
+            <li key={c.path} className="flex items-start gap-1 rounded-md hover:bg-accent">
+              <button
+                type="button"
+                onClick={() => openConflict(c.path)}
+                title={`${c.path}: ours ${SIDE_TEXT[c.ours]}, theirs ${SIDE_TEXT[c.theirs]}`}
+                className="flex min-w-0 flex-1 items-start gap-2 px-1.5 py-1 text-left"
+              >
+                {isWorkflow ? (
+                  <Workflow aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                ) : (
+                  <FileCode aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-info" />
+                )}
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="flex min-w-0 items-baseline gap-1.5 text-[13px]">
+                    <span className="max-w-full shrink-0 truncate">{name}</span>
+                    <span className="truncate text-[11px] text-muted-foreground">{dir}</span>
+                  </span>
+                  <span className="truncate text-[11px] text-muted-foreground">
+                    Ours {SIDE_TEXT[c.ours]}, theirs {SIDE_TEXT[c.theirs]}
+                  </span>
+                </span>
+              </button>
+              <span
+                role="img"
+                aria-label="Conflict"
+                className="mt-1 mr-1.5 w-3 shrink-0 text-center font-mono text-[11px] font-semibold text-destructive"
+              >
+                C
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
 }
 
 function History({ commits }: { commits: GitCommit[] }) {

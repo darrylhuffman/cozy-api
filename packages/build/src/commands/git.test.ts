@@ -1,15 +1,23 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Hono } from "hono"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
+  gitBranches,
   gitCommit,
+  gitFetch,
   gitLog,
+  gitMerge,
+  gitMergeAbort,
+  gitPull,
+  gitPush,
+  gitResolve,
   gitShow,
   gitStage,
   gitStatus,
+  gitSwitch,
   gitUnstage,
   mountGitRoutes,
   parseStatus,
@@ -137,6 +145,148 @@ describe("git for the IDE", () => {
       staged: [{ path: "b.ts", status: "R", from: "a.ts" }],
       changes: [],
       stagedElsewhere: 1,
+      conflicts: [],
+      conflictsElsewhere: 0,
     })
+  })
+
+  it("parses merge conflicts, inside and outside the workspace", () => {
+    const out = ["## main", "UU apps/api/a.ts", "DU apps/api/b.ts", "AA other/c.ts", ""].join("\0")
+    const s = parseStatus(out, "apps/api/")
+    expect(s.conflicts).toEqual([
+      { path: "a.ts", ours: "modified", theirs: "modified" },
+      { path: "b.ts", ours: "deleted", theirs: "modified" },
+    ])
+    expect(s.conflictsElsewhere).toBe(1)
+    expect(s.staged).toEqual([])
+    expect(s.changes).toEqual([])
+  })
+})
+
+describe("branches, merges and remotes", () => {
+  const wf = (status: string, extra = "") =>
+    `{"lorien":1,"nodes":{"A":{"uses":"./a","values":{"status":"${status}"}}${extra}}}\n`
+  const file = () => join(ws, "workflows", "a.workflow")
+
+  it("lists, creates and switches branches", async () => {
+    await gitSwitch(ws, { create: "feature/x" })
+    let branches = await gitBranches(ws)
+    expect(branches.find((b) => b.current)?.name).toBe("feature/x")
+    expect(branches.map((b) => b.name).sort()).toEqual(["feature/x", "main"])
+    await gitSwitch(ws, { branch: "main" })
+    branches = await gitBranches(ws)
+    expect(branches.find((b) => b.current)?.name).toBe("main")
+    await expect(gitSwitch(ws, { create: "bad name" })).rejects.toThrow("isn't a valid branch name")
+    await expect(gitSwitch(ws, { branch: "nope" })).rejects.toThrow("No branch named nope")
+  })
+
+  it("merges cleanly into the current branch", async () => {
+    await gitSwitch(ws, { create: "feature" })
+    writeFileSync(join(ws, "feature.ts"), "export {}\n")
+    run("add", "-A")
+    run("commit", "-q", "-m", "Feature")
+    await gitSwitch(ws, { branch: "main" })
+    await gitMerge(ws, "feature")
+    const status = await gitStatus(ws)
+    if (!status.repo) throw new Error("not a repo")
+    expect(status.merging).toBeNull()
+    expect(run("log", "-1", "--format=%s").trim()).toBe("Merge branch 'feature'")
+  })
+
+  it("stops on a conflict, shows each side, and commits once resolved", async () => {
+    writeFileSync(file(), wf("new"))
+    run("add", "-A")
+    run("commit", "-q", "-m", "Base")
+    await gitSwitch(ws, { create: "feature" })
+    writeFileSync(file(), wf("theirs"))
+    run("commit", "-qam", "Theirs")
+    await gitSwitch(ws, { branch: "main" })
+    writeFileSync(file(), wf("ours"))
+    run("commit", "-qam", "Ours")
+
+    await gitMerge(ws, "feature")
+    let status = await gitStatus(ws)
+    if (!status.repo) throw new Error("not a repo")
+    expect(status.merging).toEqual({ branch: "feature", message: "Merge branch 'feature'" })
+    expect(status.conflicts).toEqual([
+      { path: "workflows/a.workflow", ours: "modified", theirs: "modified" },
+    ])
+    expect(await gitShow(ws, "workflows/a.workflow", "base")).toBe(wf("new"))
+    expect(await gitShow(ws, "workflows/a.workflow", "ours")).toBe(wf("ours"))
+    expect(await gitShow(ws, "workflows/a.workflow", "theirs")).toBe(wf("theirs"))
+    await expect(gitCommit(ws, "Merge")).rejects.toThrow("Resolve the conflicts")
+    await expect(gitSwitch(ws, { branch: "feature" })).rejects.toThrow("merge is in progress")
+
+    await gitResolve(ws, { path: "workflows/a.workflow", content: wf("both") })
+    status = await gitStatus(ws)
+    if (!status.repo) throw new Error("not a repo")
+    expect(status.conflicts).toEqual([])
+    await gitCommit(ws, status.merging?.message ?? "")
+    status = await gitStatus(ws)
+    if (!status.repo) throw new Error("not a repo")
+    expect(status.merging).toBeNull()
+    expect(run("show", "HEAD:apps/api/workflows/a.workflow")).toBe(wf("both"))
+  })
+
+  it("resolves by taking one side, or aborts the merge", async () => {
+    writeFileSync(file(), wf("new"))
+    run("commit", "-qam", "Base")
+    await gitSwitch(ws, { create: "feature" })
+    writeFileSync(file(), wf("theirs"))
+    run("commit", "-qam", "Theirs")
+    await gitSwitch(ws, { branch: "main" })
+    writeFileSync(file(), wf("ours"))
+    run("commit", "-qam", "Ours")
+
+    await gitMerge(ws, "feature")
+    await gitResolve(ws, { path: "workflows/a.workflow", take: "theirs" })
+    expect(readFileSync(file(), "utf-8")).toBe(wf("theirs"))
+    await gitMergeAbort(ws)
+    const status = await gitStatus(ws)
+    if (!status.repo) throw new Error("not a repo")
+    expect(status.merging).toBeNull()
+    expect(readFileSync(file(), "utf-8")).toBe(wf("ours"))
+    await expect(gitMergeAbort(ws)).rejects.toThrow("No merge is in progress")
+  })
+
+  it("pushes, fetches and pulls through a remote", async () => {
+    const origin = mkdtempSync(join(tmpdir(), "lorien-origin-"))
+    const other = mkdtempSync(join(tmpdir(), "lorien-other-"))
+    try {
+      execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin])
+      run("remote", "add", "origin", origin)
+      await expect(gitPull(ws)).rejects.toThrow("isn't tracking a remote branch")
+      await gitPush(ws)
+      let status = await gitStatus(ws)
+      if (!status.repo) throw new Error("not a repo")
+      expect(status.upstream).toBe("origin/main")
+
+      // Someone else pushes a change.
+      execFileSync("git", ["clone", "-q", origin, other])
+      const o = (...args: string[]) => execFileSync("git", args, { cwd: other, stdio: "pipe" })
+      o("config", "user.email", "o@example.com")
+      o("config", "user.name", "Other")
+      writeFileSync(join(other, "apps", "api", "theirs.ts"), "export {}\n")
+      o("add", "-A")
+      o("commit", "-q", "-m", "From elsewhere")
+      o("push", "-q")
+      o("push", "-q", "origin", "HEAD:refs/heads/shared")
+
+      await gitFetch(ws)
+      status = await gitStatus(ws)
+      if (!status.repo) throw new Error("not a repo")
+      expect(status.behind).toBe(1)
+      expect((await gitBranches(ws)).some((b) => b.remote && b.name === "origin/shared")).toBe(true)
+      await gitPull(ws)
+      expect((await gitLog(ws, 1))[0]?.subject).toBe("From elsewhere")
+
+      // A remote branch switches to a local branch tracking it.
+      await gitSwitch(ws, { branch: "origin/shared" })
+      const current = (await gitBranches(ws)).find((b) => b.current)
+      expect(current).toMatchObject({ name: "shared", upstream: "origin/shared" })
+    } finally {
+      rmSync(origin, { recursive: true, force: true })
+      rmSync(other, { recursive: true, force: true })
+    }
   })
 })

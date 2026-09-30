@@ -14,3 +14,16 @@ export function openDiff(path: string, base: GitRevision, head: GitRevision): vo
   })
   useDockviewApi.getState().api?.getPanel("editor")?.api.setActive()
 }
+
+/** Opens (or refocuses) the tab for resolving a merge conflict in a file. */
+export function openConflict(path: string): void {
+  const name = path.split("/").pop() ?? path
+  useTabsStore.getState().openTab({
+    id: `conflict:${path}`,
+    title: `${name} · conflict`,
+    kind: "diff",
+    path,
+    diff: { base: "ours", head: "theirs" },
+  })
+  useDockviewApi.getState().api?.getPanel("editor")?.api.setActive()
+}
