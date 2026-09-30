@@ -2,17 +2,20 @@ import { AlertCircle, FileEdit, FileText, Terminal, User } from "lucide-react"
 import { useState } from "react"
 import Markdown from "react-markdown"
 import { splitPrompt } from "@/ai/prompts"
+import { cn } from "@/lib/utils"
 
 export function UserMessage({ text }: { text: string }): React.ReactElement {
   // IDE actions send a headline plus a block of context (paths, schemas,
   // errors). Show the headline; fold the context so the chat stays readable.
   const { headline, context } = splitPrompt(text)
   return (
-    <div className="flex gap-2 rounded-md bg-muted/30 px-2 py-1.5">
+    <div className="flex gap-2 rounded-lg bg-accent/50 px-3 py-2">
       <User className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">You</div>
-        <div className="whitespace-pre-wrap text-xs">{headline}</div>
+        <div className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+          You
+        </div>
+        <div className="whitespace-pre-wrap text-[13px]">{headline}</div>
         {context && (
           <details className="mt-1 text-[11px] text-muted-foreground">
             <summary>Context sent from the IDE</summary>
@@ -28,7 +31,7 @@ export function UserMessage({ text }: { text: string }): React.ReactElement {
 
 export function AssistantText({ text }: { text: string }): React.ReactElement {
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none text-xs leading-relaxed">
+    <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed">
       <Markdown>{text}</Markdown>
     </div>
   )
@@ -36,10 +39,10 @@ export function AssistantText({ text }: { text: string }): React.ReactElement {
 
 export function ToolUseRead({ path }: { path: string }): React.ReactElement {
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <FileText className="h-3 w-3" />
+    <div className="flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1.5 font-mono text-[11.5px] text-muted-foreground">
+      <FileText className="h-3 w-3 shrink-0" />
       <span>Read</span>
-      <code className="rounded bg-muted/40 px-1 font-mono">{path}</code>
+      <code className="min-w-0 truncate text-foreground">{path}</code>
     </div>
   )
 }
@@ -109,11 +112,16 @@ interface ToolUseBashProps {
 
 export function ToolUseBash({ command, exitCode }: ToolUseBashProps): React.ReactElement {
   return (
-    <div className="flex items-center gap-2 rounded-sm bg-muted/30 px-2 py-1 text-xs">
-      <Terminal className="h-3 w-3" />
-      <code className="flex-1 truncate font-mono text-foreground">{command}</code>
+    <div className="flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1.5 text-xs">
+      <Terminal className="h-3 w-3 shrink-0 text-muted-foreground" />
+      <code className="flex-1 truncate font-mono text-[11.5px] text-foreground">{command}</code>
       {exitCode !== undefined && (
-        <span className={exitCode === 0 ? "text-success" : "text-destructive"}>
+        <span
+          className={cn(
+            "font-mono text-[11px]",
+            exitCode === 0 ? "text-success" : "text-destructive",
+          )}
+        >
           exit {exitCode}
         </span>
       )}

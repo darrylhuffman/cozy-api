@@ -1,5 +1,8 @@
+import { Filter } from "lucide-react"
 import { useState } from "react"
+import { cn } from "@/lib/utils"
 import { useDebugSessionStore } from "@/store/debug-session"
+import { SectionLabel } from "./section-label"
 
 interface DisplayRow {
   offsetMs: number
@@ -48,55 +51,73 @@ export function LogsView({ runId }: { runId: string | null }) {
     ? rows.filter((r) => r.message.toLowerCase().includes(filter.toLowerCase()))
     : rows
 
-  if (rows.length === 0) {
-    return (
-      <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-        No logs for this run yet.
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col gap-2 text-xs">
-      <input
-        type="text"
-        placeholder="Filter logs…"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        className="rounded-md border bg-background px-2 py-1 font-mono"
-      />
-      <div className="flex flex-col gap-1 font-mono text-[11px]">
-        {filtered.map((row) => (
-          <LogRow key={`${row.offsetMs}-${row.level}-${row.message.slice(0, 40)}`} row={row} />
-        ))}
+    <div className="flex flex-col pb-3">
+      <div className="flex h-9 shrink-0 items-center gap-2 px-3.5">
+        <SectionLabel className="flex-1">Logs</SectionLabel>
+        {rows.length > 0 && (
+          <label className="flex h-[26px] w-[200px] max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2 text-muted-foreground focus-within:ring-1 focus-within:ring-ring">
+            <Filter aria-hidden className="size-3 shrink-0" />
+            <input
+              type="text"
+              placeholder="Filter logs…"
+              aria-label="Filter logs"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
+            />
+          </label>
+        )}
       </div>
+      {rows.length === 0 ? (
+        <div className="mx-3.5 rounded-lg border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
+          No logs for this run yet.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1 px-3.5 font-mono text-[11.5px]">
+          {filtered.map((row) => (
+            <LogRow key={`${row.offsetMs}-${row.level}-${row.message.slice(0, 40)}`} row={row} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
+const levelTone: Record<DisplayRow["level"], string> = {
+  error: "text-destructive",
+  warn: "text-warning",
+  info: "text-info",
+  log: "text-muted-foreground",
+}
+
 function LogRow({ row }: { row: DisplayRow }) {
   const [open, setOpen] = useState(false)
-  const tone =
-    row.level === "error"
-      ? "text-destructive"
-      : row.level === "warn"
-        ? "text-primary"
-        : row.level === "info"
-          ? "text-info"
-          : "text-foreground"
+  const isError = row.level === "error"
   return (
-    <div data-testid="log-row">
+    <div data-testid="log-row" className="flex flex-col gap-1">
       <button
         type="button"
+        aria-expanded={row.stack ? open : undefined}
         onClick={() => row.stack && setOpen((v) => !v)}
-        className="flex w-full items-start gap-2 text-left hover:bg-accent/30"
+        className={cn(
+          "-mx-1.5 flex items-start gap-3 rounded-[5px] px-1.5 py-0.5 text-left",
+          isError ? "bg-destructive/10" : "hover:bg-accent/50",
+        )}
       >
-        <span className="w-12 text-muted-foreground">+{row.offsetMs}ms</span>
-        <span className={`w-12 uppercase ${tone}`}>{row.level}</span>
-        <span className="flex-1 whitespace-pre-wrap">{row.message}</span>
+        <span className="w-12 shrink-0 text-muted-foreground">+{row.offsetMs}ms</span>
+        <span className={cn("w-[42px] shrink-0 uppercase", levelTone[row.level])}>{row.level}</span>
+        <span
+          className={cn(
+            "min-w-0 flex-1 whitespace-pre-wrap break-words",
+            isError ? "text-foreground" : "text-foreground/85",
+          )}
+        >
+          {row.message}
+        </span>
       </button>
       {open && row.stack && (
-        <pre className="ml-24 max-h-48 overflow-auto rounded-md bg-muted/40 p-2 text-[10px]">
+        <pre className="ml-[60px] max-h-48 overflow-auto text-[11px] leading-normal text-muted-foreground">
           {row.stack}
         </pre>
       )}
