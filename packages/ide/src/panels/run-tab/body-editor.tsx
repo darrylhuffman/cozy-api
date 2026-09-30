@@ -1,4 +1,5 @@
 import Editor from "@monaco-editor/react"
+import { defineMonacoThemes, monacoThemeName } from "@/lib/monaco-theme"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { useThemeStore } from "@/store/theme"
 import { KeyValueGrid } from "./key-value-grid"
@@ -36,7 +37,8 @@ export function BodyEditor() {
         height={160}
         defaultLanguage={LANGUAGE_BY_KIND[bodyKind as "json" | "xml" | "text"]}
         value={body}
-        theme={theme === "dark" ? "vs-dark" : "vs"}
+        theme={monacoThemeName(theme === "dark" ? "dark" : "light")}
+        beforeMount={defineMonacoThemes}
         onChange={(v) => setRequestForm((c) => ({ ...c, body: v ?? "" }))}
         options={{
           minimap: { enabled: false },

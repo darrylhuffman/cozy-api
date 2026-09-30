@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { EditorNotice } from "@/components/editor-notice"
 import { fetchFile, saveFile } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
+import { defineMonacoThemes, monacoThemeName } from "@/lib/monaco-theme"
 import { setupWorkspaceTypes } from "@/lib/monaco-types"
 import { isCodeDraftDirty, useCodeDrafts } from "@/store/code-drafts"
 import { useCommands } from "@/store/commands"
@@ -152,8 +153,11 @@ export function CodeEditor({ path, tabId }: Props) {
         defaultLanguage={languageFor(path)}
         path={path}
         value={content}
-        theme={theme === "dark" ? "vs-dark" : "vs"}
-        beforeMount={(monaco) => void setupWorkspaceTypes(monaco)}
+        theme={monacoThemeName(theme === "dark" ? "dark" : "light")}
+        beforeMount={(monaco) => {
+          defineMonacoThemes(monaco)
+          void setupWorkspaceTypes(monaco)
+        }}
         onMount={onMount}
         onChange={(v) => {
           useCodeDrafts.getState().edit(tabId, v ?? "")
