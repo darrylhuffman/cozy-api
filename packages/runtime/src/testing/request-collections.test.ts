@@ -88,6 +88,7 @@ describe("runRequestCollections", () => {
     expect(failureSummary(runs[1]!.results[0]!)).toEqual([
       "expected status equals 201, got 200",
       'expected body.name equals "Ada", got "Bob"',
+      'response 200: {"id":"u1","name":"Bob"}',
     ])
   })
 

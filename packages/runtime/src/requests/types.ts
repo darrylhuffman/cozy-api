@@ -136,6 +136,8 @@ export interface AssertionResult {
   pass: boolean
   actual: unknown
   message: string
+  /** Why the check didn't run (a node check against a server that records no traces). */
+  skipped?: string
 }
 
 export interface RequestRunResult {
@@ -153,4 +155,6 @@ export interface RequestRunResult {
   /** Variables referenced but not defined (left as `{{name}}`). */
   missingVariables: string[]
   passed: boolean
+  /** Why the request wasn't sent (it has mocks, and the server can't apply them). */
+  skipped?: string
 }

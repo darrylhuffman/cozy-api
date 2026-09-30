@@ -54,6 +54,36 @@ export function interpolateDeep(value: unknown, ctx: InterpolationContext): unkn
   return value
 }
 
+const WHOLE_VAR_RE = /^\{\{\s*[$\w.-]+\s*\}\}$/
+
+/**
+ * Interpolates an expected value in a check. A string that is only a
+ * variable (`"{{bookId}}"`) takes the variable's JSON value, so a captured
+ * number still equals the number in the response body.
+ */
+export function interpolateExpected(value: unknown, ctx: InterpolationContext): unknown {
+  if (typeof value === "string" && WHOLE_VAR_RE.test(value)) {
+    const text = interpolate(value, ctx)
+    if (text === value) return value
+    try {
+      return JSON.parse(text)
+    } catch {
+      return text
+    }
+  }
+  if (typeof value === "string") return interpolate(value, ctx)
+  if (Array.isArray(value)) return value.map((v) => interpolateExpected(v, ctx))
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+        k,
+        interpolateExpected(v, ctx),
+      ]),
+    )
+  }
+  return value
+}
+
 /** Variable names referenced by a string (excluding `$` built-ins). */
 export function referencedVariables(text: string): string[] {
   const out = new Set<string>()

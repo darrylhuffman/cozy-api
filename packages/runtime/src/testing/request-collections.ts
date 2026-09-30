@@ -12,6 +12,7 @@ import {
   type RequestCollection,
   type RequestRunResult,
   runRequests,
+  serverHasTestHooks,
 } from "../requests/index.js"
 
 export interface CollectionFile {
@@ -133,6 +134,11 @@ export async function runRequestCollections(
     fetchImpl = async (input, init) => app.fetch(new Request(input, init))
   }
 
+  // A built server can't apply mocks or record traces: skip what needs them.
+  const testHooks = fetchImpl
+    ? true
+    : await serverHasTestHooks(vars.baseUrl ?? baseUrl, (input, init) => fetch(input, init))
+
   const files = (await loadCollectionFiles(opts.root)).filter(
     (f) => !opts.filter || f.path.includes(opts.filter),
   )
@@ -145,6 +151,7 @@ export async function runRequestCollections(
     const results = await runRequests(file.collection.requests, {
       baseUrl,
       vars,
+      testHooks,
       ...(fetchImpl ? { fetch: fetchImpl } : {}),
       onResult: (r) => opts.onResult?.(file.path, r),
     })
@@ -155,10 +162,18 @@ export async function runRequestCollections(
 
 /** Human-readable reasons a request failed; empty when it passed. */
 export function failureSummary(r: RequestRunResult): string[] {
-  if (r.error) return [r.error]
-  const out = r.assertions.filter((a) => !a.pass).map((a) => a.message)
-  if (out.length === 0 && !r.passed && r.response) out.push(`status ${r.response.status}`)
+  if (r.passed) return []
+  const out = r.error ? [r.error] : r.assertions.filter((a) => !a.pass).map((a) => a.message)
+  if (out.length === 0 && r.response) out.push(`status ${r.response.status}`)
   if (r.missingVariables.length > 0)
     out.push(`undefined variables: ${r.missingVariables.join(", ")}`)
-  return r.passed ? [] : out
+  // What the server actually said is usually the fastest way to the cause.
+  if (r.response && r.response.body !== "" && r.response.body !== undefined)
+    out.push(`response ${r.response.status}: ${preview(r.response.body)}`)
+  return out
+}
+
+function preview(body: unknown): string {
+  const text = typeof body === "string" ? body : JSON.stringify(body)
+  return text.length > 300 ? `${text.slice(0, 297)}...` : text
 }
