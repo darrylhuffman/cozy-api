@@ -23,7 +23,7 @@ describe("lorien CLI program", () => {
   })
 
   it("exposes the version", () => {
-    expect(VERSION).toBe("0.0.0")
+    expect(VERSION).toMatch(/^\d+\.\d+\.\d+/)
   })
 
   it("each subcommand has a description", () => {

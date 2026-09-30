@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const NodeInstanceSchema = z.object({
+export const NodeInstanceSchema = z.strictObject({
   uses: z.string().min(1),
   /**
    * Inputs may be supplied in either of two shapes — both are REFERENCES ONLY:
@@ -19,6 +19,13 @@ export const NodeInstanceSchema = z.object({
    */
   values: z.record(z.string(), z.unknown()).optional(),
   after: z.array(z.string()).optional(),
+  /**
+   * Runs the node only when this reference is truthy ("Room.found"), or falsy
+   * with a leading `!` ("!Room.found"). A skipped node has no outputs, so the
+   * nodes reading them are skipped too. This is how a workflow branches: give
+   * each Response a `when`, and the first one that runs answers the request.
+   */
+  when: z.string().optional(),
   label: z.string().optional(),
 })
 
@@ -27,6 +34,8 @@ export const NodeViewSchema = z.object({
   y: z.number(),
 })
 
+// Unknown keys are errors rather than silently dropped: a misspelled key
+// (`"config"` for `"values"`) would otherwise change what the node does.
 export const WorkflowFileSchema = z.object({
   lorien: z.literal(1),
   nodes: z.record(z.string(), NodeInstanceSchema),

@@ -10,7 +10,7 @@ function renameRef(ref: string, from: string, to: string): string {
 
 /**
  * Renames a node instance and rewrites every reference to it (`in:` bindings,
- * `after:` lists, the `view` entry). Key order in `nodes` is preserved so the
+ * `after:` lists, `when:` conditions, the `view` entry). Key order in `nodes` is preserved so the
  * saved file diff stays small.
  */
 export function renameNode(wf: WorkflowFile, from: string, to: string): WorkflowFile {
@@ -29,6 +29,11 @@ export function renameNode(wf: WorkflowFile, from: string, to: string): Workflow
       }
     }
     if (node.after) next = { ...next, after: node.after.map((a) => (a === from ? to : a)) }
+    if (node.when) {
+      const negate = node.when.startsWith("!")
+      const ref = renameRef(negate ? node.when.slice(1) : node.when, from, to)
+      next = { ...next, when: negate ? `!${ref}` : ref }
+    }
     nodes[id === from ? to : id] = next
   }
   let view = wf.view

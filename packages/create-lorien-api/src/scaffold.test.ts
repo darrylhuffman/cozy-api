@@ -24,9 +24,12 @@ describe("scaffold", () => {
       "package.json",
       "tsconfig.json",
       "biome.json",
+      "vitest.config.ts",
       "lorien.config.ts",
       "workflows/hello.workflow",
+      "workflows/hello.requests.json",
       "nodes/say-hello.ts",
+      "nodes/say-hello.cases.json",
       "src/server.ts",
       "AGENTS.md",
       ".claude/skills/lorien-api/SKILL.md",
@@ -57,8 +60,8 @@ describe("scaffold", () => {
     await scaffold({ target, name: "skill-app", pm: "pnpm" })
     const skill = readFileSync(join(target, ".claude/skills/lorien-api/SKILL.md"), "utf-8")
     expect(skill.startsWith("---\nname: lorien-api\n")).toBe(true)
-    expect(skill).toMatch(/# lorien-api project guide/)
-    expect(skill).toMatch(/<!-- lorien-skill-version: 4 -->/)
+    expect(skill).toMatch(/# lorien project guide/)
+    expect(skill).toMatch(/<!-- lorien-skill-version: 5 -->/)
   })
 
   it("writes AGENTS.md without frontmatter (just the canonical body)", async () => {
@@ -66,7 +69,7 @@ describe("scaffold", () => {
     await scaffold({ target, name: "agents-app", pm: "pnpm" })
     const agents = readFileSync(join(target, "AGENTS.md"), "utf-8")
     expect(agents.startsWith("---")).toBe(false)
-    expect(agents).toMatch(/# lorien-api project guide/)
-    expect(agents).toMatch(/<!-- lorien-skill-version: 4 -->/)
+    expect(agents).toMatch(/# lorien project guide/)
+    expect(agents).toMatch(/<!-- lorien-skill-version: 5 -->/)
   })
 })

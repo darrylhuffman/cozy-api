@@ -32,7 +32,8 @@ export type { DebugIntegration, MountOptions } from "./dev-server/server.js"
 export { mountWorkflows } from "./dev-server/server.js"
 export type { StartServerOptions } from "./dev-server/start.js"
 export { startLorienServer } from "./dev-server/start.js"
-export { NodeRunError, WorkflowError } from "./exec/errors.js"
+export type { RequestIssue } from "./exec/errors.js"
+export { NodeRunError, RequestValidationError, WorkflowError } from "./exec/errors.js"
 export type { LifecycleEvent, LifecycleEventType } from "./exec/lifecycle.js"
 export { LifecycleEmitter } from "./exec/lifecycle.js"
 export type { RunWorkflowOptions, WorkflowRunResult } from "./exec/run.js"
@@ -104,6 +105,8 @@ export type {
   WorkflowConfig,
   ZodObjectAny,
 } from "./types.js"
+export type { ParsedWhen } from "./workflow/dependencies.js"
+export { dataDependencies, nodeDependencies, parseWhen } from "./workflow/dependencies.js"
 // Workflow file primitives
 export {
   parseWorkflow,
@@ -111,6 +114,8 @@ export {
   WorkflowParseError,
 } from "./workflow/parse.js"
 export { isReferenceString, parseReference } from "./workflow/reference.js"
+export type { RouteConflict, WorkflowRoute } from "./workflow/routes.js"
+export { defaultRoutePath, findRouteConflicts, workflowRoutes } from "./workflow/routes.js"
 export type {
   NodeInstance,
   NodeView,

@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs"
+import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 import { Command } from "commander"
 import { registerBuild } from "./commands/build.js"
@@ -7,8 +8,10 @@ import { registerIde } from "./commands/ide.js"
 import { registerImportOpenapi } from "./commands/import-openapi.js"
 import { registerInit } from "./commands/init.js"
 import { registerTest } from "./commands/test.js"
+import { registerTypes } from "./commands/types.js"
 
-const VERSION = "0.0.0"
+/** This package's version; dist/cli.js and src/cli.ts both sit one level below package.json. */
+const VERSION = (createRequire(import.meta.url)("../package.json") as { version: string }).version
 
 function createProgram(): Command {
   const program = new Command()
@@ -23,6 +26,7 @@ function createProgram(): Command {
   registerInit(program)
   registerImportOpenapi(program)
   registerTest(program)
+  registerTypes(program)
 
   return program
 }

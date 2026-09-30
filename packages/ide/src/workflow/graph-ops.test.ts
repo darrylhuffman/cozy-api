@@ -31,6 +31,20 @@ describe("renameNode", () => {
     expect(next.nodes.response?.in).toBe("saveUser.user")
   })
 
+  it("rewrites when conditions, keeping a leading !", () => {
+    const branching: WorkflowFile = {
+      lorien: 1,
+      nodes: {
+        find: { uses: "./nodes/find" },
+        missing: { uses: "@core/response", when: "!find.found" },
+        found: { uses: "@core/response", when: "find.found" },
+      },
+    }
+    const next = renameNode(branching, "find", "findRoom")
+    expect(next.nodes.missing?.when).toBe("!findRoom.found")
+    expect(next.nodes.found?.when).toBe("findRoom.found")
+  })
+
   it("is a no-op for unknown ids, same ids, or a taken target", () => {
     expect(renameNode(wf, "nope", "x")).toBe(wf)
     expect(renameNode(wf, "save", "save")).toBe(wf)

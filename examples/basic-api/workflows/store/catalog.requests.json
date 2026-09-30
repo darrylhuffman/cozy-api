@@ -196,14 +196,14 @@
       "expect": [
         {
           "target": "status",
-          "op": "greaterThan",
-          "value": 399
+          "op": "equals",
+          "value": 400
         },
         {
           "target": "body",
-          "path": "error",
-          "op": "contains",
-          "value": "pageSize"
+          "path": "issues[0].path",
+          "op": "equals",
+          "value": "query.pageSize"
         },
         {
           "target": "node",

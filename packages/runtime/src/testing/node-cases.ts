@@ -18,14 +18,19 @@ export interface RunNodeCaseOptions {
   timeoutMs?: number
 }
 
+/**
+ * Mocked provider methods return (or throw) synchronously, so they stand in
+ * for sync clients like node:sqlite as well as async ones: `await` works on a
+ * plain value, and a sync throw still lands in the node's try/catch.
+ */
 function buildMocks(
   mocks: NodeCase["mocks"],
-): Record<string, Record<string, (...args: unknown[]) => Promise<unknown>>> {
-  const out: Record<string, Record<string, (...args: unknown[]) => Promise<unknown>>> = {}
+): Record<string, Record<string, (...args: unknown[]) => unknown>> {
+  const out: Record<string, Record<string, (...args: unknown[]) => unknown>> = {}
   for (const [svc, methods] of Object.entries(mocks ?? {})) {
     out[svc] = {}
     for (const [name, spec] of Object.entries(methods) as Array<[string, MockFn]>) {
-      out[svc][name] = async () => {
+      out[svc][name] = () => {
         if (spec.throws !== undefined) throw new Error(spec.throws)
         return structuredClone(spec.returns)
       }
@@ -153,14 +158,24 @@ export async function runNodeCases(opts: RunNodeCasesOptions): Promise<NodeCaseF
     (f) => !opts.filter || f.includes(opts.filter),
   )
   if (files.length === 0) return []
-  const nodes = opts.nodes ?? (await importNodes(opts.root)).nodes
+  const imported = opts.nodes ? null : await importNodes(opts.root)
+  const nodes = opts.nodes ?? imported?.nodes ?? {}
   const services = opts.services ?? (await loadConfiguredServices(opts.root))
   const out: NodeCaseFileResult[] = []
   for (const path of files) {
     const uses = `./${path.slice(0, -CASES_SUFFIX.length)}`
     const node = nodes[uses]
     if (!node || node.kind !== "node") {
-      out.push({ path, uses, error: `no node found at ${uses.slice(2)}.ts`, results: [] })
+      const file = join(opts.root, `${uses.slice(2)}.ts`)
+      const importError = imported?.errors.find((e) => e.path === file)
+      out.push({
+        path,
+        uses,
+        error: importError
+          ? `couldn't import ${uses.slice(2)}.ts: ${importError.message}`
+          : `no node found at ${uses.slice(2)}.ts`,
+        results: [],
+      })
       continue
     }
     let cases: NodeCase[]
