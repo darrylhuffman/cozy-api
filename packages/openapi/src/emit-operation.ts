@@ -21,6 +21,8 @@ export function emitOperationNode(
   op: OperationObject,
   path: string,
   method: string,
+  /** The selector of the API's client provider (see `emitClientProvider`). */
+  selector = "api",
 ): EmitResult {
   const ctx = newContext()
 
@@ -80,6 +82,7 @@ export function emitOperationNode(
 
   // Build the run body
   const runBody = buildRunBody({
+    selector,
     method: method.toUpperCase(),
     pathTemplate,
     hasPathParams: pathParamsZod !== null,
@@ -93,13 +96,14 @@ export function emitOperationNode(
     `// Do NOT edit manually — re-run \`lorien import-openapi <spec>\` to regenerate.`,
     `import { defineNode } from "@darrylondil/lorien-runtime"`,
     `import { z } from "zod"`,
-    `import { baseUrl, buildHeaders } from "./_client.js"`,
+    ``,
+    `const Data = ${responseBodyZod}`,
     ``,
     `export default defineNode({`,
     `  name: ${JSON.stringify(friendlyName)},`,
     `  inputs: ${inputsSchemaStr},`,
-    `  outputs: z.object({ data: ${responseBodyZod} }),`,
-    `  async run(input) {`,
+    `  outputs: z.object({ data: Data }),`,
+    `  async run(input, { ${selectorBinding(selector)} }) {`,
     runBody,
     `  },`,
     `})`,
@@ -129,6 +133,7 @@ function paramsToZodObject(
 }
 
 interface RunBodyOpts {
+  selector: string
   method: string
   pathTemplate: string
   hasPathParams: boolean
@@ -141,7 +146,9 @@ function buildRunBody(opts: RunBodyOpts): string {
   const lines: string[] = []
   const pathParamsAccess = opts.hasPathParams ? `const pathParams = input.pathParams` : ""
   if (opts.hasPathParams) lines.push(`    ${pathParamsAccess}`)
-  lines.push(`    const url = new URL(\`${opts.pathTemplate}\`, baseUrl())`)
+  const client = clientIdent(opts.selector)
+  // Appended, not resolved: a base URL like https://api.example.com/v1 keeps its /v1.
+  lines.push(`    const url = new URL(\`\${${client}.baseUrl}${opts.pathTemplate}\`)`)
   if (opts.hasQuery) {
     lines.push(`    for (const [k, v] of Object.entries(input.query ?? {})) {`)
     lines.push(`      if (v !== undefined && v !== null) url.searchParams.set(k, String(v))`)
@@ -150,7 +157,7 @@ function buildRunBody(opts: RunBodyOpts): string {
   const fetchOpts: string[] = []
   fetchOpts.push(`method: "${opts.method}"`)
   fetchOpts.push(
-    `headers: buildHeaders(${opts.hasHeaders ? "input.headers as Record<string, string> | undefined" : ""})`,
+    `headers: ${client}.headers(${opts.hasHeaders ? "input.headers as Record<string, string> | undefined" : ""})`,
   )
   if (opts.hasBody) fetchOpts.push(`body: JSON.stringify(input.body)`)
   lines.push(`    const res = await fetch(url, {`)
@@ -159,8 +166,18 @@ function buildRunBody(opts: RunBodyOpts): string {
   lines.push(`    if (!res.ok) {`)
   lines.push(`      throw new Error(\`Request failed: \${res.status} \${res.statusText}\`)`)
   lines.push(`    }`)
-  lines.push(`    return { data: await res.json() }`)
+  lines.push(`    return { data: (await res.json()) as z.infer<typeof Data> }`)
   return lines.join("\n")
+}
+
+/** How `run` destructures the provider: `acmePay`, or `"acme-pay": acmePay` for a dashed selector. */
+function selectorBinding(selector: string): string {
+  const ident = clientIdent(selector)
+  return ident === selector ? selector : `${JSON.stringify(selector)}: ${ident}`
+}
+
+function clientIdent(selector: string): string {
+  return selector.replace(/-([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase())
 }
 
 export const OPENAPI_GENERATED_MARKER = HEADER_MARKER

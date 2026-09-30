@@ -1,20 +1,35 @@
 import { describe, expect, it } from "vitest"
-import { emitClientHelper } from "./emit-client.js"
+import { emitClientProvider, selectorFromSlug } from "./emit-client.js"
 
-describe("emitClientHelper", () => {
-  it("emits baseUrl using an env var derived from the api slug", () => {
-    const out = emitClientHelper("petstore", "https://petstore.example.com")
-    expect(out).toMatch(/process\.env\.PETSTORE_BASE_URL/)
-    expect(out).toMatch(/https:\/\/petstore\.example\.com/)
+describe("emitClientProvider", () => {
+  it("declares the base URL as provider env, defaulting to the given URL", () => {
+    const out = emitClientProvider("petstore", {
+      selector: "petstore",
+      defaultBaseUrl: "https://petstore.example.com/v3",
+    })
+    expect(out).toContain(`selector: "petstore"`)
+    expect(out).toContain(
+      `env: z.object({ PETSTORE_BASE_URL: z.string().url().default("https://petstore.example.com/v3") })`,
+    )
+    // Nodes may not read process.env; the provider's env schema replaces it.
+    expect(out).not.toContain("process.env")
   })
 
-  it("handles hyphenated slug by converting to underscore env var", () => {
-    const out = emitClientHelper("foo-bar", undefined)
-    expect(out).toMatch(/process\.env\.FOO_BAR_BASE_URL/)
+  it("requires the env var when there is no default, and underscores a dashed slug", () => {
+    const out = emitClientProvider("foo-bar", { selector: "fooBar" })
+    expect(out).toContain(`env: z.object({ FOO_BAR_BASE_URL: z.string().url() })`)
   })
 
-  it("includes content-type in buildHeaders", () => {
-    const out = emitClientHelper("p", "u")
+  it("sends JSON by default", () => {
+    const out = emitClientProvider("p", { selector: "p" })
     expect(out).toMatch(/"content-type": "application\/json"/)
+  })
+})
+
+describe("selectorFromSlug", () => {
+  it("camel-cases the slug and starts with a letter", () => {
+    expect(selectorFromSlug("acme-payments")).toBe("acmePayments")
+    expect(selectorFromSlug("petstore")).toBe("petstore")
+    expect(selectorFromSlug("3d-api")).toBe("api3dApi")
   })
 })

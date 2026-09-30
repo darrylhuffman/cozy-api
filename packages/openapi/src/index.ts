@@ -1,7 +1,7 @@
 export const VERSION = "0.0.0"
 export type { ConvertOptions, ConvertResult, GeneratedFile } from "./convert.js"
 export { convertOpenApiSpec } from "./convert.js"
-export { emitClientHelper } from "./emit-client.js"
+export { emitClientProvider, selectorFromSlug } from "./emit-client.js"
 export type { EmitResult } from "./emit-operation.js"
 export { emitOperationNode, OPENAPI_GENERATED_MARKER } from "./emit-operation.js"
 export type { OpenAPIObject } from "./load-spec.js"
