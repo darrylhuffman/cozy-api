@@ -50,6 +50,8 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:3737",
         changeOrigin: true,
+        // The terminal's socket lives under /api too.
+        ws: true,
       },
     },
   },

@@ -7,16 +7,17 @@ import {
   type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from "dockview-react"
-import { useCallback } from "react"
+import { useCallback, useEffect } from "react"
 import { AgentsPanel } from "@/panels/agents/agents-panel"
 import { DebugPanel } from "@/panels/debug-panel"
 import { EditorPanel } from "@/panels/editor-panel"
 import { FilesPanel } from "@/panels/files-panel"
 import { InspectorPanel } from "@/panels/inspector-panel"
 import { SourceControlPanel } from "@/panels/source-control/source-control-panel"
+import { TerminalPanel } from "@/panels/terminal/terminal-panel"
 import { useDockviewApi } from "@/store/dockview-api"
 import { useActiveTheme } from "@/store/theme"
-import { buildDefaultLayout, loadSavedLayout, saveLayout } from "./default-layout"
+import { buildDefaultLayout, loadSavedLayout, saveLayout, showPanel } from "./default-layout"
 
 const components = {
   files: (_props: IDockviewPanelProps) => <FilesPanel />,
@@ -24,6 +25,7 @@ const components = {
   editor: (_props: IDockviewPanelProps) => <EditorPanel />,
   inspector: (_props: IDockviewPanelProps) => <InspectorPanel />,
   debug: (_props: IDockviewPanelProps) => <DebugPanel />,
+  terminal: (props: IDockviewPanelProps) => <TerminalPanel pane={props.api} />,
   agents: (_props: IDockviewPanelProps) => (
     <div className="h-full bg-card">
       <AgentsPanel />
@@ -53,6 +55,19 @@ function NoCloseTab(props: IDockviewPanelHeaderProps) {
 export function DockView() {
   const mode = useActiveTheme().mode
   const setApi = useDockviewApi((s) => s.setApi)
+
+  // Ctrl+` opens the terminal, as in VS Code.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.altKey || e.metaKey || e.code !== "Backquote") return
+      const api = useDockviewApi.getState().api
+      if (!api) return
+      e.preventDefault()
+      showPanel(api, "terminal")
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
 
   const onReady = useCallback(
     (event: DockviewReadyEvent) => {
