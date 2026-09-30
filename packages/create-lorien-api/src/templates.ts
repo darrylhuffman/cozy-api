@@ -24,7 +24,7 @@ const LORIEN_RANGE = lorienRange(
  * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
  * (with frontmatter wrapper). Single source of truth — both renderers must use this.
  */
-export const SKILL_BODY = `<!-- lorien-skill-version: 6 -->
+export const SKILL_BODY = `<!-- lorien-skill-version: 7 -->
 
 # lorien project guide
 
@@ -50,11 +50,12 @@ lorien.config.ts                 ← build target only
 
 | Command | What it does |
 | --- | --- |
-| \`npm run dev\` | API on :3000 and the IDE on :8188. Restarts when a node, provider, middleware or workflow changes. Loads \`.env\` if present. |
+| \`npm run dev\` | API on :3000 and the IDE on :8188. Restarts when a node, provider, middleware or workflow changes. Loads \`.env\` if present. Add \`-- --no-open\` to skip opening the browser. |
 | \`npm run dev:server\` | The API only, no IDE. |
-| \`npm run build\` | Checks every workflow and writes \`dist/\`; \`npm start\` runs \`dist/index.js\`. |
+| \`npm run build\` | Checks every workflow, runs \`tsc\` (\`lorien build --typecheck\`) and writes \`dist/\`; \`npm start\` runs \`dist/index.js\`. |
 | \`npm run test\` | \`lorien test\` (every node case and saved request), then Vitest. |
 | \`npm run typecheck\` | \`lorien types\` (writes \`.lorien/types/providers.d.ts\`, git-ignored), then \`tsc\`. |
+| \`npm run lint\` | Biome. |
 
 Any package manager works (\`pnpm\`, \`yarn\`, \`bun\`). \`npx lorien --help\` lists every command.
 
@@ -123,7 +124,7 @@ A node instance has only these keys; any other key is an error:
 | \`label\` | Display name on the canvas. |
 
 Rules:
-- Reference segments are identifiers: letters, digits, \`_\` and \`$\`. A header like \`x-api-key\` can't be referenced directly: take \`Request.headers\` whole into a node, or check it in middleware.
+- The node id in a reference is an identifier (letters, digits, \`_\`, \`$\`); the fields after it may also contain \`-\`, so \`Request.headers.x-api-key\` works.
 - No cycles. Nodes whose inputs are ready run in parallel.
 - To share one value between several inputs, add a variable: \`"role": { "uses": "@core/variable", "values": { "value": "admin" } }\`, read as \`role.value\`.
 - A \`view\` block (when present) is IDE-only layout. After hand-editing, you may delete it and the IDE will lay the graph out again.
@@ -186,7 +187,8 @@ A node can also compute its own status and pass it on: wire \`"status": "Node.st
 
 What lorien answers for you:
 - **400** when a value that came straight from the request fails a node's input schema: \`{ "error": "Invalid request", "issues": [{ "path": "query.minCapacity", "message": "..." }] }\`.
-- **500** when a node throws: \`{ "error": "Internal Server Error" }\`, with the error logged. \`lorien dev\` adds the message as \`detail\`.
+- **500** when a node throws, or returns something that doesn't match its \`outputs\` schema: \`{ "error": "Internal Server Error" }\`, with the error logged. \`lorien dev\` adds the message as \`detail\`.
+- **405** with an \`Allow\` header when the path exists under other methods, **404** otherwise, both as JSON: \`{ "error": "Method Not Allowed" }\`, \`{ "error": "Not Found" }\`.
 
 ## Providers (db, logger, cache, API client)
 
@@ -308,7 +310,7 @@ After edits, run:
 npm run typecheck && npm run test && npm run build
 \`\`\`
 
-\`lorien build\` checks workflow structure (references to unknown nodes, cycles, unknown keys, duplicate routes). It doesn't check that a referenced output field exists or that an \`in\` key matches the node's inputs: the tests do. Give every route at least one saved request.
+\`lorien build\` checks workflow structure (references to unknown nodes, cycles, unknown keys, duplicate routes) and wiring: every \`uses\` file exists, every \`in\`/\`values\` key is one of the node's inputs, required inputs are wired, and referenced output fields are declared. With \`--typecheck\` (the default \`build\` script) it runs \`tsc\` first. It can't check behavior: give every route at least one saved request.
 
 ## What you should NOT do
 
