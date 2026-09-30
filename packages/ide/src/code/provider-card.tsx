@@ -1,8 +1,13 @@
-import { Plug } from "lucide-react"
+import { Plug, ShieldCheck } from "lucide-react"
 import type { ProviderInfo } from "@/lib/api"
 import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
-import { LIFETIME_HELP, useProvidersStore, useWorkspaceProviders } from "@/store/providers"
+import {
+  LIFETIME_HELP,
+  middlewareFor,
+  useProvidersStore,
+  useWorkspaceProviders,
+} from "@/store/providers"
 import { resolveAccentColor } from "@/workflow/tailwind-colors"
 
 const PROVIDER_FILE = /^providers\/[^/]+\.[mc]?ts$/
@@ -16,7 +21,35 @@ export function FileContextBar({ path }: { path: string }) {
   useWorkspaceProviders()
   if (PROVIDER_FILE.test(path)) return <ProviderCard path={path} />
   if (path.startsWith("nodes/")) return <NodeProvidersBar path={path} />
+  if (/^workflows\/(.+\/)?_middleware\.[mc]?[jt]s$/.test(path)) return <MiddlewareBar path={path} />
   return null
+}
+
+function MiddlewareBar({ path }: { path: string }) {
+  const all = useProvidersStore((s) => s.middleware)
+  const self = all.find((m) => m.path === path)
+  const dir = path.split("/").slice(0, -1).join("/")
+  const outer = middlewareFor(all, `${dir}/x`).filter((m) => m.path !== path)
+  return (
+    <div
+      data-testid="middleware-bar"
+      className="flex flex-wrap items-center gap-1.5 border-b border-border bg-card px-3 py-1 text-[12px] text-muted-foreground"
+    >
+      <ShieldCheck aria-hidden className="h-3.5 w-3.5 shrink-0" />
+      <span>
+        Runs before every route in <code className="font-mono text-foreground">{dir}/</code>
+        {outer.length > 0 ? `, after ${outer.map((m) => m.path).join(", ")}` : ""}
+      </span>
+      {self && self.reads.length > 0 && (
+        <>
+          <span className="ml-2">Reads</span>
+          {self.reads.map((name) => (
+            <ProviderChip key={name} name={name} />
+          ))}
+        </>
+      )}
+    </div>
+  )
 }
 
 function ProviderCard({ path }: { path: string }) {

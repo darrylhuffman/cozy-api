@@ -1,6 +1,7 @@
 import { resolve } from "node:path"
 import { Hono } from "hono"
 import type { LifecycleEmitter } from "../exec/lifecycle.js"
+import { importMiddleware } from "../middleware/load.js"
 import { loadProviders } from "../providers/load.js"
 import type { AnyNodeOrTrigger, Services } from "../types.js"
 import { importNodes } from "./import-nodes.js"
@@ -57,11 +58,19 @@ export async function startLorienServer(opts: StartServerOptions = {}): Promise<
   }
   const nodes = { ...importResult.nodes, ...(opts.nodes ?? {}) }
 
-  // 4. Build Hono app + mount
+  // 4. Import workflows/**/_middleware.ts
+  const middleware = await importMiddleware(root)
+  for (const e of middleware.errors) console.error(`[lorien] ${e.path}: ${e.message}`)
+  if (!lenient && middleware.errors.length > 0) {
+    throw new Error(`Failed to import middleware: ${middleware.errors.length} error(s)`)
+  }
+
+  // 5. Build Hono app + mount
   const app = new Hono()
   mountWorkflows(app, ws.workflows, {
     nodes,
     providers,
+    middleware: middleware.byDir,
     ...(opts.lifecycle ? { lifecycle: opts.lifecycle } : {}),
     ...(opts.testHooks ? { testHooks: true } : {}),
   })

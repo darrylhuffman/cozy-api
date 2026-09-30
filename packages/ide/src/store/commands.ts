@@ -9,6 +9,7 @@ export type CommandId =
   | "file.newWorkflow"
   | "file.newNode"
   | "file.newProvider"
+  | "file.newMiddleware"
   | "file.newFolder"
   | "file.save"
   | "edit.undo"

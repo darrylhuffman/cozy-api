@@ -13,6 +13,7 @@
     "lib/**/*",
     "lorien.config.ts",
     "workflows/**/*.test.ts",
+    "workflows/**/_middleware.ts",
     ".lorien/types/**/*"
   ]
 }

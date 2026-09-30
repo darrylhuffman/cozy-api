@@ -43,4 +43,15 @@ describe("built dist via lorien build", () => {
     expect(body.name).toBe("Nori")
     expect(typeof body.id).toBe("number")
   })
+
+  it("runs workflows/_middleware.ts before the route", async () => {
+    const generated = (await import(
+      pathToFileURL(join(distDir, "workflows", "pets", "list.gen.ts")).href
+    )) as { register: (app: Hono) => void }
+    const app = new Hono()
+    generated.register(app)
+    const res = await app.request("/pets")
+    expect(res.status).toBe(200)
+    expect(res.headers.get("x-response-time")).toMatch(/^\d+ms$/)
+  })
 })

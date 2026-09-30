@@ -10,6 +10,8 @@ interface Props {
   tree: TreeKind
   onNewFolder: () => void
   onNewItem: () => void
+  /** Workflows only: adds a `_middleware.ts` to the folder. */
+  onNewMiddleware?: (() => void) | undefined
   /** Set when the menu was opened on a workflow or node file. */
   item?: { name: string } | undefined
   onRename?: () => void
@@ -28,6 +30,7 @@ export function TreeContextMenu({
   tree,
   onNewFolder,
   onNewItem,
+  onNewMiddleware,
   item,
   onRename,
   onDelete,
@@ -57,6 +60,16 @@ export function TreeContextMenu({
         >
           {itemLabel}
         </MenuItem>
+        {onNewMiddleware && (
+          <MenuItem
+            onClick={() => {
+              onOpenChange(false)
+              onNewMiddleware()
+            }}
+          >
+            New middleware…
+          </MenuItem>
+        )}
         {item && (
           <>
             <hr className="-mx-1 my-1 border-border" />

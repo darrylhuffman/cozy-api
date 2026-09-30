@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import {
   importedPackages,
   introspectProviders,
+  parseMiddleware,
   parseProvider,
   providersReadByNode,
 } from "./introspect-providers.js"
@@ -131,6 +132,26 @@ describe("introspectProviders", () => {
 
   it("returns nothing for a project without providers", async () => {
     dir = mkdtempSync(join(tmpdir(), "lorien-introspect-providers-"))
-    expect(await introspectProviders(dir, {})).toEqual({ providers: [], nodes: {} })
+    expect(await introspectProviders(dir, {})).toEqual({ providers: [], middleware: [], nodes: {} })
+  })
+})
+
+describe("parseMiddleware", () => {
+  const known = new Set(["logger", "db"])
+
+  it("reads a single middleware's name and the providers it reads", () => {
+    const src = `export default defineMiddleware({
+      name: "Request log",
+      async run(c, next, { logger }) { await next() },
+    })`
+    expect(parseMiddleware(src, known)).toEqual({ names: ["Request log"], reads: ["logger"] })
+  })
+
+  it("reads an array in run order, unnamed entries as null", () => {
+    const src = `export default [
+      defineMiddleware({ name: "CORS", run: (c, next) => next() }),
+      defineMiddleware({ run: (c, next, providers) => providers.db && next() }),
+    ]`
+    expect(parseMiddleware(src, known)).toEqual({ names: ["CORS", null], reads: ["db"] })
   })
 })

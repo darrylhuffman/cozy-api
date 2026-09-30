@@ -461,3 +461,46 @@ describe("providers in the workspace API", () => {
     expect(readFileSync(join(dir, "providers", "cache.ts"), "utf-8")).toBe("export {}\n")
   })
 })
+
+describe("middleware in the workspace API", () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "lorien-ide-middleware-"))
+    mkdirSync(join(dir, "workflows", "admin"), { recursive: true })
+    writeFileSync(join(dir, "workflows", "admin", "stats.workflow"), "{}\n")
+    writeFileSync(
+      join(dir, "workflows", "admin", "_middleware.ts"),
+      `export default defineMiddleware({ name: "Require admin key", run: (c, next) => next() })\n`,
+    )
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it("lists _middleware.ts beside the workflows it guards", async () => {
+    const { createIdeApp } = await import("./ide.js")
+    const res = await createIdeApp(dir).request("/api/workspace/tree")
+    const tree = (await res.json()) as { workflows: { children: unknown[] } }
+    const admin = tree.workflows.children[0] as { children: { kind: string; path: string }[] }
+    expect(admin.children.map((c) => `${c.kind}:${c.path}`).sort()).toEqual([
+      "middleware:workflows/admin/_middleware.ts",
+      "workflow:workflows/admin/stats.workflow",
+    ])
+  })
+
+  it("reports each middleware's name through /api/workspace/providers", async () => {
+    const { createIdeApp } = await import("./ide.js")
+    const res = await createIdeApp(dir).request("/api/workspace/providers")
+    const json = (await res.json()) as { middleware: unknown[] }
+    expect(json.middleware).toEqual([
+      {
+        dir: "workflows/admin",
+        path: "workflows/admin/_middleware.ts",
+        names: ["Require admin key"],
+        reads: [],
+      },
+    ])
+  })
+})

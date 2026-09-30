@@ -9,12 +9,15 @@ import {
   attachDebugWebSocket,
   type DebugIntegration,
   DebugSession,
+  importMiddleware,
   importNodes,
   installConsoleCapture,
   isLoopbackOriginString,
   type LoadedWorkflow,
   loadProviders,
   loadWorkspace,
+  MIDDLEWARE_FILE,
+  type Middleware,
   mountWorkflows,
   type ProviderContainer,
 } from "@darrylondil/lorien-runtime"
@@ -41,8 +44,11 @@ import {
 import { collectWorkspaceTypes } from "./workspace-types.js"
 
 // ── FileNode types (mirrors packages/ide/src/data/mock-files.ts) ─────────────
-/** "provider" is a top-level `providers/*.ts`; "code" is any other TypeScript file. */
-export type FileKind = "workflow" | "node" | "provider" | "code"
+/**
+ * "provider" is a top-level `providers/*.ts`, "middleware" a `workflows/**\/_middleware.ts`;
+ * "code" is any other TypeScript file.
+ */
+export type FileKind = "workflow" | "node" | "provider" | "middleware" | "code"
 
 export interface FileLeaf {
   type: "file"
@@ -434,12 +440,14 @@ function buildAppForWorkspace(params: {
   loadedWorkflows: LoadedWorkflow[]
   loadedNodes: Record<string, AnyNodeOrTrigger>
   loadedProviders: ProviderContainer
+  middleware: Record<string, Middleware[]>
   debug: DebugIntegration
 }): Hono {
   const app = createIdeApp(params.workspaceRoot)
   mountWorkflows(app, params.loadedWorkflows, {
     nodes: params.loadedNodes,
     providers: params.loadedProviders,
+    middleware: params.middleware,
     debug: params.debug,
     testHooks: true,
   })
@@ -499,6 +507,14 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     console.error(`[lorien] generating provider types failed: ${(e as Error).message}`)
   })
 
+  // ── workflows/**/_middleware.ts ──────────────────────────────────────────
+  const importMiddlewareLogged = async (fresh: boolean) => {
+    const { byDir, errors } = await importMiddleware(workspaceRoot, { fresh })
+    for (const e of errors) console.error(`[lorien] ${e.path}: ${e.message}`)
+    return byDir
+  }
+  let middleware = await importMiddlewareLogged(false)
+
   // ── DebugSession + console capture + DebugIntegration ────────────────────
 
   const debugSession = new DebugSession()
@@ -525,6 +541,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     loadedWorkflows,
     loadedNodes,
     loadedProviders,
+    middleware,
     debug,
   })
 
@@ -552,12 +569,14 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
         for (const e of ws.errors) console.error(`[lorien] ${e.path}: ${e.message}`)
       }
       debugSession.abortAllRuns()
+      middleware = await importMiddlewareLogged(true)
       currentApp = buildAppForWorkspace({
         workspaceRoot,
         ideDistRoot,
         loadedWorkflows: ws.workflows,
         loadedNodes,
         loadedProviders,
+        middleware,
         debug,
       })
       console.log(`lorien IDE: reloaded ${ws.workflows.length} workflow(s)`)
@@ -575,7 +594,10 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     interval: 50,
   })
   workflowWatcher.on("all", (_event, filePath) => {
-    if (typeof filePath === "string" && filePath.endsWith(".workflow")) {
+    if (
+      typeof filePath === "string" &&
+      (filePath.endsWith(".workflow") || MIDDLEWARE_FILE.test(basename(filePath)))
+    ) {
       debouncedReload()
     }
   })
@@ -681,7 +703,8 @@ async function buildFileTree(
         })
       } else {
         // Filter by kind
-        if (kind === "workflow" && !entry.name.endsWith(".workflow")) continue
+        const isMiddleware = kind === "workflow" && MIDDLEWARE_FILE.test(entry.name)
+        if (kind === "workflow" && !entry.name.endsWith(".workflow") && !isMiddleware) continue
         if (kind !== "workflow" && !/\.[mc]?ts$/.test(entry.name)) continue
         result.push({
           type: "file",
@@ -689,8 +712,10 @@ async function buildFileTree(
           name: entry.name,
           // Only top-level files in providers/ are providers; the rest is
           // private code for one of them.
-          kind:
-            kind === "provider" && (absDir !== dir || /\.(test|spec|d)\.[mc]?ts$/.test(entry.name))
+          kind: isMiddleware
+            ? "middleware"
+            : kind === "provider" &&
+                (absDir !== dir || /\.(test|spec|d)\.[mc]?ts$/.test(entry.name))
               ? "code"
               : kind,
           path: relPath.replace(/\\/g, "/"),

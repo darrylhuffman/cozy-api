@@ -1,10 +1,13 @@
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import {
+  findMiddlewareFiles,
   findProviderFiles,
   importLegacyServices,
+  importMiddleware,
   importProviders,
   loadWorkspace,
+  middlewareChain,
   planProviders,
   validateWorkflow,
 } from "@darrylondil/lorien-runtime"
@@ -94,6 +97,16 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
   if (providerInfos.length > 0)
     console.log(`✓ ${providerInfos.length} provider(s) → dist/providers.gen.ts`)
 
+  // workflows/**/_middleware.ts: checked here, imported statically by each route
+  const middleware = await importMiddleware(root)
+  for (const e of middleware.errors) {
+    console.error(`✗ ${e.path}: ${e.message}`)
+    errors.push({ workflow: e.path, message: e.message })
+  }
+  const middlewareFiles = (await findMiddlewareFiles(root)).filter(
+    (f) => middleware.byDir[f.dir] !== undefined,
+  )
+
   // Load workflows
   const ws = await loadWorkspace(root)
   if (ws.errors.length > 0) {
@@ -124,6 +137,7 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
       workflow: wf.file,
       relativePath: basePath,
       perRequestProviders: providersGen.perRequest,
+      middleware: middlewareChain(wf.relativePath, middlewareFiles).map((f) => f.path),
     })
 
     // Slugify directory segments for the output path: [id] -> _id_

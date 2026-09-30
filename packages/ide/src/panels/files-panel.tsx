@@ -7,6 +7,7 @@ import {
   FolderPlus,
   Plug,
   Plus,
+  ShieldCheck,
   WifiOff,
   Workflow,
 } from "lucide-react"
@@ -24,6 +25,7 @@ import { caseSummary, useNodeCases } from "@/store/node-cases"
 import { useProvidersStore, useWorkspaceProviders } from "@/store/providers"
 import { useTabsStore } from "@/store/tabs"
 import { NewFolderDialog } from "@/workflow/new-folder-dialog"
+import { NewMiddlewareDialog } from "@/workflow/new-middleware-dialog"
 import { NewNodeDialog } from "@/workflow/new-node-dialog"
 import { NewProviderDialog } from "@/workflow/new-provider-dialog"
 import { NewWorkflowDialog } from "@/workflow/new-workflow-dialog"
@@ -64,6 +66,7 @@ type DialogKind =
   | "new-workflow"
   | "new-node"
   | "new-provider"
+  | "new-middleware"
   | "new-lib-file"
 
 /** The create dialog behind each section's "+" button. */
@@ -159,6 +162,10 @@ export function FilesPanel() {
         },
         "file.newNode": {
           run: () => openRootDialogRef.current("nodes", "new-node"),
+          enabled: ready,
+        },
+        "file.newMiddleware": {
+          run: () => openRootDialogRef.current("workflows", "new-middleware"),
           enabled: ready,
         },
         "file.newProvider": {
@@ -259,6 +266,7 @@ export function FilesPanel() {
         y={menu.y}
         tree={menu.tree}
         onNewFolder={() => setDialog("new-folder")}
+        {...(menu.tree === "workflows" && { onNewMiddleware: () => setDialog("new-middleware") })}
         onNewItem={() => setDialog(NEW_ITEM_DIALOG[menu.tree])}
         item={menu.item && { name: menu.item.path.split("/").pop() ?? menu.item.path }}
         onRename={() => setRenaming(menu.item ?? null)}
@@ -299,6 +307,17 @@ export function FilesPanel() {
         }}
         defaultFolder={menu.folder}
         nodesTree={nodes}
+      />
+      <NewMiddlewareDialog
+        open={dialog === "new-middleware"}
+        onOpenChange={(o) => !o && setDialog("none")}
+        onCreated={(path) => {
+          refreshTree()
+          void useProvidersStore.getState().refresh()
+          openCodeFile(path)
+        }}
+        defaultFolder={menu.tree === "workflows" ? menu.folder : "workflows"}
+        workflowsTree={workflows}
       />
       <NewProviderDialog
         open={dialog === "new-provider"}
@@ -530,7 +549,14 @@ function Leaf({
   const tabId = isCode ? (node.path ?? node.id) : node.id
   const isActive = activeId === tabId
 
-  const Icon = node.kind === "workflow" ? Workflow : node.kind === "provider" ? Plug : FileCode
+  const Icon =
+    node.kind === "workflow"
+      ? Workflow
+      : node.kind === "provider"
+        ? Plug
+        : node.kind === "middleware"
+          ? ShieldCheck
+          : FileCode
 
   return (
     <button

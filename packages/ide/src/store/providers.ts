@@ -1,6 +1,6 @@
 import { useEffect } from "react"
 import { create } from "zustand"
-import { fetchWorkspaceProviders, type ProviderInfo } from "@/lib/api"
+import { fetchWorkspaceProviders, type MiddlewareInfo, type ProviderInfo } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
 
 /** Wait this long after the last provider or node change before re-reading. */
@@ -8,6 +8,8 @@ export const PROVIDERS_REFRESH_DEBOUNCE_MS = 300
 
 interface ProvidersState {
   providers: ProviderInfo[]
+  /** Every `_middleware.ts`, outermost folder first. */
+  middleware: MiddlewareInfo[]
   /** Node `uses` key → the providers its `run` reads. */
   nodes: Record<string, string[]>
   loaded: boolean
@@ -17,7 +19,7 @@ interface ProvidersState {
 
 let inFlight: Promise<void> | null = null
 
-const INITIAL = { providers: [], nodes: {}, loaded: false, loading: false }
+const INITIAL = { providers: [], middleware: [], nodes: {}, loaded: false, loading: false }
 
 /**
  * The workspace's providers and which nodes read them, shared by the
@@ -32,7 +34,13 @@ export const useProvidersStore = create<ProvidersState>((set) => ({
     inFlight = Promise.resolve()
       .then(fetchWorkspaceProviders)
       .then((r) =>
-        set({ providers: r?.providers ?? [], nodes: r?.nodes ?? {}, loaded: true, loading: false }),
+        set({
+          providers: r?.providers ?? [],
+          middleware: r?.middleware ?? [],
+          nodes: r?.nodes ?? {},
+          loaded: true,
+          loading: false,
+        }),
       )
       .catch(() => {
         // Older server or offline: nothing to show, keep the last good copy.
@@ -59,7 +67,11 @@ function acquireWatcher(): void {
   consumers++
   if (unsubscribe) return
   unsubscribe = subscribeToFileEvents((e) => {
-    if (!e.path.startsWith("providers/") && !e.path.startsWith("nodes/")) return
+    const relevant =
+      e.path.startsWith("providers/") ||
+      e.path.startsWith("nodes/") ||
+      /(^|\/)_middleware\.[mc]?[jt]s$/.test(e.path)
+    if (!relevant) return
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
       timer = null
@@ -91,6 +103,15 @@ export function useWorkspaceProviders(): void {
 export function useProviderAt(path: string): ProviderInfo | undefined {
   useWorkspaceProviders()
   return useProvidersStore((s) => s.providers.find((p) => p.path === path))
+}
+
+/** The middleware guarding a workflow ("workflows/admin/stats.workflow"), outermost first. */
+export function middlewareFor(
+  middleware: readonly MiddlewareInfo[],
+  workflowPath: string,
+): MiddlewareInfo[] {
+  const dir = workflowPath.split("/").slice(0, -1).join("/")
+  return middleware.filter((m) => dir === m.dir || dir.startsWith(`${m.dir}/`))
 }
 
 export const LIFETIME_HELP: Record<ProviderInfo["lifetime"], string> = {

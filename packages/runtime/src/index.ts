@@ -40,6 +40,15 @@ export type { RunWorkflowOptions, WorkflowRunResult } from "./exec/run.js"
 export { runWorkflow } from "./exec/run.js"
 export type { ExecutionPlan } from "./exec/topology.js"
 export { computeExecutionPlan } from "./exec/topology.js"
+export type { DefineMiddlewareInput, Middleware } from "./middleware/define-middleware.js"
+export { defineMiddleware, isMiddleware } from "./middleware/define-middleware.js"
+export type { ImportMiddlewareResult, MiddlewareFile } from "./middleware/load.js"
+export {
+  findMiddlewareFiles,
+  importMiddleware,
+  MIDDLEWARE_FILE,
+  middlewareChain,
+} from "./middleware/load.js"
 // Providers
 export type {
   CreateProviderContainerOptions,

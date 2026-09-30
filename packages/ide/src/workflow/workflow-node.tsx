@@ -1,10 +1,18 @@
 import { Handle, Position } from "@xyflow/react"
-import { AlertTriangle, ChevronDown, ChevronRight, FlaskConical, XCircle } from "lucide-react"
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  FlaskConical,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react"
 import { useState } from "react"
 import { ProviderChip } from "@/code/provider-card"
 import type { JsonSchema, NodeInstance } from "@/lib/api"
+import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
-import { useProvidersStore } from "@/store/providers"
+import { middlewareFor, useProvidersStore } from "@/store/providers"
 import { useSelectionStore } from "@/store/selection"
 import { idFromUses } from "./add-node"
 import type { NodePorts, PortNode } from "./derive-ports"
@@ -208,6 +216,10 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         {issues && issues.length > 0 && <IssueBadge issues={issues} errorCount={errorCount} />}
       </div>
 
+      {instance.uses === "@core/http-request" && workflowPath && (
+        <GuardedBy workflowPath={workflowPath} />
+      )}
+
       <div className="flex flex-col pt-1.5 pb-1">
         {showInputRoot && (
           <PortRow
@@ -247,6 +259,40 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
           <ProviderChip key={name} name={name} className="shrink-0" />
         ))}
       </div>
+    </div>
+  )
+}
+
+/** The `_middleware.ts` that run before this route, outermost first; each opens its file. */
+function GuardedBy({ workflowPath }: { workflowPath: string }) {
+  const all = useProvidersStore((s) => s.middleware)
+  const chain = middlewareFor(all, workflowPath)
+  if (chain.length === 0) return null
+  return (
+    <div
+      data-testid="guarded-by"
+      className="flex flex-wrap items-center gap-1 border-b border-border px-3 py-1.5 text-[10.5px] text-muted-foreground"
+    >
+      <ShieldCheck aria-hidden className="h-3 w-3 shrink-0" />
+      <span>Guarded by</span>
+      {chain.flatMap((m) =>
+        (m.names.length > 0 ? m.names : [null]).map((name, i) => (
+          <button
+            // biome-ignore lint/suspicious/noArrayIndexKey: a file's exports keep their order
+            key={`${m.path}#${i}`}
+            type="button"
+            title={`Open ${m.path}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              openCodeFile(m.path)
+            }}
+            className="nodrag rounded bg-accent px-1.5 py-px text-foreground/85 hover:text-foreground"
+          >
+            {name ??
+              (m.dir === "workflows" ? "_middleware" : `${m.dir.split("/").pop()}/_middleware`)}
+          </button>
+        )),
+      )}
     </div>
   )
 }

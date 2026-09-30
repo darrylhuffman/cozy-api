@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises"
 import { join, relative } from "node:path"
-import { findProviderFiles } from "@darrylondil/lorien-runtime"
+import { findMiddlewareFiles, findProviderFiles } from "@darrylondil/lorien-runtime"
 import * as ts from "typescript"
 
 export type EnvVarStatus = "set" | "default" | "optional" | "missing"
@@ -28,8 +28,21 @@ export interface ProviderInfo {
   usedBy: string[]
 }
 
+export interface MiddlewareInfo {
+  /** The folder it guards, e.g. "workflows/admin". */
+  dir: string
+  /** e.g. "workflows/admin/_middleware.ts". */
+  path: string
+  /** Each exported middleware's `name` (null when unnamed), in run order. */
+  names: (string | null)[]
+  /** Providers its `run` functions read. */
+  reads: string[]
+}
+
 export interface ProvidersIntrospection {
   providers: ProviderInfo[]
+  /** Every `_middleware.ts`, outermost folder first. */
+  middleware: MiddlewareInfo[]
   /** Node `uses` key ("./nodes/pets/add-pet") → provider names its `run` reads. */
   nodes: Record<string, string[]>
 }
@@ -78,7 +91,38 @@ export async function introspectProviders(
         .sort(),
     })
   }
-  return { providers, nodes }
+  const middleware: MiddlewareInfo[] = []
+  for (const f of await findMiddlewareFiles(root)) {
+    const source = await readFile(join(root, f.path), "utf-8")
+    middleware.push({ ...f, ...parseMiddleware(source, names) })
+  }
+  return { providers, middleware, nodes }
+}
+
+/** Names and provider reads of a `_middleware.ts`'s default export (one or an array). */
+export function parseMiddleware(
+  source: string,
+  known: ReadonlySet<string>,
+): Pick<MiddlewareInfo, "names" | "reads"> {
+  const sf = ts.createSourceFile("_middleware.ts", source, ts.ScriptTarget.Latest, true)
+  const exported = sf.statements.find(
+    (st): st is ts.ExportAssignment => ts.isExportAssignment(st) && !st.isExportEquals,
+  )?.expression
+  if (!exported) return { names: [], reads: [] }
+  const items = ts.isArrayLiteralExpression(exported) ? [...exported.elements] : [exported]
+  const names: (string | null)[] = []
+  const reads = new Set<string>()
+  for (const item of items) {
+    const def = defineCallObject(item, "defineMiddleware")
+    const nameProp = def?.properties.find((p) => propName(p) === "name")
+    names.push(
+      nameProp && ts.isPropertyAssignment(nameProp) && ts.isStringLiteralLike(nameProp.initializer)
+        ? nameProp.initializer.text
+        : null,
+    )
+    if (def) for (const r of readsFromRun(def, 2)) reads.add(r)
+  }
+  return { names, reads: [...reads].filter((n) => known.has(n)).sort() }
 }
 
 type ParsedProvider = Omit<ProviderInfo, "name" | "path" | "usedBy">
@@ -152,6 +196,16 @@ export function providersReadByNode(source: string, known: ReadonlySet<string>):
   const sf = ts.createSourceFile("node.ts", source, ts.ScriptTarget.Latest, true)
   const def = defineCallArgument(sf, "defineNode")
   if (!def) return []
+  return readsFromRun(def, 1)
+    .filter((n) => known.has(n))
+    .sort()
+}
+
+/**
+ * Names read from the `paramIndex`th parameter of a definition's `run`:
+ * destructured (`{ db }`) or accessed (`providers.db`).
+ */
+function readsFromRun(def: ts.ObjectLiteralExpression, paramIndex: number): string[] {
   const run = def.properties.find((p) => propName(p) === "run")
   let fn: ts.FunctionLikeDeclaration | undefined
   if (run && ts.isMethodDeclaration(run)) fn = run
@@ -159,7 +213,7 @@ export function providersReadByNode(source: string, known: ReadonlySet<string>):
     const i = run.initializer
     if (ts.isArrowFunction(i) || ts.isFunctionExpression(i)) fn = i
   }
-  const param = fn?.parameters[1]
+  const param = fn?.parameters[paramIndex]
   if (!fn || !param) return []
 
   const used = new Set<string>()
@@ -191,7 +245,7 @@ export function providersReadByNode(source: string, known: ReadonlySet<string>):
     }
     if (fn.body) visit(fn.body)
   }
-  return [...used].filter((n) => known.has(n)).sort()
+  return [...used]
 }
 
 /** Bare package specifiers a file imports (`pg`, `@scope/pkg`), minus Node built-ins and lorien. */
@@ -216,16 +270,24 @@ function defineCallArgument(
 ): ts.ObjectLiteralExpression | undefined {
   for (const stmt of sf.statements) {
     if (!ts.isExportAssignment(stmt) || stmt.isExportEquals) continue
-    const e = stmt.expression
-    if (
-      ts.isCallExpression(e) &&
-      ts.isIdentifier(e.expression) &&
-      e.expression.text === callee &&
-      e.arguments[0] &&
-      ts.isObjectLiteralExpression(e.arguments[0])
-    ) {
-      return e.arguments[0]
-    }
+    return defineCallObject(stmt.expression, callee)
+  }
+  return undefined
+}
+
+/** The object literal in `callee({ ... })`. */
+function defineCallObject(
+  e: ts.Expression,
+  callee: string,
+): ts.ObjectLiteralExpression | undefined {
+  if (
+    ts.isCallExpression(e) &&
+    ts.isIdentifier(e.expression) &&
+    e.expression.text === callee &&
+    e.arguments[0] &&
+    ts.isObjectLiteralExpression(e.arguments[0])
+  ) {
+    return e.arguments[0]
   }
   return undefined
 }
