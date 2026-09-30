@@ -1,6 +1,6 @@
 import { Plus, Settings, Sparkles } from "lucide-react"
 import { useEffect, useState } from "react"
-import { showAgents } from "@/ai/ask"
+import { toggleAgents } from "@/ai/ask"
 import {
   Menubar,
   MenubarCheckboxItem,
@@ -19,6 +19,7 @@ import {
 import { PANE_IDS, PANE_TITLES, type PaneId, reopenPanel } from "@/layout/default-layout"
 import { fetchWorkspaceInfo } from "@/lib/api"
 import { isThemeId, THEMES } from "@/lib/themes"
+import { cn } from "@/lib/utils"
 import { EnvironmentPicker } from "@/panels/run-tab/environment-picker"
 import { type CommandId, runCommand, useCommandEnabled } from "@/store/commands"
 import { confirmAction } from "@/store/confirm"
@@ -220,8 +221,13 @@ export function Topbar() {
         <EnvironmentPicker />
         <button
           type="button"
-          onClick={showAgents}
-          className="flex h-7 items-center gap-1.5 rounded-lg bg-ai/15 px-2.5 text-[13px] font-medium text-ai hover:bg-ai/25"
+          onClick={toggleAgents}
+          aria-pressed={isPaneOpen("agents")}
+          title={isPaneOpen("agents") ? "Hide the Agents panel" : "Show the Agents panel"}
+          className={cn(
+            "flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-ai",
+            isPaneOpen("agents") ? "bg-ai/30 hover:bg-ai/35" : "bg-ai/15 hover:bg-ai/25",
+          )}
         >
           <Sparkles className="h-3.5 w-3.5" />
           Agents

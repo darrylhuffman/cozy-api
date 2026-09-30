@@ -8,6 +8,7 @@ import {
   type IDockviewPanelProps,
 } from "dockview-react"
 import { useCallback } from "react"
+import { AgentsPanel } from "@/panels/agents/agents-panel"
 import { DebugPanel } from "@/panels/debug-panel"
 import { EditorPanel } from "@/panels/editor-panel"
 import { FilesPanel } from "@/panels/files-panel"
@@ -21,6 +22,11 @@ const components = {
   editor: (_props: IDockviewPanelProps) => <EditorPanel />,
   inspector: (_props: IDockviewPanelProps) => <InspectorPanel />,
   debug: (_props: IDockviewPanelProps) => <DebugPanel />,
+  agents: (_props: IDockviewPanelProps) => (
+    <div className="h-full bg-card">
+      <AgentsPanel />
+    </div>
+  ),
 }
 
 /**
@@ -36,9 +42,10 @@ function syncEditorHeader(api: DockviewApi): void {
 
 // Hide the per-tab X on the outer dockview group tabs — those panels
 // (Explorer / Editor / Inspector / Debug) are always-on and re-organizable,
-// not closeable. File tabs inside the editor keep their own close UX.
+// not closeable. Agents opens on demand, so it keeps its X. File tabs inside
+// the editor keep their own close UX.
 function NoCloseTab(props: IDockviewPanelHeaderProps) {
-  return <DockviewDefaultTab {...props} hideClose />
+  return <DockviewDefaultTab {...props} hideClose={props.api.id !== "agents"} />
 }
 
 export function DockView() {
