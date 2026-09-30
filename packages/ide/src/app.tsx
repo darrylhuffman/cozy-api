@@ -1,4 +1,5 @@
 import { ConfirmDialogHost } from "@/components/confirm-dialog-host"
+import { SettingsDialogHost } from "@/components/settings-dialog"
 import { StatusBar } from "@/components/status-bar"
 import { Topbar } from "@/components/topbar"
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard"
@@ -14,6 +15,7 @@ export function App() {
       </div>
       <StatusBar />
       <ConfirmDialogHost />
+      <SettingsDialogHost />
     </div>
   )
 }

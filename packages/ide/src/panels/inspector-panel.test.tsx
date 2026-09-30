@@ -134,7 +134,7 @@ describe("InspectorPanel — InspectContent", () => {
       },
     })
     useSelectionStore.setState({ selectedNodeId: "save" })
-    render(<InspectorPanel />)
+    const { container } = render(<InspectorPanel />)
 
     await waitFor(() => {
       // The color text label appears next to the swatch
@@ -142,7 +142,7 @@ describe("InspectorPanel — InspectContent", () => {
     })
 
     // The swatch span has the background style set
-    const swatch = document.querySelector<HTMLElement>('[style*="background"]')
+    const swatch = container.querySelector<HTMLElement>('[style*="background"]')
     expect(swatch).not.toBeNull()
     // jsdom normalises hex to rgb — just verify an inline style exists
     expect(swatch?.style.background).toBeTruthy()

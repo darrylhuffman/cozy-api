@@ -1,7 +1,8 @@
 import Editor from "@monaco-editor/react"
 import { defineMonacoThemes, monacoThemeName } from "@/lib/monaco-theme"
 import { useDebugSessionStore } from "@/store/debug-session"
-import { useThemeStore } from "@/store/theme"
+import { useSettings } from "@/store/settings"
+import { useActiveTheme } from "@/store/theme"
 import { KeyValueGrid } from "./key-value-grid"
 
 const LANGUAGE_BY_KIND: Record<"json" | "xml" | "text", string> = {
@@ -15,7 +16,8 @@ export function BodyEditor() {
   const body = useDebugSessionStore((s) => s.requestForm.body)
   const formBody = useDebugSessionStore((s) => s.requestForm.formBody)
   const setRequestForm = useDebugSessionStore((s) => s.setRequestForm)
-  const theme = useThemeStore((s) => s.theme)
+  const theme = useActiveTheme()
+  const fontSize = useSettings((s) => s.editorFontSize)
 
   if (bodyKind === "none") return null
 
@@ -37,12 +39,12 @@ export function BodyEditor() {
         height={160}
         defaultLanguage={LANGUAGE_BY_KIND[bodyKind as "json" | "xml" | "text"]}
         value={body}
-        theme={monacoThemeName(theme === "dark" ? "dark" : "light")}
+        theme={monacoThemeName(theme)}
         beforeMount={defineMonacoThemes}
         onChange={(v) => setRequestForm((c) => ({ ...c, body: v ?? "" }))}
         options={{
           minimap: { enabled: false },
-          fontSize: 13,
+          fontSize,
           fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
           scrollBeyondLastLine: false,
           automaticLayout: true,
