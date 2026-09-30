@@ -43,6 +43,17 @@ test("edits input values on the node card, one undo step per edit", async ({ ide
   await expect(ide.getByTestId("input-chip-path")).toHaveText("/people")
 })
 
+test("the Delete key removes the selected node, and undo brings it back", async ({ ide }) => {
+  await openCreateUser(ide)
+  const nodes = ide.locator('[data-testid="node-header"]')
+  const before = await nodes.count()
+  await nodes.first().click()
+  await ide.keyboard.press("Delete")
+  await expect(nodes).toHaveCount(before - 1)
+  await ide.getByRole("button", { name: "Undo" }).click()
+  await expect(nodes).toHaveCount(before)
+})
+
 test("shows the keyboard shortcuts dialog", async ({ ide }) => {
   await openCreateUser(ide)
   await ide.getByRole("button", { name: "Keyboard shortcuts" }).click()

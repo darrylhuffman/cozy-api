@@ -214,3 +214,33 @@ body,
   border-color: var(--primary);
   border-width: 2px;
 }
+
+/* React Flow ships its own light/dark palette (neutral greys such as #141414).
+   Point it at the theme tokens so the canvas matches the rest of the editor. */
+.react-flow {
+  --xy-background-color: var(--background);
+  --xy-background-pattern-dots-color: var(--canvas-dot);
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-selected: var(--primary);
+  --xy-connectionline-stroke: var(--primary);
+  --xy-edge-label-background-color: var(--popover);
+  --xy-edge-label-color: var(--foreground);
+  --xy-controls-button-background-color: var(--popover);
+  --xy-controls-button-background-color-hover: var(--accent);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+  --xy-minimap-background-color: var(--card);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--background) 55%, transparent);
+  --xy-minimap-node-background-color: var(--input);
+  --xy-minimap-node-stroke-color: transparent;
+  --xy-selection-background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+  --xy-selection-border: 1px dashed var(--primary);
+  --xy-attribution-background-color: transparent;
+}
+.react-flow__controls {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}

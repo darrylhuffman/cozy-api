@@ -81,6 +81,9 @@ interface Props {
 // WorkflowNode accepts { data: Record<string, unknown> } which is compatible
 // at runtime with what React Flow passes, but TypeScript's strict generics
 // can't verify that without the full Node extension. The cast is safe.
+/** Delete or Backspace removes the selected nodes and edges. */
+const DELETE_KEYS = ["Delete", "Backspace"]
+
 const nodeTypes: NodeTypes = { workflow: WorkflowNode as NodeTypes[string] }
 const edgeTypes: EdgeTypes = { path: PathEdge as EdgeTypes[string] }
 
@@ -1271,6 +1274,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
             onNodesChange={onNodesChange}
             onConnect={onConnect}
             onNodesDelete={onNodesDelete}
+            deleteKeyCode={DELETE_KEYS}
             onEdgesDelete={onEdgesDelete}
             onReconnectStart={onReconnectStart}
             onReconnect={onReconnect}
