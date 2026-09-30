@@ -25,6 +25,11 @@ const DEFAULT_BUDGET = 24 * 1024 * 1024
 
 const DECLARATION = /\.d\.(ts|mts|cts)$/
 
+const SOURCE = /\.(ts|mts|cts)$/
+
+/** Top-level folders whose sources are not shared code for node files. */
+const SKIPPED_SOURCE_DIRS = new Set(["nodes", "workflows", "dist", "build", "coverage"])
+
 /**
  * Collects the declaration files the code editor needs to type-check node
  * sources the way `tsc` would: every package the workspace depends on (and
@@ -46,6 +51,19 @@ export async function collectWorkspaceTypes(
     const content = await readFile(abs, "utf-8")
     used += content.length
     files.push({ path: toPosix(relative(root, abs)), content })
+  }
+
+  // The project's own shared sources (src/db.ts, src/schemas.ts, …) so node
+  // files can import them. Nodes and workflows are left out: the editor opens
+  // those as models, and a second copy under the same path would clash.
+  for (const abs of await walk(root, SOURCE)) {
+    const path = toPosix(relative(root, abs))
+    const top = path.split("/")[0] ?? ""
+    if (path.split("/").length > 1 && SKIPPED_SOURCE_DIRS.has(top)) continue
+    if (/\.(test|spec)\.[cm]?ts$/.test(path)) continue
+    const content = await readFile(abs, "utf-8")
+    used += content.length
+    files.push({ path, content })
   }
 
   const rootPkg = await readJson(join(root, "package.json"))

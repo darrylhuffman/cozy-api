@@ -17,7 +17,7 @@ test("keeps unsaved edits when switching tabs, and undo restores the graph", asy
   await expect(ide.getByText(/Unsaved changes/)).toBeVisible()
 
   // Away to another workflow and back: the duplicate is still there.
-  await ide.getByRole("button", { name: "get.workflow" }).click()
+  await ide.getByRole("button", { name: "list.workflow" }).click()
   await expect(ide.getByText(/Unsaved changes/)).toBeHidden()
   await ide.getByRole("button", { name: /^add\.workflow\s*•$/ }).click()
   await expect(nodes).toHaveCount(before + 1)
@@ -100,22 +100,22 @@ test("overflowing workflow tabs scroll with arrows instead of a scrollbar", asyn
 })
 
 test("tabs reorder by drag and close from a right-click menu", async ({ ide }) => {
-  await ide.getByRole("button", { name: "get.workflow" }).click()
-  await ide.getByRole("button", { name: "save-user.ts" }).click()
-  await ide.getByRole("button", { name: "test.ts" }).click()
+  await ide.getByRole("button", { name: "list.workflow" }).click()
+  await ide.getByRole("button", { name: "add-pet.ts" }).click()
+  await ide.getByRole("button", { name: "find-pet.ts" }).click()
   const strip = ide.getByTestId("editor-tab-strip")
   const order = () =>
     strip.locator("[data-tab-id]").evaluateAll((els) => els.map((e) => e.textContent?.trim()))
-  await expect.poll(order).toEqual(["get.workflow", "save-user.ts", "test.ts"])
+  await expect.poll(order).toEqual(["list.workflow", "add-pet.ts", "find-pet.ts"])
 
-  // Drag test.ts in front of get.workflow.
+  // Drag find-pet.ts in front of list.workflow.
   const first = strip.locator("[data-tab-id]").first()
-  await strip.getByRole("button", { name: "test.ts", exact: true }).dragTo(first, {
+  await strip.getByRole("button", { name: "find-pet.ts", exact: true }).dragTo(first, {
     targetPosition: { x: 4, y: 10 },
   })
-  await expect.poll(order).toEqual(["test.ts", "get.workflow", "save-user.ts"])
+  await expect.poll(order).toEqual(["find-pet.ts", "list.workflow", "add-pet.ts"])
 
-  await strip.getByRole("button", { name: "get.workflow", exact: true }).click({ button: "right" })
+  await strip.getByRole("button", { name: "list.workflow", exact: true }).click({ button: "right" })
   await ide.getByRole("menuitem", { name: "Close others" }).click()
-  await expect.poll(order).toEqual(["get.workflow"])
+  await expect.poll(order).toEqual(["list.workflow"])
 })
