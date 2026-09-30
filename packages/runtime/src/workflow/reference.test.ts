@@ -20,6 +20,15 @@ describe("parseReference", () => {
     expect(parseReference("foo..bar")).toBeNull()
   })
 
+  it("accepts dashes in fields, for header names, but not in the node id", () => {
+    expect(parseReference("Request.headers.x-api-key")).toEqual({
+      nodeId: "Request",
+      path: ["headers", "x-api-key"],
+    })
+    expect(parseReference("my-node.value")).toBeNull()
+    expect(parseReference("Request.headers.-x")).toBeNull()
+  })
+
   it("accepts identifiers with $ and _", () => {
     expect(parseReference("$root.user_id")).toEqual({
       nodeId: "$root",

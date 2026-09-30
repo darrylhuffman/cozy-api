@@ -86,6 +86,24 @@ describe("mountWorkflows", () => {
     expect(empty.status).toBe(200)
   })
 
+  it("reads a header with a dash in its name", async () => {
+    const wf: LoadedWorkflow = {
+      absolutePath: "/fake/workflows/key.workflow",
+      relativePath: "key.workflow",
+      file: parseWorkflow({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/key", method: "GET" } },
+          res: { uses: "@core/response", in: { body: "req.headers.x-api-key" } },
+        },
+      }),
+    }
+    const app = new Hono()
+    mountWorkflows(app, [wf], { nodes: {}, services: {} })
+    const res = await app.request("/key", { headers: { "X-Api-Key": "k1" } })
+    expect(await res.json()).toBe("k1")
+  })
+
   it("registers multiple triggers in a single workflow as independent routes", async () => {
     const wf: LoadedWorkflow = {
       absolutePath: "/fake/users.workflow",

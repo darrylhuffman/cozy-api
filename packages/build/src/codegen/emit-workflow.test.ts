@@ -176,6 +176,20 @@ describe("emitWorkflow — handler shape", () => {
 })
 
 describe("emitWorkflow — input value resolution", () => {
+  it("reads a dashed field (a header name) with bracket access", () => {
+    const { source } = emitWorkflow({
+      workflow: parseWorkflow({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
+          res: { uses: "@core/response", in: { body: "req.headers.x-api-key" } },
+        },
+      }),
+      relativePath: "x",
+    })
+    expect(source).toContain(`req_outputs?.headers?.["x-api-key"]`)
+  })
+
   it("resolves a reference string into <nodeId>_outputs.field", () => {
     const { source } = emitWorkflow({
       workflow: wf({

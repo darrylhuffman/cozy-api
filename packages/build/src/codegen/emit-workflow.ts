@@ -599,7 +599,7 @@ function renderRanExpr(ctx: RunContext, nodeId: string): string {
     .map(ranVar)
   const when = inst.when !== undefined ? parseWhen(inst.when) : null
   if (when) {
-    const chain = outputsVar(when.ref.nodeId) + when.ref.path.map((seg) => `?.${seg}`).join("")
+    const chain = outputsVar(when.ref.nodeId) + accessChain(when.ref.path)
     parts.push(when.negate ? `!${chain}` : `Boolean(${chain})`)
   }
   return parts.length > 0 ? parts.join(" && ") : "true"
@@ -762,7 +762,14 @@ function renderReferenceValue(raw: unknown): string {
   if (path.length === 0) return base
   // Optional chaining, like the interpreter: a missing body or field reads as
   // undefined and fails the node's input schema instead of throwing.
-  return base + path.map((seg) => `?.${seg}`).join("")
+  return base + accessChain(path)
+}
+
+/** `?.a?.b`, with `?.["x-api-key"]` for a field that isn't a JS identifier. */
+function accessChain(path: string[]): string {
+  return path
+    .map((seg) => (/^[a-zA-Z_$][\w$]*$/.test(seg) ? `?.${seg}` : `?.[${JSON.stringify(seg)}]`))
+    .join("")
 }
 
 /**
