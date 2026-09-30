@@ -119,3 +119,14 @@ test("tabs reorder by drag and close from a right-click menu", async ({ ide }) =
   await ide.getByRole("menuitem", { name: "Close others" }).click()
   await expect.poll(order).toEqual(["list.workflow"])
 })
+
+test("Settings switches the theme for the chrome and the canvas", async ({ ide: page }) => {
+  await openAddPet(page)
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  await page.getByRole("radio", { name: "Dracula" }).click()
+  await page.keyboard.press("Escape")
+  // React Flow tags the canvas with its own .dark class; the theme must still reach it.
+  await expect(page.locator(".react-flow")).toHaveCSS("background-color", "rgb(40, 42, 54)")
+  await page.reload()
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dracula")
+})

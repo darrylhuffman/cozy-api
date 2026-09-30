@@ -1,4 +1,4 @@
-import { Moon, Plus, Sparkles, Sun } from "lucide-react"
+import { Plus, Settings, Sparkles } from "lucide-react"
 import { useEffect, useState } from "react"
 import { showAgents } from "@/ai/ask"
 import {
@@ -7,6 +7,8 @@ import {
   MenubarContent,
   MenubarItem,
   MenubarMenu,
+  MenubarRadioGroup,
+  MenubarRadioItem,
   MenubarSeparator,
   MenubarShortcut,
   MenubarSub,
@@ -16,10 +18,12 @@ import {
 } from "@/components/ui/menubar"
 import { PANE_IDS, PANE_TITLES, type PaneId, reopenPanel } from "@/layout/default-layout"
 import { fetchWorkspaceInfo } from "@/lib/api"
+import { isThemeId, THEMES } from "@/lib/themes"
 import { EnvironmentPicker } from "@/panels/run-tab/environment-picker"
 import { type CommandId, runCommand, useCommandEnabled } from "@/store/commands"
 import { confirmAction } from "@/store/confirm"
 import { useDockviewApi } from "@/store/dockview-api"
+import { openSettings } from "@/store/settings"
 import { useThemeStore } from "@/store/theme"
 import { MOD } from "@/workflow/shortcuts-dialog"
 
@@ -28,7 +32,7 @@ const TABS_KEY = "lorien-ide-tabs"
 
 export function Topbar() {
   const theme = useThemeStore((s) => s.theme)
-  const toggle = useThemeStore((s) => s.toggle)
+  const setTheme = useThemeStore((s) => s.setTheme)
   const api = useDockviewApi((s) => s.api)
   const [workspace, setWorkspace] = useState<string | null>(null)
   const canAddNode = useCommandEnabled("canvas.addNode")
@@ -106,6 +110,11 @@ export function Topbar() {
               <CommandItem id="file.save" shortcut={`${MOD}+S`}>
                 Save
               </CommandItem>
+              <MenubarSeparator />
+              <MenubarItem className="text-xs" onClick={openSettings}>
+                Settings…
+                <MenubarShortcut>{MOD}+,</MenubarShortcut>
+              </MenubarItem>
             </MenubarContent>
           </MenubarMenu>
           <MenubarMenu>
@@ -134,9 +143,27 @@ export function Topbar() {
               </CommandItem>
               <CommandItem id="canvas.tidy">Tidy layout</CommandItem>
               <MenubarSeparator />
-              <MenubarItem className="text-xs" onClick={toggle}>
-                {theme === "dark" ? "Light theme" : "Dark theme"}
-              </MenubarItem>
+              <MenubarSub>
+                <MenubarSubTrigger className="text-xs">Theme</MenubarSubTrigger>
+                <MenubarSubContent>
+                  <MenubarRadioGroup
+                    value={theme}
+                    onValueChange={(v) => {
+                      if (v === "system" || isThemeId(v)) setTheme(v)
+                    }}
+                  >
+                    <MenubarRadioItem className="text-xs" value="system">
+                      Match system
+                    </MenubarRadioItem>
+                    <MenubarSeparator />
+                    {THEMES.map((t) => (
+                      <MenubarRadioItem key={t.id} className="text-xs" value={t.id}>
+                        {t.label}
+                      </MenubarRadioItem>
+                    ))}
+                  </MenubarRadioGroup>
+                </MenubarSubContent>
+              </MenubarSub>
               <CommandItem id="help.shortcuts" shortcut="?">
                 Keyboard shortcuts
               </CommandItem>
@@ -187,7 +214,7 @@ export function Topbar() {
         <kbd className="rounded border border-input px-1.5 font-mono text-[10.5px]">{MOD}+K</kbd>
       </button>
 
-      {/* Right: environment, agents, theme */}
+      {/* Right: environment, agents, settings */}
       <div className="flex items-center gap-2">
         <EnvironmentPicker />
         <button
@@ -200,11 +227,12 @@ export function Topbar() {
         </button>
         <button
           type="button"
-          onClick={toggle}
-          aria-label="Toggle theme"
+          onClick={openSettings}
+          aria-label="Settings"
+          title={`Settings (${MOD}+,)`}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground"
         >
-          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          <Settings className="h-4 w-4" />
         </button>
       </div>
     </header>

@@ -123,6 +123,7 @@ vi.mock("@xyflow/react", () => ({
     fitView: () => Promise.resolve(true),
   }),
   Background: () => <div data-testid="rf-background" />,
+  BackgroundVariant: { Dots: "dots", Lines: "lines", Cross: "cross" },
   Controls: () => <div data-testid="rf-controls" />,
   MiniMap: () => <div data-testid="rf-minimap" />,
   Handle: () => null,

@@ -1,0 +1,367 @@
+/**
+ * The IDE's colour themes. Each theme is a palette of the app's tokens
+ * (the CSS variables in globals.css) plus syntax colours for Monaco, so one
+ * entry themes the chrome, the React Flow canvas and the code editors.
+ *
+ * "dark" and "light" are lorien's own themes and mirror globals.css; the rest
+ * are based on popular VS Code themes.
+ */
+
+export type ThemeMode = "light" | "dark"
+
+export interface ThemePalette {
+  /** Page and canvas background; also the code editor background. */
+  background: string
+  /** Side panels, title bar, status bar. */
+  card: string
+  /** Menus, popovers, dialogs. */
+  popover: string
+  /** Quiet fills (inputs, chips). */
+  muted: string
+  /** Hover / selected fills. */
+  accent: string
+  foreground: string
+  mutedForeground: string
+  border: string
+  input: string
+  primary: string
+  primaryForeground: string
+  destructive: string
+  success: string
+  warning: string
+  info: string
+  ai: string
+  canvasDot: string
+}
+
+export interface ThemeSyntax {
+  comment: string
+  keyword: string
+  string: string
+  number: string
+  type: string
+  /** Object keys in JSON bodies. */
+  key: string
+  regexp: string
+  operator: string
+}
+
+export interface ThemeDef {
+  id: string
+  label: string
+  /** Where the palette comes from, shown under the name in Settings. */
+  basedOn?: string
+  mode: ThemeMode
+  palette: ThemePalette
+  /** Omitted for lorien's own themes, which keep Monaco's default token colours. */
+  syntax?: ThemeSyntax
+}
+
+export const THEMES = [
+  {
+    id: "dark",
+    label: "Lorien Dark",
+    mode: "dark",
+    palette: {
+      background: "#0e1116",
+      card: "#14181f",
+      popover: "#1a1f27",
+      muted: "#1a1f27",
+      accent: "#222833",
+      foreground: "#e8ecf2",
+      mutedForeground: "#8a94a3",
+      border: "#232a34",
+      input: "#313946",
+      primary: "#e3b95e",
+      primaryForeground: "#1b1406",
+      destructive: "#f4776a",
+      success: "#63cb8d",
+      warning: "#f7944a",
+      info: "#74adff",
+      ai: "#bba2ff",
+      canvasDot: "#242b36",
+    },
+  },
+  {
+    id: "light",
+    label: "Lorien Light",
+    mode: "light",
+    palette: {
+      background: "#f3f5f8",
+      card: "#ffffff",
+      popover: "#ffffff",
+      muted: "#eceff4",
+      accent: "#e4e8ee",
+      foreground: "#161a21",
+      mutedForeground: "#5e6878",
+      border: "#dfe3ea",
+      input: "#cdd3dd",
+      primary: "#8a5f0a",
+      primaryForeground: "#ffffff",
+      destructive: "#c0392b",
+      success: "#1d7a45",
+      warning: "#b4530f",
+      info: "#1e5fc9",
+      ai: "#6b46d6",
+      canvasDot: "#d6dbe3",
+    },
+  },
+  {
+    id: "one-dark-pro",
+    label: "One Dark Pro",
+    basedOn: "Atom's One Dark",
+    mode: "dark",
+    palette: {
+      background: "#282c34",
+      card: "#21252b",
+      popover: "#2c313a",
+      muted: "#2c313a",
+      accent: "#353b45",
+      foreground: "#d7dae0",
+      mutedForeground: "#8b929e",
+      border: "#181a1f",
+      input: "#3e4452",
+      primary: "#61afef",
+      primaryForeground: "#1b1f27",
+      destructive: "#e06c75",
+      success: "#98c379",
+      warning: "#d19a66",
+      info: "#56b6c2",
+      ai: "#c678dd",
+      canvasDot: "#363b45",
+    },
+    syntax: {
+      comment: "#7f848e",
+      keyword: "#c678dd",
+      string: "#98c379",
+      number: "#d19a66",
+      type: "#e5c07b",
+      key: "#e06c75",
+      regexp: "#56b6c2",
+      operator: "#56b6c2",
+    },
+  },
+  {
+    id: "dracula",
+    label: "Dracula",
+    mode: "dark",
+    palette: {
+      background: "#282a36",
+      card: "#21222c",
+      popover: "#343746",
+      muted: "#2f3140",
+      accent: "#44475a",
+      foreground: "#f8f8f2",
+      mutedForeground: "#9aa1c4",
+      border: "#191a21",
+      input: "#44475a",
+      primary: "#bd93f9",
+      primaryForeground: "#21222c",
+      destructive: "#ff5555",
+      success: "#50fa7b",
+      warning: "#ffb86c",
+      info: "#8be9fd",
+      ai: "#ff79c6",
+      canvasDot: "#3b3d4f",
+    },
+    syntax: {
+      comment: "#6272a4",
+      keyword: "#ff79c6",
+      string: "#f1fa8c",
+      number: "#bd93f9",
+      type: "#8be9fd",
+      key: "#8be9fd",
+      regexp: "#ff5555",
+      operator: "#ff79c6",
+    },
+  },
+  {
+    id: "tokyo-night",
+    label: "Tokyo Night",
+    mode: "dark",
+    palette: {
+      background: "#1a1b26",
+      card: "#16161e",
+      popover: "#1f2335",
+      muted: "#1f2335",
+      accent: "#292e42",
+      foreground: "#c0caf5",
+      mutedForeground: "#7f86ad",
+      border: "#101014",
+      input: "#3b4261",
+      primary: "#7aa2f7",
+      primaryForeground: "#16161e",
+      destructive: "#f7768e",
+      success: "#9ece6a",
+      warning: "#ff9e64",
+      info: "#7dcfff",
+      ai: "#bb9af7",
+      canvasDot: "#292e42",
+    },
+    syntax: {
+      comment: "#565f89",
+      keyword: "#bb9af7",
+      string: "#9ece6a",
+      number: "#ff9e64",
+      type: "#2ac3de",
+      key: "#7aa2f7",
+      regexp: "#b4f9f8",
+      operator: "#89ddff",
+    },
+  },
+  {
+    id: "nord",
+    label: "Nord",
+    mode: "dark",
+    palette: {
+      background: "#2e3440",
+      card: "#292e39",
+      popover: "#3b4252",
+      muted: "#3b4252",
+      accent: "#434c5e",
+      foreground: "#eceff4",
+      mutedForeground: "#9aa3b5",
+      border: "#232831",
+      input: "#4c566a",
+      primary: "#88c0d0",
+      primaryForeground: "#2e3440",
+      destructive: "#bf616a",
+      success: "#a3be8c",
+      warning: "#d08770",
+      info: "#81a1c1",
+      ai: "#b48ead",
+      canvasDot: "#3b4252",
+    },
+    syntax: {
+      comment: "#616e88",
+      keyword: "#81a1c1",
+      string: "#a3be8c",
+      number: "#b48ead",
+      type: "#8fbcbb",
+      key: "#8fbcbb",
+      regexp: "#ebcb8b",
+      operator: "#81a1c1",
+    },
+  },
+  {
+    id: "github-light",
+    label: "GitHub Light",
+    mode: "light",
+    palette: {
+      background: "#f6f8fa",
+      card: "#ffffff",
+      popover: "#ffffff",
+      muted: "#f6f8fa",
+      accent: "#eaeef2",
+      foreground: "#1f2328",
+      mutedForeground: "#59636e",
+      border: "#d8dee4",
+      input: "#d0d7de",
+      primary: "#0969da",
+      primaryForeground: "#ffffff",
+      destructive: "#cf222e",
+      success: "#1a7f37",
+      warning: "#9a6700",
+      info: "#0969da",
+      ai: "#8250df",
+      canvasDot: "#d0d7de",
+    },
+    syntax: {
+      comment: "#6e7781",
+      keyword: "#cf222e",
+      string: "#0a3069",
+      number: "#0550ae",
+      type: "#953800",
+      key: "#0550ae",
+      regexp: "#116329",
+      operator: "#cf222e",
+    },
+  },
+  {
+    id: "solarized-light",
+    label: "Solarized Light",
+    mode: "light",
+    palette: {
+      background: "#fdf6e3",
+      card: "#f5efdc",
+      popover: "#fffbf0",
+      muted: "#eee8d5",
+      accent: "#e8e1ca",
+      foreground: "#3f555c",
+      mutedForeground: "#6c7f84",
+      border: "#e3dcc6",
+      input: "#d3cbb3",
+      primary: "#268bd2",
+      primaryForeground: "#fdf6e3",
+      destructive: "#dc322f",
+      success: "#859900",
+      warning: "#cb4b16",
+      info: "#2aa198",
+      ai: "#6c71c4",
+      canvasDot: "#e6dec6",
+    },
+    syntax: {
+      comment: "#93a1a1",
+      keyword: "#859900",
+      string: "#2aa198",
+      number: "#d33682",
+      type: "#b58900",
+      key: "#268bd2",
+      regexp: "#dc322f",
+      operator: "#859900",
+    },
+  },
+] as const satisfies readonly ThemeDef[]
+
+export type ThemeId = (typeof THEMES)[number]["id"]
+
+export const DEFAULT_DARK: ThemeId = "dark"
+export const DEFAULT_LIGHT: ThemeId = "light"
+
+const BY_ID = new Map<string, ThemeDef>(THEMES.map((t) => [t.id, t]))
+
+export function isThemeId(value: unknown): value is ThemeId {
+  return typeof value === "string" && BY_ID.has(value)
+}
+
+export function getTheme(id: ThemeId): ThemeDef {
+  return BY_ID.get(id) ?? (BY_ID.get(DEFAULT_DARK) as ThemeDef)
+}
+
+/** The CSS variables a theme sets on <html>; names match globals.css. */
+export function themeCssVars(t: ThemeDef): Record<string, string> {
+  const p = t.palette
+  return {
+    "--background": p.background,
+    "--foreground": p.foreground,
+    "--card": p.card,
+    "--card-foreground": p.foreground,
+    "--popover": p.popover,
+    "--popover-foreground": p.foreground,
+    "--primary": p.primary,
+    "--primary-foreground": p.primaryForeground,
+    "--secondary": p.accent,
+    "--secondary-foreground": p.foreground,
+    "--muted": p.muted,
+    "--muted-foreground": p.mutedForeground,
+    "--accent": p.accent,
+    "--accent-foreground": p.foreground,
+    "--destructive": p.destructive,
+    "--border": p.border,
+    "--input": p.input,
+    "--ring": p.primary,
+    "--success": p.success,
+    "--warning": p.warning,
+    "--info": p.info,
+    "--ai": p.ai,
+    "--canvas-dot": p.canvasDot,
+    "--sidebar": p.card,
+    "--sidebar-foreground": p.foreground,
+    "--sidebar-primary": p.primary,
+    "--sidebar-primary-foreground": p.primaryForeground,
+    "--sidebar-accent": p.accent,
+    "--sidebar-accent-foreground": p.foreground,
+    "--sidebar-border": p.border,
+    "--sidebar-ring": p.primary,
+  }
+}

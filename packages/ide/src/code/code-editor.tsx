@@ -7,8 +7,9 @@ import { defineMonacoThemes, monacoThemeName } from "@/lib/monaco-theme"
 import { setupWorkspaceTypes } from "@/lib/monaco-types"
 import { isCodeDraftDirty, useCodeDrafts } from "@/store/code-drafts"
 import { useCommands } from "@/store/commands"
+import { useSettings } from "@/store/settings"
 import { useTabsStore } from "@/store/tabs"
-import { useThemeStore } from "@/store/theme"
+import { useActiveTheme } from "@/store/theme"
 
 interface Props {
   /** API path like "nodes/parse-credentials.ts" */
@@ -28,7 +29,11 @@ export function CodeEditor({ path, tabId }: Props) {
   const [status, setStatus] = useState<Status>("idle")
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [deletedOnDisk, setDeletedOnDisk] = useState(false)
-  const theme = useThemeStore((s) => s.theme)
+  const theme = useActiveTheme()
+  const fontSize = useSettings((s) => s.editorFontSize)
+  const wordWrap = useSettings((s) => s.editorWordWrap)
+  const minimap = useSettings((s) => s.editorMinimap)
+  const lineNumbers = useSettings((s) => s.editorLineNumbers)
   const setDirty = useTabsStore((s) => s.setDirty)
 
   useEffect(() => {
@@ -153,7 +158,7 @@ export function CodeEditor({ path, tabId }: Props) {
         defaultLanguage={languageFor(path)}
         path={path}
         value={content}
-        theme={monacoThemeName(theme === "dark" ? "dark" : "light")}
+        theme={monacoThemeName(theme)}
         beforeMount={(monaco) => {
           defineMonacoThemes(monaco)
           void setupWorkspaceTypes(monaco)
@@ -163,13 +168,14 @@ export function CodeEditor({ path, tabId }: Props) {
           useCodeDrafts.getState().edit(tabId, v ?? "")
         }}
         options={{
-          minimap: { enabled: false },
-          fontSize: 13,
+          minimap: { enabled: minimap },
+          fontSize,
+          lineNumbers: lineNumbers ? "on" : "off",
           fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
           scrollBeyondLastLine: false,
           automaticLayout: true,
           tabSize: 2,
-          wordWrap: "on",
+          wordWrap: wordWrap ? "on" : "off",
           // Hovers and suggestions escape the editor box instead of being
           // clipped by the tab strip above it.
           fixedOverflowWidgets: true,
