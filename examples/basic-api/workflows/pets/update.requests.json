@@ -1,0 +1,54 @@
+{
+  "lorien": 1,
+  "requests": [
+    {
+      "id": "addsAPetToUpdate",
+      "name": "Adds a pet to update",
+      "method": "POST",
+      "path": "/pets",
+      "body": {
+        "kind": "json",
+        "json": {
+          "name": "{{petPrefix}}-{{$randomInt}}",
+          "species": "hamster"
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 201
+        }
+      ],
+      "capture": {
+        "petId": "body.id"
+      }
+    },
+    {
+      "id": "marksThePetSold",
+      "name": "Marks the pet sold",
+      "trigger": "Request",
+      "method": "PATCH",
+      "path": "/pets/{{petId}}",
+      "body": {
+        "kind": "json",
+        "json": {
+          "status": "sold"
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 200
+        },
+        {
+          "target": "body",
+          "path": "status",
+          "op": "equals",
+          "value": "sold"
+        }
+      ]
+    }
+  ]
+}

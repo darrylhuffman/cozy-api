@@ -23,24 +23,24 @@ describe("built dist via lorien build", () => {
     expect(existsSync(join(distDir, "index.js"))).toBe(true)
   })
 
-  it("the built handler serves POST /users", async () => {
+  it("the built handler serves POST /pets", async () => {
     // Dynamic-import the generated handler (vitest resolves .ts via Vite)
     const generated = (await import(
-      pathToFileURL(join(distDir, "workflows", "user", "create.gen.ts")).href
+      pathToFileURL(join(distDir, "workflows", "pets", "add.gen.ts")).href
     )) as {
       register: (app: Hono) => void
     }
     const app = new Hono()
     generated.register(app)
 
-    const res = await app.request("/users", {
+    const res = await app.request("/pets", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "test@example.com", password: "correct-horse" }),
+      body: JSON.stringify({ name: "Nori", species: "cat" }),
     })
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { id: string; email: string }
-    expect(body.email).toBe("test@example.com")
-    expect(typeof body.id).toBe("string")
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { id: number; name: string }
+    expect(body.name).toBe("Nori")
+    expect(typeof body.id).toBe("number")
   })
 })

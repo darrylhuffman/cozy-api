@@ -1,0 +1,41 @@
+{
+  "lorien": 1,
+  "cases": [
+    {
+      "id": "addsAPet",
+      "name": "Adds a pet to the database",
+      "input": { "name": "Nori", "species": "cat" },
+      "expect": { "output": { "pet": { "name": "Nori", "species": "cat", "status": "available" } } }
+    },
+    {
+      "id": "returnsTheStoredRecord",
+      "name": "Returns what the database stored",
+      "input": { "name": "Nori", "species": "cat", "status": "pending" },
+      "mocks": {
+        "db": {
+          "addPet": {
+            "returns": { "id": 42, "name": "Nori", "species": "cat", "status": "pending" }
+          }
+        },
+        "logger": { "info": { "returns": null } }
+      },
+      "expect": {
+        "output": { "pet": { "id": 42, "name": "Nori", "species": "cat", "status": "pending" } },
+        "match": "equals"
+      }
+    },
+    {
+      "id": "rejectsAMissingName",
+      "name": "Rejects a pet without a name",
+      "input": { "name": "  ", "species": "cat" },
+      "expect": { "error": "name is required" }
+    },
+    {
+      "id": "surfacesDatabaseErrors",
+      "name": "Surfaces database errors",
+      "input": { "name": "Nori", "species": "cat" },
+      "mocks": { "db": { "addPet": { "throws": "database is locked" } } },
+      "expect": { "error": "database is locked" }
+    }
+  ]
+}

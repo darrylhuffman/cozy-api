@@ -5,6 +5,8 @@ import { createIdeApp } from "./ide.js"
 import { parseWorkerOutput, runNodeCasesInWorker } from "./run-node-cases.js"
 
 const example = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../examples/basic-api")
+// The worker inherits this, so the example opens a throwaway pet store database.
+process.env.PETSTORE_DB = ":memory:"
 
 describe("parseWorkerOutput", () => {
   it("splits node logs from the result line", () => {
@@ -23,20 +25,20 @@ describe("runNodeCasesInWorker", () => {
   it("runs the example's node cases in a fresh subprocess", async () => {
     const run = await runNodeCasesInWorker(example, {})
     expect(run.error).toBeUndefined()
-    const file = run.files.find((f) => f.path === "nodes/user/save-user.cases.json")
+    const file = run.files.find((f) => f.path === "nodes/pets/add-pet.cases.json")
     expect(file?.results.map((r) => [r.caseId, r.passed])).toEqual([
-      ["savesAUser", true],
+      ["addsAPet", true],
       ["returnsTheStoredRecord", true],
-      ["rejectsAShortPassword", true],
+      ["rejectsAMissingName", true],
       ["surfacesDatabaseErrors", true],
     ])
   }, 30_000)
 
   it("runs only the requested cases", async () => {
     const run = await runNodeCasesInWorker(example, {
-      only: { "nodes/user/save-user.cases.json": ["rejectsAShortPassword"] },
+      only: { "nodes/pets/add-pet.cases.json": ["rejectsAMissingName"] },
     })
-    expect(run.files[0]?.results.map((r) => r.caseId)).toEqual(["rejectsAShortPassword"])
+    expect(run.files[0]?.results.map((r) => r.caseId)).toEqual(["rejectsAMissingName"])
   }, 30_000)
 })
 

@@ -1,0 +1,30 @@
+{
+  "lorien": 1,
+  "cases": [
+    {
+      "id": "findsASeededPet",
+      "name": "Finds a pet from the seed data",
+      "input": { "id": 1 },
+      "expect": { "output": { "status": 200, "body": { "id": 1, "name": "Biscuit" } } }
+    },
+    {
+      "id": "returns404WhenMissing",
+      "name": "Returns 404 when the pet does not exist",
+      "input": { "id": 999 },
+      "mocks": { "db": { "getPet": { "returns": null } } },
+      "expect": { "output": { "status": 404, "body": { "error": "pet 999 not found" } } }
+    },
+    {
+      "id": "coercesTheIdFromAPathParam",
+      "name": "Accepts the id as a string, the way path params arrive",
+      "input": { "id": "2" },
+      "expect": { "output": { "status": 200, "body": { "id": 2 } } }
+    },
+    {
+      "id": "rejectsANonNumericId",
+      "name": "Rejects an id that is not a number",
+      "input": { "id": "rex" },
+      "expect": { "error": "" }
+    }
+  ]
+}

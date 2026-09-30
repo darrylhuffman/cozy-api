@@ -1,19 +1,5 @@
 import { defineConfig } from "@darrylondil/lorien-runtime"
-
-interface User {
-  id: string
-  email: string
-}
-
-interface Db {
-  createUser(email: string, passwordHash: string): Promise<User>
-}
-
-const inMemoryDb: Db = {
-  async createUser(email) {
-    return { id: crypto.randomUUID(), email }
-  },
-}
+import { defaultDbFile, openPetStoreDb } from "./src/db.js"
 
 interface Logger {
   info(msg: string, fields?: Record<string, unknown>): void
@@ -26,7 +12,8 @@ const baseLogger: Logger = {
 export default defineConfig({
   target: "hono",
   services: {
-    db: inMemoryDb,
+    // SQLite via Node's built-in node:sqlite. Set PETSTORE_DB=:memory: for a throwaway database.
+    db: openPetStoreDb(defaultDbFile()),
     logger: () => baseLogger,
   },
 })

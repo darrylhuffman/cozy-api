@@ -4,24 +4,21 @@
     "Request": {
       "uses": "@core/http-request",
       "values": {
-        "path": "/users",
-        "method": "POST"
+        "path": "/pets",
+        "method": "GET"
       }
     },
-    "SaveUser": {
-      "uses": "./nodes/user/save-user",
+    "ListPets": {
+      "uses": "./nodes/pets/list-pets",
       "in": {
-        "email": "Request.body.email",
-        "password": "Request.body.password"
+        "status": "Request.query.status",
+        "species": "Request.query.species"
       }
     },
     "Response": {
       "uses": "@core/response",
       "in": {
-        "body": "SaveUser.user"
-      },
-      "values": {
-        "status": 200
+        "body": "ListPets.pets"
       }
     }
   },
@@ -30,13 +27,13 @@
       "x": 40,
       "y": 40
     },
-    "SaveUser": {
+    "ListPets": {
       "x": 349,
       "y": 40
     },
     "Response": {
       "x": 662,
-      "y": 42
+      "y": 40
     }
   }
 }
