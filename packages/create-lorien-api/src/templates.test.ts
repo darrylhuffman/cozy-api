@@ -25,7 +25,7 @@ describe("template renderers", () => {
     expect(pkg.type).toBe("module")
     expect(pkg.scripts.dev).toBe("lorien dev")
     expect(pkg.scripts["dev:server"]).toBe("lorien dev --no-ide")
-    expect(pkg.scripts.build).toBe("lorien build")
+    expect(pkg.scripts.build).toBe("lorien build --typecheck")
     expect(pkg.scripts.start).toBe("node dist/index.js")
     // The release line this scaffolder belongs to, never "latest".
     expect(pkg.devDependencies["@darrylondil/lorien-build"]).toMatch(/^\^\d+\.\d+\.0$/)
@@ -33,6 +33,14 @@ describe("template renderers", () => {
       pkg.devDependencies["@darrylondil/lorien-build"],
     )
     expect(pkg.dependencies.hono).toMatch(/^\^/)
+  })
+
+  it("package.json can run the biome.json it ships, and lets pnpm build esbuild", () => {
+    const pkg = JSON.parse(renderPackageJson(ctx))
+    expect(pkg.scripts.lint).toBe("biome check .")
+    const schema = JSON.parse(renderBiomeJson()).$schema as string
+    expect(schema).toContain(`/${pkg.devDependencies["@biomejs/biome"]}/`)
+    expect(pkg.pnpm.onlyBuiltDependencies).toEqual(["esbuild"])
   })
 
   it("package.json keeps vitest on 4.0, which npm 10 can install", () => {
@@ -90,7 +98,7 @@ describe("template renderers", () => {
     expect(out.startsWith("---")).toBe(false)
     expect(out).toMatch(/# lorien project guide/)
     expect(out).toMatch(/## The node contract/)
-    expect(out).toMatch(/<!-- lorien-skill-version: 6 -->/)
+    expect(out).toMatch(/<!-- lorien-skill-version: 7 -->/)
     // Project name is intentionally NOT interpolated — guide is generic.
     expect(out).not.toMatch(/my-app/)
     // Trailing newline preserved
@@ -119,7 +127,7 @@ describe("template renderers", () => {
   })
 
   it("SKILL_BODY contains the canonical authoring guide content", () => {
-    expect(SKILL_BODY).toMatch(/<!-- lorien-skill-version: 6 -->/)
+    expect(SKILL_BODY).toMatch(/<!-- lorien-skill-version: 7 -->/)
     expect(SKILL_BODY).toMatch(/# lorien project guide/)
     expect(SKILL_BODY).toMatch(/## The node contract/)
     expect(SKILL_BODY).toMatch(/## The \.workflow file format/)
@@ -154,7 +162,7 @@ describe("template renderers", () => {
     expect(fmLines).toHaveLength(2) // name + description, no continuation lines
     // Body follows the frontmatter
     expect(out).toMatch(/# lorien project guide/)
-    expect(out).toMatch(/<!-- lorien-skill-version: 6 -->/)
+    expect(out).toMatch(/<!-- lorien-skill-version: 7 -->/)
     // Trailing newline preserved
     expect(out.endsWith("\n")).toBe(true)
   })

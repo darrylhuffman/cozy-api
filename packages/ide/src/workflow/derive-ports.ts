@@ -19,7 +19,8 @@ export interface NodePorts {
  * An identifier reference looks like: nodeId  or  nodeId.output.nested
  * Must start with a letter/underscore/$, followed by word chars/$.
  */
-const REFERENCE = /^[a-zA-Z_$][\w$]*(?:\.[a-zA-Z_$][\w$]*)*$/
+// Fields after the node id may contain dashes (`Request.headers.x-api-key`).
+const REFERENCE = /^[a-zA-Z_$][\w$]*(?:\.[a-zA-Z_$][\w$-]*)*$/
 
 /**
  * Derives input/output ports for each node.

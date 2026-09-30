@@ -78,4 +78,13 @@ describe("emitIndex", () => {
     expect(source).toMatch(/import \{ register as register_users_id_get \}/)
     expect(source).toMatch(/from "\.\/workflows\/users\/_id_\/get\.gen\.js"/)
   })
+
+  it("answers unmatched requests with JSON: 405 plus Allow, or 404", () => {
+    const { source } = emitIndex({ workflowPaths: ["pets/get"] })
+    expect(source).toContain("app.notFound((c) => {")
+    expect(source).toContain(
+      'c.json({ error: "Method Not Allowed" }, 405, { Allow: allowed.join(", ") })',
+    )
+    expect(source).toContain('return c.json({ error: "Not Found" }, 404)')
+  })
 })

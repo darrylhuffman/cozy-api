@@ -29,10 +29,11 @@ export interface Middleware extends DefineMiddlewareInput {
  * logic, and turning errors into responses, belong in nodes.
  *
  * @example
+ * // The key comes from a provider (providers/auth.ts declares ADMIN_KEY in its env).
  * export default defineMiddleware({
  *   name: "Require admin key",
- *   async run(c, next) {
- *     if (c.req.header("x-admin-key") !== process.env.ADMIN_KEY) {
+ *   async run(c, next, { auth }) {
+ *     if (c.req.header("x-admin-key") !== auth.adminKey) {
  *       return c.json({ error: "forbidden" }, 403)
  *     }
  *     await next()

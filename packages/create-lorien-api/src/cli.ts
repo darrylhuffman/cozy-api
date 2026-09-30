@@ -8,13 +8,25 @@ import { validateName } from "./validate-name.js"
 interface ParsedArgs {
   name: string | undefined
   skipInstall: boolean
+  help: boolean
 }
 
+const USAGE = `Usage: create-lorien <name> [--skip-install]
+
+Creates a lorien API project in ./<name> and installs its dependencies
+with the package manager you ran it with (npm, pnpm, yarn or bun).
+
+Options:
+  --skip-install  write the files only
+  -h, --help      show this help`
+
 function parseArgs(argv: string[]): ParsedArgs {
-  const args: ParsedArgs = { name: undefined, skipInstall: false }
+  const args: ParsedArgs = { name: undefined, skipInstall: false, help: false }
   for (const a of argv) {
     if (a === "--skip-install") {
       args.skipInstall = true
+    } else if (a === "--help" || a === "-h") {
+      args.help = true
     } else if (!a.startsWith("-") && !args.name) {
       args.name = a
     }
@@ -25,8 +37,12 @@ function parseArgs(argv: string[]): ParsedArgs {
 async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const parsed = parseArgs(argv)
 
+  if (parsed.help) {
+    console.log(USAGE)
+    return
+  }
   if (!parsed.name) {
-    console.error("Usage: create-lorien <name> [--skip-install]")
+    console.error(USAGE)
     process.exit(1)
   }
 

@@ -6,6 +6,7 @@ import { loadProviders } from "../providers/load.js"
 import type { AnyNodeOrTrigger, Services } from "../types.js"
 import { importNodes } from "./import-nodes.js"
 import { loadWorkspace } from "./load.js"
+import { answerUnmatchedWithJson } from "./not-found.js"
 import { mountWorkflows } from "./server.js"
 
 export interface StartServerOptions {
@@ -74,5 +75,6 @@ export async function startLorienServer(opts: StartServerOptions = {}): Promise<
     ...(opts.lifecycle ? { lifecycle: opts.lifecycle } : {}),
     ...(opts.testHooks ? { testHooks: true } : {}),
   })
+  answerUnmatchedWithJson(app)
   return app
 }

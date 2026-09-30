@@ -67,6 +67,12 @@ export async function introspectProviders(
     nodes[`./${rel.replace(/\.ts$/, "")}`] = used
   }
 
+  const middleware: MiddlewareInfo[] = []
+  for (const f of await findMiddlewareFiles(root)) {
+    const source = await readFile(join(root, f.path), "utf-8")
+    middleware.push({ ...f, ...parseMiddleware(source, names) })
+  }
+
   const providers: ProviderInfo[] = []
   for (const f of files) {
     const source = await readFile(join(root, f.path), "utf-8")
@@ -87,16 +93,14 @@ export async function introspectProviders(
       path: f.path,
       ...info,
       packages: [...packages].sort(),
-      usedBy: Object.entries(nodes)
-        .filter(([, used]) => used.includes(f.name))
-        .map(([uses]) => `${uses.slice(2)}.ts`)
-        .sort(),
+      // Nodes and middleware both read providers.
+      usedBy: [
+        ...Object.entries(nodes)
+          .filter(([, used]) => used.includes(f.name))
+          .map(([uses]) => `${uses.slice(2)}.ts`),
+        ...middleware.filter((m) => m.reads.includes(f.name)).map((m) => m.path),
+      ].sort(),
     })
-  }
-  const middleware: MiddlewareInfo[] = []
-  for (const f of await findMiddlewareFiles(root)) {
-    const source = await readFile(join(root, f.path), "utf-8")
-    middleware.push({ ...f, ...parseMiddleware(source, names) })
   }
   return { providers, middleware, nodes }
 }

@@ -100,15 +100,26 @@ describe("diagnoseWorkflow", () => {
           uses: "./nodes/save-user",
           in: { email: "ghost.email", password: "save.user" },
         },
-        response: { uses: "@core/response", in: "request.body.bad-field" },
+        response: { uses: "@core/response", in: "request.body.bad field" },
       },
     }
     const m = messages(wf)
     expect(m).toContain('Input "email" references unknown node "ghost".')
     expect(m).toContain('Input "password" references its own node.')
     expect(m).toContain(
-      '"request.body.bad-field" is not a valid reference (segments must be identifiers).',
+      '"request.body.bad field" is not a valid reference (segments must be identifiers).',
     )
+  })
+
+  it("accepts a dashed field, like a header name", () => {
+    const wf: WorkflowFile = {
+      ...good,
+      nodes: {
+        ...good.nodes,
+        response: { uses: "@core/response", in: { body: "request.body.x-api-key" } },
+      },
+    }
+    expect(messages(wf).filter((m) => m.includes("x-api-key"))).toEqual([])
   })
 
   it("warns when a reference names an output the source schema rules out", () => {

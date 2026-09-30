@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process"
 import { stat } from "node:fs/promises"
-import { delimiter, join, resolve } from "node:path"
+import { join, resolve } from "node:path"
 import type { Command } from "commander"
 import { generateServicesTypes } from "../generate-services-types.js"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
+import { withProjectBin } from "../project-bin.js"
 import { DEFAULT_IDE_PORT, registerTsxFromWorkspace, runIde } from "./ide.js"
 
 export const DEFAULT_API_PORT = 3000
@@ -24,26 +25,36 @@ export function registerDev(program: Command): void {
       process.env.PORT ?? String(DEFAULT_API_PORT),
     )
     .option("--no-ide", "skip the IDE — just run the dev server")
+    .option("--no-open", "start the IDE without opening a browser")
     .option(
       "--ide-port <number>",
       "starting port for the IDE static server",
       String(DEFAULT_IDE_PORT),
     )
-    .action(async (opts: { root: string; port: string; ide: boolean; idePort: string }) => {
-      const root = resolve(opts.root)
-      const port = parseStartingPort(opts.port, DEFAULT_API_PORT)
-      if (opts.ide === false) {
-        const r = await runDevServer({ root, port })
-        process.exit(r.exitCode ?? 1)
-      } else {
-        const r = await runDevWithIde({
-          root,
-          port,
-          idePort: parseStartingPort(opts.idePort, DEFAULT_IDE_PORT),
-        })
-        process.exit(r.exitCode ?? 1)
-      }
-    })
+    .action(
+      async (opts: {
+        root: string
+        port: string
+        ide: boolean
+        open: boolean
+        idePort: string
+      }) => {
+        const root = resolve(opts.root)
+        const port = parseStartingPort(opts.port, DEFAULT_API_PORT)
+        if (opts.ide === false) {
+          const r = await runDevServer({ root, port })
+          process.exit(r.exitCode ?? 1)
+        } else {
+          const r = await runDevWithIde({
+            root,
+            port,
+            idePort: parseStartingPort(opts.idePort, DEFAULT_IDE_PORT),
+            open: opts.open,
+          })
+          process.exit(r.exitCode ?? 1)
+        }
+      },
+    )
 
   program
     .command("dev:server")
@@ -124,6 +135,8 @@ export async function runDevWithIde(opts: {
   root: string
   port?: number
   idePort: number
+  /** Open the IDE in a browser (default true). */
+  open?: boolean
   spawnImpl?: typeof spawn
   /** For tests: replace the IDE server start. */
   runIdeImpl?: typeof runIde
@@ -135,7 +148,11 @@ export async function runDevWithIde(opts: {
   // Start the IDE static server first; it stays alive in the background.
   try {
     // The IDE must serve the same project as the API server, not the cwd.
-    await (opts.runIdeImpl ?? runIde)({ port: opts.idePort, open: true, root: opts.root })
+    await (opts.runIdeImpl ?? runIde)({
+      port: opts.idePort,
+      open: opts.open !== false,
+      root: opts.root,
+    })
   } catch (e) {
     console.error(`Could not start the IDE: ${(e as Error).message}`)
     console.error("Falling back to dev-server-only.")
@@ -145,17 +162,6 @@ export async function runDevWithIde(opts: {
   console.log("Both services started. Ctrl-C to stop.")
   // Then start the dev server — tsx logs alongside the IDE startup line.
   return runDevServer(devOpts)
-}
-
-/**
- * `env` with the project's node_modules/.bin first on the path, so its own
- * tsx is found even when lorien runs outside a package script. Keeps the
- * variable's existing name (`Path` on Windows).
- */
-export function withProjectBin(root: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const key = Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH"
-  const bin = join(root, "node_modules", ".bin")
-  return { ...env, [key]: env[key] ? `${bin}${delimiter}${env[key]}` : bin }
 }
 
 /**
@@ -177,6 +183,8 @@ export async function devServerArgs(
   args.push(entry)
   return args
 }
+
+export { withProjectBin }
 
 /** Keep the old export name as an alias so any external callers aren't broken. */
 export const runDev = runDevServer

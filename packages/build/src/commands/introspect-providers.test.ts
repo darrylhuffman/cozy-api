@@ -137,12 +137,18 @@ describe("introspectProviders", () => {
       join(dir, "nodes", "hello.ts"),
       `export default defineNode({ run: async () => ({}) })\n`,
     )
+    mkdirSync(join(dir, "workflows"))
+    writeFileSync(
+      join(dir, "workflows", "_middleware.ts"),
+      `export default defineMiddleware({ async run(c, next, { logger }) { logger.info("hi"); await next() } })\n`,
+    )
 
     const result = await introspectProviders(dir, {})
     expect(result.nodes).toEqual({ "./nodes/hello": [], "./nodes/pets/add-pet": ["db", "logger"] })
+    // Middleware counts as a user of the providers it reads.
     expect(result.providers.map((p) => [p.name, p.lifetime, p.packages, p.usedBy])).toEqual([
       ["db", "singleton", ["better-sqlite3", "pg"], ["nodes/pets/add-pet.ts"]],
-      ["logger", "scoped", [], ["nodes/pets/add-pet.ts"]],
+      ["logger", "scoped", [], ["nodes/pets/add-pet.ts", "workflows/_middleware.ts"]],
     ])
   })
 

@@ -14,6 +14,8 @@ export interface Diagnostic {
 }
 
 const IDENT = /^[a-zA-Z_$][\w$]*$/
+/** A field after the node id; dashes allowed, for header names. */
+const SEGMENT = /^[a-zA-Z_$][\w$-]*$/
 /** Node types that start a run. They always run, so they take no `when`. */
 export const TRIGGERS = new Set(["@core/http-request"])
 const RESPONSE = "@core/response"
@@ -96,7 +98,7 @@ export function diagnoseWorkflow(
         })
         return
       }
-      if (!IDENT.test(sourceId) || path.some((seg) => !IDENT.test(seg))) {
+      if (!IDENT.test(sourceId) || path.some((seg) => !SEGMENT.test(seg))) {
         push({
           severity: "error",
           nodeId,

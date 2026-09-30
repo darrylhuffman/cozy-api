@@ -23,7 +23,8 @@ export interface Reference {
  * Dot-separated segments follow the same rules.
  * Anything else (string literals, numbers, etc.) is silently skipped.
  */
-const REFERENCE = /^[a-zA-Z_$][\w$]*(?:\.[a-zA-Z_$][\w$]*)*$/
+// Fields after the node id may contain dashes (`Request.headers.x-api-key`).
+const REFERENCE = /^[a-zA-Z_$][\w$]*(?:\.[a-zA-Z_$][\w$-]*)*$/
 
 /**
  * Extracts all node-to-node references from `in:` blocks.

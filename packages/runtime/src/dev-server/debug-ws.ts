@@ -1,7 +1,8 @@
 import type { Server as HttpServer, IncomingMessage } from "node:http"
+import { createRequire } from "node:module"
 import type { Duplex } from "node:stream"
 import type { Hono } from "hono"
-import { type WebSocket, WebSocketServer } from "ws"
+import type { WebSocket, WebSocketServer } from "ws"
 import type { ClientMessage } from "./debug-protocol.js"
 import type { DebugSession } from "./debug-session.js"
 
@@ -27,7 +28,7 @@ export interface AttachDebugWebSocketOptions {
 }
 
 export function attachDebugWebSocket(opts: AttachDebugWebSocketOptions): void {
-  const wss = new WebSocketServer({ noServer: true })
+  const wss = new (loadWs().WebSocketServer)({ noServer: true })
 
   opts.server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     if (!req.url?.startsWith(WS_PATH)) return
@@ -56,4 +57,12 @@ export function attachDebugWebSocket(opts: AttachDebugWebSocketOptions): void {
     ws.on("close", () => opts.session.disconnect(ws))
     ws.on("error", () => opts.session.disconnect(ws))
   })
+}
+
+/**
+ * ws is loaded when a socket server is attached, not at import, so a built
+ * app that bundles this package (for defineNode) doesn't carry ws with it.
+ */
+function loadWs(): { WebSocketServer: typeof WebSocketServer } {
+  return createRequire(import.meta.url)("ws")
 }

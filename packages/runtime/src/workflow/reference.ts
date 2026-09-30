@@ -1,7 +1,9 @@
 import type { ParsedReference } from "./types.js"
 
 const IDENT = /^[a-zA-Z_$][\w$]*$/
-const REFERENCE = /^[a-zA-Z_$][\w$]*(?:\.[a-zA-Z_$][\w$]*)*$/
+/** A field after the node id; dashes allowed, for header names like `x-api-key`. */
+const SEGMENT = /^[a-zA-Z_$][\w$-]*$/
+const REFERENCE = /^[a-zA-Z_$][\w$]*(?:\.[a-zA-Z_$][\w$-]*)*$/
 
 /**
  * Parses a reference string of the form "nodeId" or "nodeId.path.to.field".
@@ -12,7 +14,7 @@ export function parseReference(input: string): ParsedReference | null {
   const [nodeId, ...path] = input.split(".")
   if (!nodeId || !IDENT.test(nodeId)) return null
   for (const seg of path) {
-    if (!IDENT.test(seg)) return null
+    if (!SEGMENT.test(seg)) return null
   }
   return { nodeId, path }
 }

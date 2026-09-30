@@ -120,6 +120,8 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   lines.push(renderTypes())
   lines.push("")
   lines.push(renderReadJsonBodyHelper())
+  lines.push("")
+  lines.push(renderCheckOutputHelper())
   if (triggers.some((t) => requestSourcedNodes(workflow, t.nodeId).size > 0)) {
     lines.push("")
     lines.push(renderParseInputHelper())
@@ -181,6 +183,26 @@ function renderReadJsonBodyHelper(): string {
     `    }`,
     `  }`,
     `  return null`,
+    `}`,
+  ].join("\n")
+}
+
+function renderCheckOutputHelper(): string {
+  return [
+    `/** Stops at a node that returned something its outputs schema doesn't allow. */`,
+    `function checkOutput(`,
+    `  node: { outputs?: { safeParse(v: unknown): { success: boolean; error?: { issues: Array<{ path: PropertyKey[]; message: string }> } } } },`,
+    `  nodeId: string,`,
+    `  output: unknown,`,
+    `): Record<string, unknown> {`,
+    `  const checked = node.outputs?.safeParse(output)`,
+    `  if (checked && !checked.success) {`,
+    `    const issue = checked.error?.issues[0]`,
+    `    const at = issue?.path.map(String).join(".") || "<root>"`,
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted as-is into generated code.
+    '    throw new Error(`Node \\`${nodeId}\\` failed: output doesn\'t match its outputs schema at \\`${at}\\`: ${issue?.message ?? "invalid"}`)',
+    `  }`,
+    `  return output as Record<string, unknown>`,
     `}`,
   ].join("\n")
 }
@@ -448,11 +470,11 @@ function renderSingleNodeCall(ctx: RunContext, nodeId: string): string[] {
     return [
       `const ${ran} = ${renderRanExpr(ctx, nodeId)}`,
       `const ${outVar} = (${ran}`,
-      `  ? await ${ident}.run(`,
+      `  ? checkOutput(${ident}, "${nodeId}", await ${ident}.run(`,
       `      ${renderParse(ctx, nodeId, ident, inputExpr)} as never,`,
       `      services as never,`,
       `      undefined as never,`,
-      `    )`,
+      `    ))`,
       `  : {}) as Record<string, unknown>`,
     ]
   }
@@ -463,21 +485,21 @@ function renderSingleNodeCall(ctx: RunContext, nodeId: string): string[] {
     return [
       `const ${inputRawVar} = ${inputExpr}`,
       `const ${inputVar} = ${renderParse(ctx, nodeId, ident, inputRawVar)}`,
-      `const ${outVar} = (await ${ident}.run(`,
+      `const ${outVar} = checkOutput(${ident}, "${nodeId}", await ${ident}.run(`,
       `  ${inputVar} as never,`,
       `  services as never,`,
       `  undefined as never,`,
-      `)) as Record<string, unknown>`,
+      `))`,
     ]
   }
 
   return [
     `const ${inputVar} = ${renderParse(ctx, nodeId, ident, inputExpr)}`,
-    `const ${outVar} = (await ${ident}.run(`,
+    `const ${outVar} = checkOutput(${ident}, "${nodeId}", await ${ident}.run(`,
     `  ${inputVar} as never,`,
     `  services as never,`,
     `  undefined as never,`,
-    `)) as Record<string, unknown>`,
+    `))`,
   ]
 }
 
@@ -497,7 +519,8 @@ function renderParallelWave(ctx: RunContext, nodeIds: string[]): string[] {
   const settledNames = nodeIds.map((id) => `${id}_settled`)
   lines.push(`const [${settledNames.join(", ")}] = await Promise.allSettled([`)
   for (const id of nodeIds) {
-    const call = `${identFor(ctx, id)}.run(_${id}Input as never, services as never, undefined as never)`
+    const ident = identFor(ctx, id)
+    const call = `${ident}.run(_${id}Input as never, services as never, undefined as never).then((o: unknown) => checkOutput(${ident}, "${id}", o))`
     lines.push(ctx.conditional.has(id) ? `  ${ranVar(id)} ? ${call} : {},` : `  ${call},`)
   }
   lines.push(`])`)
@@ -576,7 +599,7 @@ function renderRanExpr(ctx: RunContext, nodeId: string): string {
     .map(ranVar)
   const when = inst.when !== undefined ? parseWhen(inst.when) : null
   if (when) {
-    const chain = outputsVar(when.ref.nodeId) + when.ref.path.map((seg) => `?.${seg}`).join("")
+    const chain = outputsVar(when.ref.nodeId) + accessChain(when.ref.path)
     parts.push(when.negate ? `!${chain}` : `Boolean(${chain})`)
   }
   return parts.length > 0 ? parts.join(" && ") : "true"
@@ -739,7 +762,14 @@ function renderReferenceValue(raw: unknown): string {
   if (path.length === 0) return base
   // Optional chaining, like the interpreter: a missing body or field reads as
   // undefined and fails the node's input schema instead of throwing.
-  return base + path.map((seg) => `?.${seg}`).join("")
+  return base + accessChain(path)
+}
+
+/** `?.a?.b`, with `?.["x-api-key"]` for a field that isn't a JS identifier. */
+function accessChain(path: string[]): string {
+  return path
+    .map((seg) => (/^[a-zA-Z_$][\w$]*$/.test(seg) ? `?.${seg}` : `?.[${JSON.stringify(seg)}]`))
+    .join("")
 }
 
 /**

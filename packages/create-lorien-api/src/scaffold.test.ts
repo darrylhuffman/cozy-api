@@ -1,4 +1,6 @@
+import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
+import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
@@ -41,6 +43,18 @@ describe("scaffold", () => {
     }
   })
 
+  it("passes its own lint script as written", async () => {
+    const target = join(dir, "lint-app")
+    await scaffold({ target, name: "lint-app", pm: "pnpm" })
+    const biome = createRequire(import.meta.url).resolve("@biomejs/biome/bin/biome")
+    const result = spawnSync(process.execPath, [biome, "check", "."], {
+      cwd: target,
+      encoding: "utf-8",
+    })
+    expect(result.stdout + result.stderr).not.toMatch(/×/)
+    expect(result.status).toBe(0)
+  })
+
   it("package.json has the project name", async () => {
     const target = join(dir, "another-app")
     await scaffold({ target, name: "another-app", pm: "npm" })
@@ -61,7 +75,7 @@ describe("scaffold", () => {
     const skill = readFileSync(join(target, ".claude/skills/lorien-api/SKILL.md"), "utf-8")
     expect(skill.startsWith("---\nname: lorien-api\n")).toBe(true)
     expect(skill).toMatch(/# lorien project guide/)
-    expect(skill).toMatch(/<!-- lorien-skill-version: 6 -->/)
+    expect(skill).toMatch(/<!-- lorien-skill-version: 7 -->/)
   })
 
   it("writes AGENTS.md without frontmatter (just the canonical body)", async () => {
@@ -70,6 +84,6 @@ describe("scaffold", () => {
     const agents = readFileSync(join(target, "AGENTS.md"), "utf-8")
     expect(agents.startsWith("---")).toBe(false)
     expect(agents).toMatch(/# lorien project guide/)
-    expect(agents).toMatch(/<!-- lorien-skill-version: 6 -->/)
+    expect(agents).toMatch(/<!-- lorien-skill-version: 7 -->/)
   })
 })
