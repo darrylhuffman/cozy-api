@@ -50,12 +50,28 @@ describe("FileContextBar", () => {
     expect(card).toHaveTextContent("singleton")
     expect(card).toHaveTextContent("Created once when the app starts")
     expect(card).toHaveTextContent("DATABASE_URL missing")
+    expect(card).toHaveTextContent("POOL_SIZE not set, uses its default")
+    expect(card).toHaveTextContent("1 node")
     expect(card).toHaveTextContent("better-sqlite3")
     expect(card).toHaveTextContent("Set DATABASE_URL before starting the app")
     fireEvent.click(screen.getByRole("button", { name: "pets/add-pet" }))
     expect(useTabsStore.getState().activeCodeId).toBe("nodes/pets/add-pet.ts")
     fireEvent.click(screen.getByRole("button", { name: "logger" }))
     expect(useTabsStore.getState().activeCodeId).toBe("providers/logger.ts")
+  })
+
+  it("folds a long list of readers behind Show all", () => {
+    const usedBy = Array.from({ length: 9 }, (_, i) => `nodes/n${i}.ts`)
+    useProvidersStore.setState({ providers: [{ ...db, usedBy }, logger] })
+    render(<FileContextBar path="providers/db.ts" />)
+    const card = screen.getByRole("region", { name: "Provider db" })
+    expect(card).toHaveTextContent("9 nodes")
+    expect(screen.getByRole("button", { name: "n5" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "n6" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Show all 9" }))
+    expect(screen.getByRole("button", { name: "n8" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }))
+    expect(screen.queryByRole("button", { name: "n8" })).not.toBeInTheDocument()
   })
 
   it("lists the providers a node reads, and nothing for one that reads none", () => {

@@ -1,4 +1,5 @@
 import { Plug, ShieldCheck } from "lucide-react"
+import { useState } from "react"
 import type { ProviderInfo } from "@/lib/api"
 import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
@@ -92,18 +93,22 @@ function ProviderCard({ path }: { path: string }) {
           </Row>
         )}
         {provider.env.length > 0 && (
-          <Row label="Env">
+          <Row label="Env vars">
             {provider.env.map((e) => (
               <span
                 key={e.key}
                 title={ENV_HELP[e.status]}
-                className={cn(
-                  "rounded bg-accent px-1.5 py-px font-mono text-[10.5px]",
-                  e.status === "missing" ? "text-destructive" : "text-foreground/85",
-                )}
+                className="rounded bg-accent px-1.5 py-px font-mono text-[10.5px] text-foreground/85"
               >
-                {e.key}
-                {e.status === "missing" && " missing"}
+                {e.key}{" "}
+                <span
+                  className={cn(
+                    "font-sans",
+                    e.status === "missing" ? "text-destructive" : "text-muted-foreground",
+                  )}
+                >
+                  {ENV_STATUS[e.status]}
+                </span>
               </span>
             ))}
           </Row>
@@ -118,20 +123,7 @@ function ProviderCard({ path }: { path: string }) {
           </Row>
         )}
         <Row label="Read by">
-          {provider.usedBy.length === 0 ? (
-            <span className="text-muted-foreground">No nodes yet</span>
-          ) : (
-            provider.usedBy.map((file) => (
-              <button
-                key={file}
-                type="button"
-                onClick={() => openCodeFile(file)}
-                className="font-mono text-[11px] text-foreground/85 underline-offset-2 hover:text-foreground hover:underline"
-              >
-                {file.replace(/^nodes\//, "").replace(/\.ts$/, "")}
-              </button>
-            ))
-          )}
+          <ReadBy files={provider.usedBy} />
         </Row>
       </dl>
       {missing.length > 0 && (
@@ -189,11 +181,64 @@ export function providerTint(p: Pick<ProviderInfo, "color">): string {
   return p.color ? resolveAccentColor(p.color) : "var(--muted-foreground)"
 }
 
+/** Readers shown before the rest fold behind "Show all". */
+const READ_BY_PREVIEW = 6
+
+function ReadBy({ files }: { files: string[] }) {
+  const [expanded, setExpanded] = useState(false)
+  if (files.length === 0) return <span className="text-muted-foreground">No nodes yet</span>
+  const folded = files.length > READ_BY_PREVIEW && !expanded
+  const shown = folded ? files.slice(0, READ_BY_PREVIEW) : files
+  return (
+    <>
+      <span className="text-muted-foreground">
+        {files.length} {files.length === 1 ? "node" : "nodes"}
+      </span>
+      <div
+        className={cn(
+          "flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1",
+          expanded && "max-h-32 w-full overflow-y-auto",
+        )}
+      >
+        {shown.map((file) => (
+          <button
+            key={file}
+            type="button"
+            title={file}
+            onClick={() => openCodeFile(file)}
+            className="font-mono text-[11px] text-foreground/85 underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {file.replace(/^nodes\//, "").replace(/\.ts$/, "")}
+          </button>
+        ))}
+      </div>
+      {files.length > READ_BY_PREVIEW && (
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          {expanded ? "Show fewer" : `Show all ${files.length}`}
+        </button>
+      )}
+    </>
+  )
+}
+
+/** What each env var's state means, shown next to its name. */
+const ENV_STATUS: Record<ProviderInfo["env"][number]["status"], string> = {
+  set: "set",
+  default: "not set, uses its default",
+  optional: "optional, not set",
+  missing: "missing",
+}
+
 const ENV_HELP: Record<ProviderInfo["env"][number]["status"], string> = {
-  set: "Set in this environment",
-  default: "Not set; its default is used",
-  optional: "Optional and not set",
-  missing: "Required and not set",
+  set: "Read from the environment when the app starts",
+  default:
+    "Read from the environment when the app starts; not set here, so the default in the provider's env schema is used",
+  optional: "Read from the environment when the app starts; optional and not set",
+  missing: "Read from the environment when the app starts; required and not set",
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
