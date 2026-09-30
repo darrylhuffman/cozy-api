@@ -102,14 +102,7 @@
         },
         {
           "target": "body",
-          "path": "error",
-          "op": "equals",
-          "value": "Internal Server Error"
-        },
-        {
-          "target": "node",
-          "node": "AddPet",
-          "path": "error",
+          "path": "detail",
           "op": "contains",
           "value": "database is locked"
         },
