@@ -100,3 +100,39 @@ describe("revertChange", () => {
     expect(next.nodes.SendWelcome?.in).toBeUndefined()
   })
 })
+
+describe("when conditions", () => {
+  const base: WorkflowFile = {
+    lorien: 1,
+    nodes: {
+      Find: { uses: "./nodes/find" },
+      NotFound: { uses: "@core/response", when: "!Find.found" },
+      Ok: { uses: "@core/response" },
+    },
+  }
+  const next: WorkflowFile = {
+    lorien: 1,
+    nodes: {
+      Find: { uses: "./nodes/find" },
+      NotFound: { uses: "@core/response" },
+      Ok: { uses: "@core/response", when: "Find.found" },
+    },
+  }
+
+  it("lists conditions added and removed", () => {
+    const d = diffWorkflows(base, next)
+    expect(d.nodes.Ok).toBe("changed")
+    expect(d.changes.map((c) => c.text)).toEqual([
+      "NotFound always runs (was only if not Find.found)",
+      "Ok now runs only if Find.found",
+    ])
+  })
+
+  it("reverts a condition change", () => {
+    const change = diffWorkflows(base, next).changes.find((c) => c.nodeId === "NotFound")!
+    expect(change.kind).toBe("when-changed")
+    expect(revertChange(next, base, change).nodes.NotFound?.when).toBe("!Find.found")
+    const ok = diffWorkflows(base, next).changes.find((c) => c.nodeId === "Ok")!
+    expect("when" in revertChange(next, base, ok).nodes.Ok!).toBe(false)
+  })
+})

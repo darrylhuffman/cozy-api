@@ -79,6 +79,14 @@ describe("tidyLayout", () => {
     expect(next.view?.response?.x).toBe(640)
   })
 
+  it("puts a node right of the node its `when` reads", () => {
+    const gated: WorkflowFile = {
+      lorien: 1,
+      nodes: { a: { uses: "x" }, b: { uses: "x", when: "!a.ok" } },
+    }
+    expect(tidyLayout(gated, { columnGap: 300 }).view?.b?.x).toBe(340)
+  })
+
   it("stacks nodes in the same column without overlap, keeping their order", () => {
     const fan: WorkflowFile = {
       lorien: 1,

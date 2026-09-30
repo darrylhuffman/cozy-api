@@ -210,9 +210,17 @@ describe("useDebugSessionStore (multi-active)", () => {
       phase: "before",
       payload: null,
     } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "skipped", nodeId: "z" },
+      offsetMs: 3,
+    } as ServerMessage)
     const statuses = useDebugSessionStore.getState().nodeStatusesFor("rA")
     expect(statuses.get("x")).toBe("completed")
     expect(statuses.get("y")).toBe("paused")
+    // A branch not taken.
+    expect(statuses.get("z")).toBe("skipped")
   })
 
   it("retains at most 20 runs", () => {

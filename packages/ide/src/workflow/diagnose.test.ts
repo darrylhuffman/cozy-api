@@ -166,6 +166,18 @@ describe("diagnoseWorkflow", () => {
     expect(messages(wf)).toContain('"after" lists unknown node "nobody".')
   })
 
+  it("checks `when` like an input reference", () => {
+    const withWhen = (when: string): WorkflowFile => ({
+      ...good,
+      nodes: { ...good.nodes, response: { ...good.nodes.response!, when } },
+    })
+    expect(messages(withWhen("!nobody.found"))).toContain(
+      'The condition references unknown node "nobody".',
+    )
+    expect(messages(withWhen("response.ok"))).toContain("The condition references its own node.")
+    expect(run(withWhen("!request.body"))).toEqual([])
+  })
+
   it("detects cycles", () => {
     const wf: WorkflowFile = {
       lorien: 1,

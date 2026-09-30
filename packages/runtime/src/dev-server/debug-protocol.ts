@@ -40,6 +40,7 @@ export type WireLifecycleEvent =
       nodeId: string
       error: { message: string; stack?: string }
     }
+  | { type: "skipped"; nodeId: string }
   | { type: "complete"; totalMs: number }
 
 export type ClientMessage =

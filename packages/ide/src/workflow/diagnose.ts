@@ -14,7 +14,8 @@ export interface Diagnostic {
 }
 
 const IDENT = /^[a-zA-Z_$][\w$]*$/
-const TRIGGERS = new Set(["@core/http-request"])
+/** Node types that start a run. They always run, so they take no `when`. */
+export const TRIGGERS = new Set(["@core/http-request"])
 const RESPONSE = "@core/response"
 
 export function isValidNodeId(id: string): boolean {
@@ -66,13 +67,13 @@ export function diagnoseWorkflow(
       })
     }
 
-    const checkRef = (raw: unknown, field: string) => {
+    const checkRef = (raw: unknown, field: string, what = `Input "${field}"`) => {
       if (typeof raw !== "string") {
         push({
           severity: "error",
           nodeId,
           field,
-          message: `Input "${field}" must be a reference string.`,
+          message: `${what} must be a reference string.`,
         })
         return
       }
@@ -82,7 +83,7 @@ export function diagnoseWorkflow(
           severity: "error",
           nodeId,
           field,
-          message: `Input "${field}" references unknown node "${sourceId ?? raw}".`,
+          message: `${what} references unknown node "${sourceId ?? raw}".`,
         })
         return
       }
@@ -91,7 +92,7 @@ export function diagnoseWorkflow(
           severity: "error",
           nodeId,
           field,
-          message: `Input "${field}" references its own node.`,
+          message: `${what} references its own node.`,
         })
         return
       }
@@ -121,6 +122,12 @@ export function diagnoseWorkflow(
 
     if (typeof node.in === "string") checkRef(node.in, "input")
     else if (node.in) for (const [field, raw] of Object.entries(node.in)) checkRef(raw, field)
+
+    // `when`: "Ref.path", or "!Ref.path" to run when it's falsy.
+    if (node.when !== undefined) {
+      const raw = typeof node.when === "string" ? node.when.replace(/^!/, "") : node.when
+      checkRef(raw, "when", "The condition")
+    }
 
     for (const target of node.after ?? []) {
       if (!wf.nodes[target]) {

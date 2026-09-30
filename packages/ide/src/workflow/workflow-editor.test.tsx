@@ -35,7 +35,7 @@ interface CapturedEdge {
   sourceHandle?: string | null
   target?: string
   targetHandle?: string | null
-  data?: { mappings?: CapturedMapping[] }
+  data?: { mappings?: CapturedMapping[]; label?: string; when?: string; onFlip?: () => void }
 }
 let capturedEdges: CapturedEdge[] | null = null
 let capturedEdgeTypes: Record<string, unknown> | null = null
@@ -128,6 +128,7 @@ vi.mock("@xyflow/react", () => ({
   MiniMap: () => <div data-testid="rf-minimap" />,
   Handle: () => null,
   Position: { Left: "left", Right: "right" },
+  useConnection: () => false,
   applyNodeChanges: (
     changes: { type: string; id: string; position?: { x: number; y: number } }[],
     nodes: { id: string; position: { x: number; y: number } }[],
@@ -2090,6 +2091,73 @@ describe("WorkflowEditor", () => {
         }),
       )
       expect(capturedNodes?.find((n) => n.id === "parseBody")).toBe(before)
+    })
+  })
+
+  describe("when conditions", () => {
+    const branching: WorkflowFile = {
+      lorien: 1,
+      nodes: {
+        request: { uses: "@core/http-request", values: { path: "/rooms/:id", method: "GET" } },
+        find: { uses: "./nodes/find-room", in: { id: "request.params.id" } },
+        missing: { uses: "@core/response", when: "!find.found", values: { status: 404 } },
+        found: { uses: "@core/response", when: "find.found", in: { body: "find.room" } },
+      },
+    }
+    const schemas = {
+      "./nodes/find-room": {
+        inputs: { type: "object", properties: { id: { type: "string" } } },
+        outputs: {
+          type: "object",
+          properties: { found: { type: "boolean" }, room: { type: "object" } },
+        },
+      },
+    }
+    const draft = () => useWorkflowDrafts.getState().drafts["test-tab"]?.workflow
+    const conditionEdges = () => capturedEdges?.filter((e) => e.type === "condition") ?? []
+
+    async function open() {
+      vi.mocked(fetchWorkspaceSchemas).mockResolvedValue(schemas)
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(branching)
+      render(<WorkflowEditor path="workflows/rooms/get.workflow" tabId="test-tab" />)
+      await waitFor(() => expect(conditionEdges()).toHaveLength(2))
+    }
+
+    it("draws each condition as an edge from the output into the node's condition handle", async () => {
+      await open()
+      const byTarget = Object.fromEntries(conditionEdges().map((e) => [e.target, e]))
+      expect(byTarget.missing).toMatchObject({
+        source: "find",
+        sourceHandle: "found",
+        targetHandle: "$when",
+        data: { label: "if not found", when: "!find.found" },
+      })
+      expect(byTarget.found?.data?.label).toBe("if found")
+    })
+
+    it("dropping an output on the condition handle sets `when`", async () => {
+      await open()
+      act(() => {
+        capturedOnConnect?.({
+          source: "find",
+          sourceHandle: "room",
+          target: "missing",
+          targetHandle: "$when",
+        })
+      })
+      // Re-pointing keeps the branch's polarity.
+      expect(draft()?.nodes.missing?.when).toBe("!find.room")
+    })
+
+    it("deleting a condition edge removes `when`; the edge's flip button negates it", async () => {
+      await open()
+      const edge = conditionEdges().find((e) => e.target === "found")!
+      act(() => edge.data?.onFlip?.())
+      expect(draft()?.nodes.found?.when).toBe("!find.found")
+      act(() => capturedOnEdgesDelete?.([edge]))
+      expect(draft()?.nodes.found?.when).toBeUndefined()
+      // Its data binding is untouched.
+      expect(draft()?.nodes.found?.in).toEqual({ body: "find.room" })
     })
   })
 })

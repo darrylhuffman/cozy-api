@@ -80,7 +80,7 @@ export interface LayoutOptions {
 
 /**
  * Left-to-right layered layout: each node sits one column right of its
- * deepest dependency (data references and `after:`), so data flows
+ * deepest dependency (data references, `when:` and `after:`), so data flows
  * rightwards. Within a column, nodes keep their current top-to-bottom order.
  * Cycles are tolerated (the back edge is ignored).
  */
@@ -100,6 +100,7 @@ export function tidyLayout(wf: WorkflowFile, opts: LayoutOptions = {}): Workflow
     if (typeof node.in === "string") add(node.in)
     else if (node.in) for (const v of Object.values(node.in)) add(v)
     for (const a of node.after ?? []) add(a)
+    if (node.when) add(node.when.replace(/^!/, ""))
     deps.set(id, refs)
   }
 

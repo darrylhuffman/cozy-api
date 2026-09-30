@@ -460,3 +460,38 @@ describe("InspectorPanel — actions and input values", () => {
     expect(screen.getByText("true")).toHaveClass("italic", "text-muted-foreground")
   })
 })
+
+describe("InspectorPanel — condition", () => {
+  const branching: WorkflowFile = {
+    lorien: 1,
+    nodes: {
+      save: { uses: "./nodes/save-user" },
+      response: { uses: "@core/response", when: "save.ok", in: { body: "save.user" } },
+    },
+  }
+  beforeEach(() => {
+    useWorkflowDrafts.getState().load("tab-1", "workflows/x.workflow", branching)
+    useLiveWorkflowStore.setState({ workflow: branching, tabId: "tab-1" })
+    useSelectionStore.setState({ selectedNodeId: "response" })
+  })
+
+  it("shows the condition and flips which branch the node runs on", () => {
+    render(<InspectorPanel />)
+    expect(screen.getByLabelText("Condition")).toHaveTextContent("save.ok")
+    expect(screen.getByRole("button", { name: "when true" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    fireEvent.click(screen.getByRole("button", { name: "when false" }))
+    expect(useWorkflowDrafts.getState().drafts["tab-1"]?.workflow.nodes.response?.when).toBe(
+      "!save.ok",
+    )
+  })
+
+  it("says Always for a node without one", () => {
+    useSelectionStore.setState({ selectedNodeId: "save" })
+    render(<InspectorPanel />)
+    expect(screen.getByLabelText("Condition")).toHaveTextContent("Always")
+    expect(screen.queryByRole("button", { name: "when false" })).not.toBeInTheDocument()
+  })
+})

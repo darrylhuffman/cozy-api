@@ -8,7 +8,7 @@ import type {
 import { create } from "zustand"
 import { loadBreakpoints, saveBreakpoints } from "./debug-breakpoints-storage"
 
-export type NodeStatus = "running" | "completed" | "errored" | "paused"
+export type NodeStatus = "running" | "completed" | "errored" | "paused" | "skipped"
 export type BodyKind = "none" | "json" | "xml" | "text" | "form"
 
 export interface TimelineEvent {
@@ -308,6 +308,7 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
       if (e.event.type === "before-node") statuses.set(e.event.nodeId, "running")
       else if (e.event.type === "after-node") statuses.set(e.event.nodeId, "completed")
       else if (e.event.type === "error") statuses.set(e.event.nodeId, "errored")
+      else if (e.event.type === "skipped") statuses.set(e.event.nodeId, "skipped")
     }
     if (run.pausedFrame) statuses.set(run.pausedFrame.nodeId, "paused")
     return statuses
