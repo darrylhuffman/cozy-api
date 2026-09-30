@@ -46,6 +46,7 @@ export function BodyEditor() {
           automaticLayout: true,
           tabSize: 2,
           wordWrap: "on",
+          fixedOverflowWidgets: true,
         }}
       />
     </div>

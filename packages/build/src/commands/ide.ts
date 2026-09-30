@@ -30,6 +30,7 @@ import { findAvailablePort, parseStartingPort } from "../ports.js"
 import { makeDebugIntegration } from "./debug-integration.js"
 import { introspectWorkspace, invalidateSchemaCache } from "./introspect-workspace.js"
 import { type NodeCasesRequest, type NodeCasesRun, runNodeCasesInWorker } from "./run-node-cases.js"
+import { collectWorkspaceTypes } from "./workspace-types.js"
 
 // ── FileNode types (mirrors packages/ide/src/data/mock-files.ts) ─────────────
 export type FileKind = "workflow" | "node"
@@ -262,6 +263,16 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
     try {
       const { schemas, warnings } = await introspectWorkspace(workspaceRoot)
       return c.json({ schemas, warnings })
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 500)
+    }
+  })
+
+  // ── Type declarations for the code editor ────────────────────────────────
+
+  app.get("/api/workspace/types", async (c) => {
+    try {
+      return c.json(await collectWorkspaceTypes(workspaceRoot))
     } catch (e) {
       return c.json({ error: (e as Error).message }, 500)
     }
