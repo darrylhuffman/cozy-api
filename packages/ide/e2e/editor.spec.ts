@@ -1,14 +1,14 @@
-import { expect, openCreateUser, test } from "./fixtures.js"
+import { expect, openAddPet, test } from "./fixtures.js"
 
 test("opens a workflow on the canvas with its toolbar", async ({ ide }) => {
-  await openCreateUser(ide)
-  await expect(ide.getByText("create.workflow", { exact: true }).last()).toBeVisible()
+  await openAddPet(ide)
+  await expect(ide.getByText("add.workflow", { exact: true }).last()).toBeVisible()
   await expect(ide.getByRole("button", { name: /^Problems:/ })).toBeVisible()
   expect(await ide.locator('[data-testid="node-header"]').count()).toBeGreaterThan(1)
 })
 
 test("keeps unsaved edits when switching tabs, and undo restores the graph", async ({ ide }) => {
-  await openCreateUser(ide)
+  await openAddPet(ide)
   const nodes = ide.locator('[data-testid="node-header"]')
   const before = await nodes.count()
   await nodes.first().click()
@@ -19,7 +19,7 @@ test("keeps unsaved edits when switching tabs, and undo restores the graph", asy
   // Away to another workflow and back: the duplicate is still there.
   await ide.getByRole("button", { name: "get.workflow" }).click()
   await expect(ide.getByText(/Unsaved changes/)).toBeHidden()
-  await ide.getByRole("button", { name: /^create\.workflow\s*•$/ }).click()
+  await ide.getByRole("button", { name: /^add\.workflow\s*•$/ }).click()
   await expect(nodes).toHaveCount(before + 1)
 
   await ide.getByRole("button", { name: "Undo" }).click()
@@ -27,7 +27,7 @@ test("keeps unsaved edits when switching tabs, and undo restores the graph", asy
 })
 
 test("edits input values on the node card, one undo step per edit", async ({ ide }) => {
-  await openCreateUser(ide)
+  await openAddPet(ide)
   const pathChip = ide.getByRole("button", { name: "Edit path" })
   await pathChip.click()
   await ide.keyboard.type("/people")
@@ -44,7 +44,7 @@ test("edits input values on the node card, one undo step per edit", async ({ ide
 })
 
 test("the Delete key removes the selected node, and undo brings it back", async ({ ide }) => {
-  await openCreateUser(ide)
+  await openAddPet(ide)
   const nodes = ide.locator('[data-testid="node-header"]')
   const before = await nodes.count()
   await nodes.first().click()
@@ -55,7 +55,7 @@ test("the Delete key removes the selected node, and undo brings it back", async 
 })
 
 test("shows the keyboard shortcuts dialog", async ({ ide }) => {
-  await openCreateUser(ide)
+  await openAddPet(ide)
   await ide.getByRole("button", { name: "Keyboard shortcuts" }).click()
   await expect(ide.getByRole("dialog")).toContainText("Duplicate")
 })
@@ -65,7 +65,7 @@ test("opens code in the bundled Monaco editor, without a CDN", async ({ ide }) =
   ide.on("request", (r) => {
     if (/jsdelivr|unpkg|cdnjs/.test(r.url())) cdn.push(r.url())
   })
-  await ide.getByRole("button", { name: "save-user.ts" }).click()
+  await ide.getByRole("button", { name: "add-pet.ts" }).click()
   await expect(ide.locator(".monaco-editor").first()).toBeVisible({ timeout: 20_000 })
   await expect(ide.locator(".view-lines").first()).toContainText("export")
   expect(cdn).toEqual([])
@@ -73,8 +73,8 @@ test("opens code in the bundled Monaco editor, without a CDN", async ({ ide }) =
 
 test("overflowing workflow tabs scroll with arrows instead of a scrollbar", async ({ ide }) => {
   await ide.setViewportSize({ width: 1000, height: 800 })
-  await ide.getByRole("button", { name: "item", exact: true }).click()
-  await expect(ide.getByRole("button", { name: "add.workflow" })).toBeVisible()
+  await ide.getByRole("button", { name: "orders", exact: true }).click()
+  await expect(ide.getByRole("button", { name: "place.workflow" })).toBeVisible()
   const tree = ide.getByRole("button", { name: /\.workflow$/ })
   const count = await tree.count()
   for (let i = 0; i < count; i++) await tree.nth(i).click()

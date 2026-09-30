@@ -1,0 +1,45 @@
+{
+  "lorien": 1,
+  "requests": [
+    {
+      "id": "findsAPet",
+      "name": "Finds a pet by id",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/pets/1",
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 200
+        },
+        {
+          "target": "body",
+          "path": "name",
+          "op": "equals",
+          "value": "Biscuit"
+        }
+      ]
+    },
+    {
+      "id": "returns404ForAMissingPet",
+      "name": "Returns 404 for a missing pet",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/pets/99999",
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 404
+        },
+        {
+          "target": "body",
+          "path": "error",
+          "op": "contains",
+          "value": "not found"
+        }
+      ]
+    }
+  ]
+}

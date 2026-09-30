@@ -1,0 +1,48 @@
+{
+  "lorien": 1,
+  "requests": [
+    {
+      "id": "listsAllPets",
+      "name": "Lists all pets",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/pets",
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 200
+        },
+        {
+          "target": "body",
+          "path": "[0].name",
+          "op": "equals",
+          "value": "Biscuit"
+        }
+      ]
+    },
+    {
+      "id": "filtersBySpecies",
+      "name": "Filters by species",
+      "trigger": "Request",
+      "method": "GET",
+      "path": "/pets",
+      "query": {
+        "species": "cat"
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 200
+        },
+        {
+          "target": "body",
+          "path": "[0].species",
+          "op": "equals",
+          "value": "cat"
+        }
+      ]
+    }
+  ]
+}

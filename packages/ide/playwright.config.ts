@@ -29,6 +29,8 @@ export default defineConfig({
   webServer: {
     command: `node ../build/dist/cli.js ide --root ../../examples/basic-api --no-open --port ${PORT}`,
     url: `http://localhost:${PORT}/`,
+    // A fresh, seeded pet store per run instead of the example's data/petstore.db.
+    env: { PETSTORE_DB: ":memory:" },
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },

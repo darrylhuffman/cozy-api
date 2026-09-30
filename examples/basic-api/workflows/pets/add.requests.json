@@ -1,0 +1,61 @@
+{
+  "lorien": 1,
+  "requests": [
+    {
+      "id": "addsAPet",
+      "name": "Adds a pet",
+      "trigger": "Request",
+      "method": "POST",
+      "path": "/pets",
+      "body": {
+        "kind": "json",
+        "json": {
+          "name": "{{petPrefix}}-{{$randomInt}}",
+          "species": "dog"
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 201
+        },
+        {
+          "target": "body",
+          "path": "id",
+          "op": "type",
+          "value": "number"
+        },
+        {
+          "target": "body",
+          "path": "status",
+          "op": "equals",
+          "value": "available"
+        }
+      ],
+      "capture": {
+        "petId": "body.id"
+      }
+    },
+    {
+      "id": "rejectsAMissingSpecies",
+      "name": "Rejects a pet without a species",
+      "trigger": "Request",
+      "method": "POST",
+      "path": "/pets",
+      "body": {
+        "kind": "json",
+        "json": {
+          "name": "Nameless"
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "greaterThan",
+          "value": 399
+        }
+      ]
+    }
+  ]
+}

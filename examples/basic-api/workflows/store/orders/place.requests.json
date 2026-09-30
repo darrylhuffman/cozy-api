@@ -1,0 +1,75 @@
+{
+  "lorien": 1,
+  "requests": [
+    {
+      "id": "addsAPetToOrder",
+      "name": "Adds a pet to order",
+      "method": "POST",
+      "path": "/pets",
+      "body": {
+        "kind": "json",
+        "json": {
+          "name": "{{petPrefix}}-{{$randomInt}}",
+          "species": "cat"
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 201
+        }
+      ],
+      "capture": {
+        "petId": "body.id"
+      }
+    },
+    {
+      "id": "placesAnOrder",
+      "name": "Places an order",
+      "trigger": "Request",
+      "method": "POST",
+      "path": "/store/orders",
+      "body": {
+        "kind": "json",
+        "json": {
+          "petId": "{{petId}}",
+          "quantity": 1
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 201
+        },
+        {
+          "target": "body",
+          "path": "status",
+          "op": "equals",
+          "value": "placed"
+        }
+      ]
+    },
+    {
+      "id": "refusesThePetOnceOrdered",
+      "name": "Refuses the same pet again",
+      "trigger": "Request",
+      "method": "POST",
+      "path": "/store/orders",
+      "body": {
+        "kind": "json",
+        "json": {
+          "petId": "{{petId}}"
+        }
+      },
+      "expect": [
+        {
+          "target": "status",
+          "op": "equals",
+          "value": 409
+        }
+      ]
+    }
+  ]
+}

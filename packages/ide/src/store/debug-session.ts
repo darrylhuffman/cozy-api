@@ -252,20 +252,23 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
 
   selectRun: (runId) => set({ selectedRunId: runId }),
 
-  toggleBreakpoint: (bp) =>
-    set((s) => {
-      const existing = s.breakpoints.findIndex(
-        (b) => b.workflowPath === bp.workflowPath && b.nodeId === bp.nodeId && b.kind === bp.kind,
-      )
-      const next =
-        existing >= 0 ? s.breakpoints.filter((_, i) => i !== existing) : [...s.breakpoints, bp]
-      saveBreakpoints(next)
-      return { breakpoints: next }
-    }),
+  // Breakpoint changes go to the dev server right away. It only otherwise
+  // learns them from the hello on (re)connect, and the debugger socket stays
+  // open for the whole session now that the Debug panel is always mounted.
+  toggleBreakpoint: (bp) => {
+    const { breakpoints } = get()
+    const existing = breakpoints.findIndex(
+      (b) => b.workflowPath === bp.workflowPath && b.nodeId === bp.nodeId && b.kind === bp.kind,
+    )
+    get().setBreakpoints(
+      existing >= 0 ? breakpoints.filter((_, i) => i !== existing) : [...breakpoints, bp],
+    )
+  },
 
   setBreakpoints: (bps) => {
     saveBreakpoints(bps)
     set({ breakpoints: bps })
+    get().wsSender?.({ type: "set-breakpoints", breakpoints: bps })
   },
 
   hydrateBreakpoints: () => set({ breakpoints: loadBreakpoints() }),

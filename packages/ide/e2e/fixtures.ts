@@ -16,9 +16,8 @@ export const test = base.extend<{ ide: Page }>({
 
 export { expect }
 
-/** Opens workflows/user/create.workflow from the file tree. */
-export async function openCreateUser(page: Page) {
-  // The tree lists cart/create.workflow first, then user/create.workflow.
-  await page.getByRole("button", { name: "create.workflow" }).nth(1).click()
+/** Opens workflows/pets/add.workflow (POST /pets) from the file tree. */
+export async function openAddPet(page: Page) {
+  await page.getByRole("button", { name: "add.workflow" }).click()
   await expect(page.locator('[data-testid="node-header"]').first()).toBeVisible()
 }

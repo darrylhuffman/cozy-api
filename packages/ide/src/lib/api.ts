@@ -201,6 +201,24 @@ export async function fetchWorkspaceSchemas(): Promise<Record<string, NodeSchema
   return schemas
 }
 
+export interface WorkspaceTypeFile {
+  /** Virtual path, e.g. "node_modules/zod/index.d.cts". */
+  path: string
+  content: string
+}
+
+/**
+ * Declaration files for the workspace's dependencies (and generated
+ * `.lorien/types`), so the code editor can resolve package imports.
+ */
+export async function fetchWorkspaceTypes(): Promise<WorkspaceTypeFile[]> {
+  const body = await getJson<{ files: WorkspaceTypeFile[] }>(
+    "/api/workspace/types",
+    "Loading type definitions",
+  )
+  return body.files
+}
+
 /**
  * Creates a new file at `path` with `content`. Throws if the file already
  * exists (backend returns 409) or if the request fails for any other reason.

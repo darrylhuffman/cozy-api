@@ -1,14 +1,14 @@
-import { expect, openCreateUser, test } from "./fixtures.js"
+import { expect, openAddPet, test } from "./fixtures.js"
 
 test("runs the workflow's saved requests from the Run tab", async ({ ide }) => {
-  await openCreateUser(ide)
+  await openAddPet(ide)
   await ide.getByRole("tab", { name: "Run" }).click()
   await ide.getByRole("button", { name: "Run all" }).click()
   await expect(ide.getByText("2/2 passed")).toBeVisible({ timeout: 20_000 })
 })
 
 test("runs a node's test cases from the Tests tab and badges the node", async ({ ide }) => {
-  await openCreateUser(ide)
+  await openAddPet(ide)
   await ide.getByRole("tab", { name: "Tests" }).click()
   await ide
     .getByRole("button", { name: /^Run .* cases$/ })
