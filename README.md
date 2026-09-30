@@ -118,6 +118,8 @@ A workflow is small enough to review in a diff:
 [`examples/basic-api`](examples/basic-api) is a small pet store on Node's built-in SQLite, with six routes, a `db` and a `logger` provider, and tests at every layer. The screenshots above are that project in the IDE. To open it from this repo:
 
 ```bash
+git clone https://github.com/darrylhuffman/lorien.git
+cd lorien
 pnpm install
 pnpm -r build
 pnpm dev:demo      # IDE on http://localhost:5173, backed by examples/basic-api
@@ -158,4 +160,4 @@ Browser tests for the IDE live in `packages/ide/e2e` and run against the real ID
 
 ## License
 
-MIT, see [`LICENSE`](LICENSE).
+MIT, see [`LICENSE`](LICENSE). Issues and pull requests are welcome at [github.com/darrylhuffman/lorien](https://github.com/darrylhuffman/lorien).
