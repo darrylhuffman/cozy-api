@@ -59,30 +59,29 @@ export function BodyTypeTabs() {
   }
 
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="text-muted-foreground">Body:</span>
-      <fieldset
-        aria-label="Body type"
-        className="m-0 inline-flex min-w-0 overflow-hidden rounded-md border p-0"
-      >
-        {TABS.map((t) => {
-          const active = bodyKind === t.kind
-          return (
-            <button
-              key={t.kind}
-              type="button"
-              aria-pressed={active ? "true" : "false"}
-              onClick={() => pick(t.kind)}
-              className={cn(
-                "px-2 py-1 border-l first:border-l-0 hover:bg-accent/30",
-                active && "bg-accent text-accent-foreground",
-              )}
-            >
-              {t.label}
-            </button>
-          )
-        })}
-      </fieldset>
-    </div>
+    <fieldset
+      aria-label="Body type"
+      className="m-0 inline-flex min-w-0 self-start rounded-md border-0 bg-muted p-0.5 text-xs"
+    >
+      {TABS.map((t) => {
+        const active = bodyKind === t.kind
+        return (
+          <button
+            key={t.kind}
+            type="button"
+            aria-pressed={active ? "true" : "false"}
+            onClick={() => pick(t.kind)}
+            className={cn(
+              "whitespace-nowrap rounded px-2 py-0.5 transition-colors",
+              active
+                ? "bg-background font-semibold text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t.label}
+          </button>
+        )
+      })}
+    </fieldset>
   )
 }

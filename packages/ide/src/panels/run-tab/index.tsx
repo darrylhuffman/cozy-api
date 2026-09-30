@@ -1,5 +1,6 @@
 import { useEffect } from "react"
 import { useDebugTransport } from "@/hooks/use-debug-transport"
+import { cn } from "@/lib/utils"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useRequestEditor } from "@/store/request-editor"
@@ -20,20 +21,33 @@ export function RunTab() {
     useRequestEditor.getState().bindWorkflow(workflowPath)
   }, [workflowPath])
   return (
-    <div className="flex h-full flex-col gap-3" data-testid="run-tab">
-      <div className="flex items-center justify-between gap-2">
-        <EnvironmentPicker />
-        <div className="shrink-0 text-[10px]">
-          <span className={connected ? "text-success" : "text-muted-foreground"}>
-            {connected ? "● debug connected" : "○ debug disconnected"}
+    <div className="flex h-full flex-col gap-3 text-[13px]" data-testid="run-tab">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <TriggerSelector />
+        <div className="flex min-w-0 items-center gap-2">
+          <EnvironmentPicker />
+          <span
+            className={cn(
+              "flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px]",
+              connected ? "text-success" : "text-muted-foreground",
+            )}
+            title={connected ? "Debugger connected" : "Debugger disconnected"}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "size-1.5 rounded-full",
+                connected ? "bg-success" : "border border-muted-foreground/60",
+              )}
+            />
+            {connected ? "debug connected" : "debug disconnected"}
           </span>
         </div>
       </div>
-      <TriggerSelector />
       {workflowPath && <SavedRequests key={workflowPath} workflowPath={workflowPath} />}
-      <div className="h-px bg-border" />
+      <div className="h-px shrink-0 bg-border" />
       {workflowPath && <RequestBuilder workflowPath={workflowPath} />}
-      <div className="h-px bg-border" />
+      <div className="h-px shrink-0 bg-border" />
       <HistoryTable />
     </div>
   )

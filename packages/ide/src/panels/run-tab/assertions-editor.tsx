@@ -43,7 +43,7 @@ const needsPath = (t: AssertionTarget) => t === "body" || t === "header"
 const needsValue = (op: AssertionOp) => op !== "exists" && op !== "notExists"
 
 const field =
-  "h-6 rounded border border-border bg-background px-1.5 font-mono text-[11px] focus:outline-none focus:ring-1 focus:ring-primary"
+  "h-7 rounded-md border border-border bg-background px-1.5 font-mono text-[11px] focus:outline-none focus:ring-1 focus:ring-ring"
 
 export function AssertionsEditor({
   value,
@@ -64,7 +64,7 @@ export function AssertionsEditor({
     )
 
   return (
-    <div className="flex flex-col gap-1" data-testid="assertions-editor">
+    <div className="flex flex-col gap-1.5" data-testid="assertions-editor">
       {value.length === 0 && (
         <div className="text-[11px] text-muted-foreground">
           No checks yet. Without checks a request passes on any status below 400.
@@ -138,7 +138,7 @@ export function AssertionsEditor({
           <button
             type="button"
             aria-label="Remove check"
-            className="px-1 text-muted-foreground hover:text-foreground"
+            className="px-1 text-muted-foreground hover:text-destructive"
             onClick={() => onChange(value.filter((_, j) => j !== i))}
           >
             ×
@@ -147,7 +147,7 @@ export function AssertionsEditor({
       ))}
       <button
         type="button"
-        className="self-start rounded-md border px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+        className="self-start whitespace-nowrap rounded-md px-1 py-0.5 text-xs text-primary hover:bg-accent"
         onClick={() => onChange([...value, { target: "status", op: "equals", value: 200 }])}
       >
         + Add check

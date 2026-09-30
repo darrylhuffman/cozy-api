@@ -12,8 +12,17 @@ import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { resultKey, useRequestCollections } from "@/store/request-collections"
 import { useRequestEditor } from "@/store/request-editor"
 import { useSchemasStore } from "@/store/schemas"
+import { methodTone } from "./method-tone"
 import { savedRequestToForm } from "./saved-request-form"
 import { sendAll, sendRequest } from "./send-request"
+
+/**
+ * Row actions collapse to zero width until the row is hovered or focused, so
+ * the status · duration column sits flush right the rest of the time. They
+ * stay in the tab order (never display:none) and expand on keyboard focus.
+ */
+const REVEAL =
+  "w-0 overflow-hidden p-0 opacity-0 group-hover:w-auto group-hover:p-1 group-hover:opacity-100 group-has-[:focus-visible]:w-auto group-has-[:focus-visible]:p-1 group-has-[:focus-visible]:opacity-100"
 
 function currentVars() {
   return activeEnvironment(useEnvironments.getState()).vars
@@ -101,19 +110,19 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
       useRequestEditor.getState().open({ id: null, name: "", expect: [], capture: [] })
   }
 
+  const allPassed = passed === ran.length
+
   return (
-    <div className="flex flex-col gap-1 text-xs" data-testid="saved-requests">
-      <div className="flex items-center gap-2">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+    <div className="flex flex-col gap-1 text-[13px]" data-testid="saved-requests">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <div className="min-w-0 truncate whitespace-nowrap text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
           Saved requests
         </div>
         {ran.length > 0 && (
           <span
             className={cn(
-              "rounded px-1.5 text-[10px] font-medium",
-              passed === ran.length
-                ? "bg-success/15 text-success"
-                : "bg-destructive/15 text-destructive",
+              "shrink-0 whitespace-nowrap rounded-full px-1.5 py-px text-[11px] font-medium",
+              allPassed ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
             )}
           >
             {passed}/{ran.length} passed
@@ -124,9 +133,9 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
           type="button"
           disabled={requests.length === 0 || runningAll}
           onClick={() => void runAll()}
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent disabled:opacity-40"
+          className="flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-xs text-success hover:bg-accent disabled:opacity-40"
         >
-          <Play className="h-3 w-3" />
+          <Play className="size-3 fill-current" />
           {runningAll ? "Running…" : "Run all"}
         </button>
         <button
@@ -134,14 +143,15 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
           onClick={() =>
             useRequestEditor.getState().open({ id: null, name: "", expect: [], capture: [] })
           }
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
+          className="flex h-6 shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
         >
-          <Plus className="h-3 w-3" />
+          <Plus className="size-3.5" />
           New
         </button>
         <button
           type="button"
-          title="Have Claude write requests for this workflow"
+          aria-label="Write with AI"
+          title="Write with AI: have Claude write requests for this workflow"
           onClick={() =>
             askAi(
               generateRequests({
@@ -152,42 +162,42 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
               }),
             )
           }
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-ai hover:bg-accent"
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-ai hover:bg-ai/15"
         >
-          <Sparkles className="h-3 w-3" />
-          Write with AI
+          <Sparkles className="size-3.5" />
         </button>
       </div>
       {entry?.error && (
         <div
           role="alert"
-          className="rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive"
+          className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive"
         >
           {entry.error}
         </div>
       )}
       {entry?.loaded && requests.length === 0 && !entry.error && (
-        <div className="rounded-md border border-dashed p-2 text-muted-foreground">
+        <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
           Nothing saved for this workflow yet. Build a request below and press Save; it is written
           to <code className="font-mono">{entry.path}</code> so the whole team gets it.
         </div>
       )}
-      <ul className="flex flex-col">
+      <ul className="flex flex-col gap-px">
         {requests.map((req) => {
           const r = results[resultKey(workflowPath, req.id)]
+          const selected = editingId === req.id
           return (
             <li
               key={req.id}
               className={cn(
-                "group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-accent/50",
-                editingId === req.id && "bg-accent",
+                "group flex h-8 min-w-0 items-center gap-2 rounded-md px-2",
+                selected ? "bg-primary/10 ring-1 ring-primary/50 ring-inset" : "hover:bg-accent/60",
               )}
             >
               <span
                 role="img"
                 aria-label={r ? (r.passed ? "passed" : "failed") : "not run"}
                 className={cn(
-                  "h-2 w-2 shrink-0 rounded-full",
+                  "size-1.5 shrink-0 rounded-full",
                   !r
                     ? "border border-muted-foreground/50"
                     : r.passed
@@ -200,13 +210,15 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
                 onClick={() => openSavedRequest(req)}
               >
-                <span className="w-12 shrink-0 font-mono text-[10px] text-muted-foreground">
+                <span
+                  className={cn("w-9 shrink-0 font-mono text-[10.5px]", methodTone(req.method))}
+                >
                   {req.method}
                 </span>
                 <span className="truncate">{req.name}</span>
               </button>
               {r?.response && (
-                <span className="font-mono text-[10px] text-muted-foreground">
+                <span className="shrink-0 whitespace-nowrap font-mono text-[11px] text-muted-foreground group-hover:hidden group-has-[:focus-visible]:hidden">
                   {r.response.status} · {r.response.durationMs}ms
                 </span>
               )}
@@ -215,17 +227,23 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
                 aria-label={`Run ${req.name}`}
                 disabled={runningId === req.id || runningAll}
                 onClick={() => void runOne(req)}
-                className="rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-40"
+                className={cn(
+                  "shrink-0 rounded text-success hover:bg-background disabled:opacity-40",
+                  r?.response ? REVEAL : "p-1",
+                )}
               >
-                <Play className="h-3 w-3" />
+                <Play className="size-3 fill-current" />
               </button>
               <button
                 type="button"
                 aria-label={`Delete ${req.name}`}
                 onClick={() => void remove(req)}
-                className="rounded p-0.5 text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100"
+                className={cn(
+                  "shrink-0 rounded text-muted-foreground hover:bg-background hover:text-destructive",
+                  REVEAL,
+                )}
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="size-3" />
               </button>
             </li>
           )
