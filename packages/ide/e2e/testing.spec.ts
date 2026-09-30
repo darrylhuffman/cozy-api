@@ -54,6 +54,9 @@ test("picks a check's field from the response shape instead of typing a path", a
   await ide.getByTestId("saved-requests").getByText("Adds a pet").click()
   await expect(ide.getByLabel("Request name")).toHaveValue("Adds a pet")
   const rows = ide.getByTestId("assertion-row")
+  // Checks start collapsed; the header shows how many there are.
+  await expect(rows).toHaveCount(0)
+  await ide.getByRole("button", { name: /^Checks\s*5/ }).click()
   await expect(rows).toHaveCount(5)
 
   await ide.getByRole("button", { name: "+ Add check" }).click()
@@ -70,4 +73,8 @@ test("picks a check's field from the response shape instead of typing a path", a
   const results = ide.getByRole("list", { name: "Check results" })
   await expect(results).toContainText('body.species equals "dog"', { timeout: 20_000 })
   await expect(ide.getByTestId("request-result")).toContainText("Passed")
+  // The JSON response opens as a tree; Raw shows it highlighted.
+  await expect(ide.getByTestId("response-tree")).toContainText('species:"dog"')
+  await ide.getByRole("tab", { name: "Raw" }).click()
+  await expect(ide.getByTestId("response-raw").locator(".monaco-editor")).toBeVisible()
 })
