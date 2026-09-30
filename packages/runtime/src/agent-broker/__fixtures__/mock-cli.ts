@@ -9,11 +9,22 @@
  *   simulating one full agent turn.
  * - Exits cleanly when stdin closes.
  * - Honors `LORIEN_MOCK_DELAY_MS` env var (default 0) to simulate timing.
+ * - With `--echo`, the assistant text repeats the user's message instead.
  */
 import { createInterface } from "node:readline"
 
 const SESSION_ID = process.env.LORIEN_MOCK_SESSION_ID ?? "sess_mock_001"
 const DELAY = Number(process.env.LORIEN_MOCK_DELAY_MS ?? "0")
+
+const ECHO = process.argv.includes("--echo")
+
+function userText(line: string): string {
+  try {
+    return String((JSON.parse(line) as { message: { content: unknown } }).message.content)
+  } catch {
+    return line
+  }
+}
 
 function emit(obj: unknown): void {
   process.stdout.write(`${JSON.stringify(obj)}\n`)
@@ -47,7 +58,7 @@ async function run(): Promise<void> {
       message: {
         id: msgId,
         role: "assistant",
-        content: [{ type: "text", text: `mock reply ${turn}` }],
+        content: [{ type: "text", text: ECHO ? `echo: ${userText(line)}` : `mock reply ${turn}` }],
       },
       session_id: SESSION_ID,
     })

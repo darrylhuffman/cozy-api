@@ -11,6 +11,7 @@ import {
   planProviders,
   validateWorkflow,
 } from "@darrylondil/lorien-runtime"
+import { formatFinding, runCheck } from "../check/run-check.js"
 import { type EmitProviderInfo, emitIndex, emitProviders, emitWorkflow } from "../codegen/index.js"
 import { generateServicesTypes } from "../generate-services-types.js"
 import { bundleServer } from "./bundle-server.js"
@@ -106,6 +107,11 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
   const middlewareFiles = (await findMiddlewareFiles(root)).filter(
     (f) => middleware.byDir[f.dir] !== undefined,
   )
+
+  // lorien check's warnings (its errors are the provider errors above).
+  for (const f of (await runCheck(root)).findings) {
+    if (f.severity === "warning") console.warn(formatFinding(f))
+  }
 
   // Load workflows
   const ws = await loadWorkspace(root)

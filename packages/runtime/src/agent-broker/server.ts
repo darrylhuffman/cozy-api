@@ -57,6 +57,11 @@ export interface AttachAgentBrokerOptions {
   projectRoot: string
   /** Test injection: override spawnClaude args without touching production code. */
   spawnOverride?: () => Pick<SpawnClaudeOptions, "command" | "argsOverride">
+  /**
+   * Project facts for the agent (where things go, the live providers), sent
+   * ahead of the first message of each new session. Not saved in the chat.
+   */
+  projectContext?: () => Promise<string | undefined>
 }
 
 const WS_PATH = "/__lorien/agents/ws"
@@ -209,10 +214,16 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
         // knows what they typed; echo would cause duplicates in the UI.
         await appendChatEvent(opts.projectRoot, msg.chatId, event).catch(() => undefined)
 
+        let text = msg.text
         if (!lifecycle.proc) {
+          // A new session (not a resumed one) hasn't seen the project yet.
+          if (lifecycle.sessionId === null && opts.projectContext) {
+            const context = await opts.projectContext().catch(() => undefined)
+            if (context) text = `${context}\n\n${text}`
+          }
           lifecycle.proc = await startProcess(msg.chatId, lifecycle)
         }
-        lifecycle.proc.send(msg.text)
+        lifecycle.proc.send(text)
         return
       }
       case "cancel": {

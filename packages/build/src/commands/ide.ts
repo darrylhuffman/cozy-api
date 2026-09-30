@@ -30,6 +30,7 @@ import type { Command } from "commander"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
+import { agentProjectContext } from "../check/agent-context.js"
 import { generateServicesTypes } from "../generate-services-types.js"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
 import { makeDebugIntegration } from "./debug-integration.js"
@@ -647,7 +648,12 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     // only use the subset of the http.Server API (the 'upgrade' event), so the cast
     // is safe in practice.
     const httpServer = server as unknown as HttpServer
-    attachAgentBroker({ app: currentApp, server: httpServer, projectRoot: workspaceRoot })
+    attachAgentBroker({
+      app: currentApp,
+      server: httpServer,
+      projectRoot: workspaceRoot,
+      projectContext: () => agentProjectContext(workspaceRoot),
+    })
     attachDebugWebSocket({ app: currentApp, server: httpServer, session: debugSession })
   })
 }

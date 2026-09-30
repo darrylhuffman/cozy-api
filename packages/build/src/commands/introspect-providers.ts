@@ -332,7 +332,7 @@ function propNameOf(n: ts.PropertyName): string | undefined {
   return undefined
 }
 
-async function walkTs(dir: string): Promise<string[]> {
+export async function walkTs(dir: string): Promise<string[]> {
   let entries: import("node:fs").Dirent[]
   try {
     entries = await readdir(dir, { withFileTypes: true })
@@ -351,6 +351,6 @@ async function walkTs(dir: string): Promise<string[]> {
   return out.sort()
 }
 
-function toPosix(p: string): string {
+export function toPosix(p: string): string {
   return p.replaceAll("\\", "/")
 }
