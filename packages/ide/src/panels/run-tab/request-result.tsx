@@ -1,6 +1,7 @@
 import type { Assertion, RequestRunResult } from "@darrylondil/lorien-runtime/requests"
 import { Check, Sparkles, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ResponseBody } from "./response-body"
 
 /**
  * Checks that describe a response as it is now — a quick way to pin current
@@ -41,12 +42,6 @@ export function RequestResult({
   onAskAi?: () => void
 }) {
   const res = result.response
-  const bodyText =
-    res === undefined
-      ? ""
-      : typeof res.body === "string"
-        ? res.body
-        : JSON.stringify(res.body, null, 2)
   return (
     <div
       className="flex flex-col overflow-hidden rounded-lg border border-border bg-card text-xs"
@@ -130,12 +125,12 @@ export function RequestResult({
         )}
         {res && (
           <>
-            <pre
-              className="max-h-64 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-[11px]"
-              data-testid="response-body"
-            >
-              {bodyText || "(empty body)"}
-            </pre>
+            <ResponseBody
+              body={res.body}
+              contentType={
+                Object.entries(res.headers).find(([k]) => k.toLowerCase() === "content-type")?.[1]
+              }
+            />
             <details className="text-muted-foreground">
               <summary className="cursor-pointer select-none font-mono text-[11px]">
                 Response headers ({Object.keys(res.headers).length})
