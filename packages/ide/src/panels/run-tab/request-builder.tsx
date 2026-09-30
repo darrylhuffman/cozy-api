@@ -119,7 +119,7 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
         <div
           role="tablist"
           aria-label="Request parts"
-          className="flex overflow-x-auto border-b border-border text-xs"
+          className="flex overflow-x-auto border-b border-border text-xs [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {tabs.map((t) => {
             const active = tab === t.id
