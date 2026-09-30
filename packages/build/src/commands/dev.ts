@@ -4,7 +4,7 @@ import { delimiter, join, resolve } from "node:path"
 import type { Command } from "commander"
 import { generateServicesTypes } from "../generate-services-types.js"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
-import { DEFAULT_IDE_PORT, runIde } from "./ide.js"
+import { DEFAULT_IDE_PORT, registerTsxFromWorkspace, runIde } from "./ide.js"
 
 export const DEFAULT_API_PORT = 3000
 
@@ -83,7 +83,9 @@ export async function runDevServer(opts: RunDevOptions): Promise<RunDevResult> {
   }
 
   // Nodes read provider types from .lorien/types, which is git-ignored.
+  // Loading lorien.config.ts needs tsx on Node without native type stripping.
   try {
+    await registerTsxFromWorkspace(opts.root)
     await generateServicesTypes(opts.root)
   } catch (e) {
     console.warn(`lorien dev: couldn't generate provider types: ${(e as Error).message}`)
