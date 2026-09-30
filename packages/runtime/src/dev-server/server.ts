@@ -151,10 +151,19 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
         let body: unknown = null
         const contentType = c.req.header("content-type") ?? ""
         if (contentType.includes("application/json")) {
-          try {
-            body = await c.req.json()
-          } catch {
-            body = null
+          const text = await c.req.text()
+          if (text.trim() !== "") {
+            try {
+              body = JSON.parse(text)
+            } catch {
+              return c.json(
+                {
+                  error: "Invalid request",
+                  issues: [{ path: "body", message: "Body is not valid JSON" }],
+                },
+                400,
+              )
+            }
           }
         } else if (c.req.raw.body) {
           body = await c.req.text()

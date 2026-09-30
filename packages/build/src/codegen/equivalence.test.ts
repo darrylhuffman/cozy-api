@@ -57,4 +57,28 @@ describe("equivalence: interpreter == codegen", () => {
       // returns a real Response with hono-injected headers. Skip.)
     }
   })
+
+  it("POST /pets answers 400, not 500, to a malformed or missing body", async () => {
+    const genMod = await import(
+      pathToFileURL(join(distDir, "workflows", "pets", "add.gen.ts")).href
+    )
+    const app = new Hono()
+    genMod.register(app)
+
+    const bad = await app.request("/pets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{bad json",
+    })
+    expect(bad.status).toBe(400)
+    expect(await bad.json()).toEqual({
+      error: "Invalid request",
+      issues: [{ path: "body", message: "Body is not valid JSON" }],
+    })
+
+    // No body at all: the node's input schema rejects the missing fields.
+    const missing = await app.request("/pets", { method: "POST" })
+    expect(missing.status).toBe(400)
+    expect((await missing.json()).error).toBe("Invalid request")
+  })
 })
