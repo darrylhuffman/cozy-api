@@ -25,9 +25,7 @@ describe("console-capture", () => {
     })
     return new Promise<void>((resolve) =>
       queueMicrotask(() => {
-        expect(captured).toEqual([
-          { runId: "r1", level: "log", message: "hello 42" },
-        ])
+        expect(captured).toEqual([{ runId: "r1", level: "log", message: "hello 42" }])
         resolve()
       }),
     )

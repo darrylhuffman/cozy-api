@@ -1,8 +1,8 @@
 import { Keyboard, LayoutGrid, Maximize, Plus, Redo2, Undo2 } from "lucide-react"
 import type { ReactNode } from "react"
 import { cn } from "@/lib/utils"
-import type { Diagnostic } from "./diagnose"
 import { AskAiPopover } from "./ask-ai-popover"
+import type { Diagnostic } from "./diagnose"
 import { ProblemsPopover } from "./problems-popover"
 
 export type SaveStatus = "clean" | "dirty" | "saving" | "saved" | "error"
@@ -36,7 +36,7 @@ export function CanvasToolbar(p: Props) {
   const segments = p.path.replace(/^workflows\//, "").split("/")
   const file = segments.pop() ?? p.path
   return (
-    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-background/80 px-2 text-xs">
+    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-background px-3 text-xs">
       <div className="flex min-w-0 flex-1 items-center gap-1 text-muted-foreground" title={p.path}>
         {segments.map((seg, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: path segments are positional
@@ -62,9 +62,6 @@ export function CanvasToolbar(p: Props) {
         <Redo2 className="h-3.5 w-3.5" />
       </ToolButton>
       <Divider />
-      <ToolButton label="Add node" hint="Add node (Ctrl+K)" onClick={p.onAddNode}>
-        <Plus className="h-3.5 w-3.5" />
-      </ToolButton>
       <ToolButton label="Tidy layout" hint="Arrange nodes left to right" onClick={p.onTidy}>
         <LayoutGrid className="h-3.5 w-3.5" />
       </ToolButton>
@@ -82,6 +79,16 @@ export function CanvasToolbar(p: Props) {
       >
         <Keyboard className="h-3.5 w-3.5" />
       </ToolButton>
+      <button
+        type="button"
+        aria-label="Add node"
+        title="Add node (Ctrl+K)"
+        onClick={p.onAddNode}
+        className="ml-1.5 flex h-7 items-center gap-1.5 rounded-md bg-primary pr-3 pl-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Add node
+      </button>
     </div>
   )
 }
@@ -94,7 +101,7 @@ function SaveBadge({ status, onSave }: { status: SaveStatus; onSave: () => void 
         type="button"
         onClick={onSave}
         title="Save (Ctrl+S)"
-        className="ml-2 flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-700 hover:bg-amber-500/25 dark:text-amber-300"
+        className="ml-2 flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-warning hover:bg-warning/25"
       >
         <span className="h-1.5 w-1.5 rounded-full bg-current" />
         Unsaved changes — Ctrl+S to save

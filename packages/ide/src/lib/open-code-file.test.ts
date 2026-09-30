@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { useTabsStore } from "@/store/tabs"
 import { useDockviewApi } from "@/store/dockview-api"
+import { useTabsStore } from "@/store/tabs"
 import { openCodeFile } from "./open-code-file.js"
 
 // Mock dockview API
@@ -36,10 +36,10 @@ describe("openCodeFile", () => {
     expect(useTabsStore.getState().activeCodeId).toBe("nodes/users/save-user.ts")
   })
 
-  it("focuses the 'code' dockview panel", () => {
+  it("focuses the editor dockview panel", () => {
     openCodeFile("nodes/users/save-user.ts")
 
-    expect(mockGetPanel).toHaveBeenCalledWith("code")
+    expect(mockGetPanel).toHaveBeenCalledWith("editor")
     expect(mockSetActive).toHaveBeenCalledOnce()
   })
 

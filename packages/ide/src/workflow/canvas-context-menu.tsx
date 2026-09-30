@@ -13,7 +13,15 @@ interface Props {
   onNewCustomNode: () => void
 }
 
-export function CanvasContextMenu({ open, onOpenChange, x, y, schemas, onPick, onNewCustomNode }: Props) {
+export function CanvasContextMenu({
+  open,
+  onOpenChange,
+  x,
+  y,
+  schemas,
+  onPick,
+  onNewCustomNode,
+}: Props) {
   type Mode = "menu" | "palette"
   const [mode, setMode] = useState<Mode>("menu")
 

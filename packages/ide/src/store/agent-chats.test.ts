@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useAgentChats } from "./agent-chats.js"
 
 function reset(): void {
@@ -77,7 +77,7 @@ describe("useAgentChats", () => {
       turnId: "t",
       at: "2026-05-21T00:00:00Z",
     })
-    const chat = useAgentChats.getState().chats["c1"]
+    const chat = useAgentChats.getState().chats.c1
     if (chat?.kind === "chat") {
       expect(chat.events).toHaveLength(1)
       expect(chat.events[0]!.kind).toBe("assistant_text")
@@ -111,7 +111,7 @@ describe("useAgentChats", () => {
     await useAgentChats.getState().hydrate()
     const s = useAgentChats.getState()
     expect(s.order).toEqual(["c1"])
-    expect(s.chats["c1"]?.kind).toBe("chat")
+    expect(s.chats.c1?.kind).toBe("chat")
     vi.unstubAllGlobals()
   })
 })
@@ -135,7 +135,8 @@ describe("useAgentChats WebSocket integration", () => {
       queueMicrotask(() => this.fire("open", {}))
     }
     addEventListener(type: string, cb: (e: unknown) => void): void {
-      ;(this.listeners[type] ??= []).push(cb)
+      this.listeners[type] ??= []
+      this.listeners[type].push(cb)
     }
     removeEventListener(type: string, cb: (e: unknown) => void): void {
       this.listeners[type] = (this.listeners[type] ?? []).filter((f) => f !== cb)
@@ -326,7 +327,9 @@ describe("useAgentChats WebSocket integration", () => {
   })
 
   it("startChatWith opens a chat and sends the prompt once the broker creates it", async () => {
-    const pickerId = useAgentChats.getState().startChatWith({ title: "Explain SaveUser", prompt: "Explain it" })
+    const pickerId = useAgentChats
+      .getState()
+      .startChatWith({ title: "Explain SaveUser", prompt: "Explain it" })
     expect(useAgentChats.getState().activeChatId).toBe(pickerId)
     await Promise.resolve()
     expect(constructed[0]!.sent.map((m) => JSON.parse(m).type)).toEqual(["new_chat"])
@@ -359,6 +362,9 @@ describe("useAgentChats WebSocket integration", () => {
     const s = useAgentChats.getState()
     expect(s.chats[a]).toBeUndefined()
     expect(s.chats[b]).toBeUndefined()
-    expect([s.chats["c-a"], s.chats["c-b"]].map((t) => t?.kind === "chat" && t.title)).toEqual(["A", "B"])
+    expect([s.chats["c-a"], s.chats["c-b"]].map((t) => t?.kind === "chat" && t.title)).toEqual([
+      "A",
+      "B",
+    ])
   })
 })

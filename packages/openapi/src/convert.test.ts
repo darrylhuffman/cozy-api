@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { convertOpenApiSpec } from "./convert.js";
-import type { OpenAPIObject } from "./load-spec.js";
+import { describe, expect, it } from "vitest"
+import { convertOpenApiSpec } from "./convert.js"
+import type { OpenAPIObject } from "./load-spec.js"
 
 function petstoreSpec(): OpenAPIObject {
   return {
@@ -52,37 +52,37 @@ function petstoreSpec(): OpenAPIObject {
         },
       },
     },
-  } as OpenAPIObject;
+  } as OpenAPIObject
 }
 
 describe("convertOpenApiSpec", () => {
   it("derives the api slug from spec.info.title", () => {
-    const result = convertOpenApiSpec(petstoreSpec());
-    expect(result.apiSlug).toBe("petstore-api");
-  });
+    const result = convertOpenApiSpec(petstoreSpec())
+    expect(result.apiSlug).toBe("petstore-api")
+  })
 
   it("emits one file per operation + _client.ts", () => {
-    const result = convertOpenApiSpec(petstoreSpec());
-    const names = result.files.map((f) => f.relativePath);
-    expect(names).toContain("list-pets.ts");
-    expect(names).toContain("add-pet.ts");
-    expect(names).toContain("get-pet-by-id.ts");
-    expect(names).toContain("_client.ts");
-    expect(result.files).toHaveLength(4);
-  });
+    const result = convertOpenApiSpec(petstoreSpec())
+    const names = result.files.map((f) => f.relativePath)
+    expect(names).toContain("list-pets.ts")
+    expect(names).toContain("add-pet.ts")
+    expect(names).toContain("get-pet-by-id.ts")
+    expect(names).toContain("_client.ts")
+    expect(result.files).toHaveLength(4)
+  })
 
   it("each operation file contains the lorien-openapi marker", () => {
-    const result = convertOpenApiSpec(petstoreSpec());
+    const result = convertOpenApiSpec(petstoreSpec())
     for (const f of result.files) {
-      if (f.relativePath === "_client.ts") continue;
-      expect(f.source).toMatch(/lorien-openapi: generated/);
+      if (f.relativePath === "_client.ts") continue
+      expect(f.source).toMatch(/lorien-openapi: generated/)
     }
-  });
+  })
 
   it("accepts apiSlug override", () => {
-    const result = convertOpenApiSpec(petstoreSpec(), { apiSlug: "custom" });
-    expect(result.apiSlug).toBe("custom");
-  });
+    const result = convertOpenApiSpec(petstoreSpec(), { apiSlug: "custom" })
+    expect(result.apiSlug).toBe("custom")
+  })
 
   it("includes warnings from schemaToZod when relevant", () => {
     const buggy: OpenAPIObject = {
@@ -105,9 +105,9 @@ describe("convertOpenApiSpec", () => {
           },
         },
       },
-    } as OpenAPIObject;
-    const result = convertOpenApiSpec(buggy);
-    expect(result.warnings.length).toBeGreaterThan(0);
-    expect(result.warnings[0]).toMatch(/composition/i);
-  });
-});
+    } as OpenAPIObject
+    const result = convertOpenApiSpec(buggy)
+    expect(result.warnings.length).toBeGreaterThan(0)
+    expect(result.warnings[0]).toMatch(/composition/i)
+  })
+})

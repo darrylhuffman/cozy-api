@@ -1,5 +1,5 @@
 import Editor from "@monaco-editor/react"
-import { useDebugSessionStore, type BodyKind } from "@/store/debug-session"
+import { useDebugSessionStore } from "@/store/debug-session"
 import { useThemeStore } from "@/store/theme"
 import { KeyValueGrid } from "./key-value-grid"
 
@@ -41,7 +41,7 @@ export function BodyEditor() {
         options={{
           minimap: { enabled: false },
           fontSize: 13,
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+          fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
           scrollBeyondLastLine: false,
           automaticLayout: true,
           tabSize: 2,

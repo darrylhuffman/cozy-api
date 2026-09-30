@@ -3,11 +3,14 @@ import { dirname, isAbsolute, join, resolve } from "node:path"
 import { loadWorkspace, validateWorkflow } from "@darrylondil/lorien-runtime"
 import { emitIndex, emitWorkflow } from "../codegen/index.js"
 import { generateServicesTypes } from "../generate-services-types.js"
+import { bundleServer } from "./bundle-server.js"
 
 export interface RunBuildOptions {
   root: string
   outDir: string
   skipTypes?: boolean
+  /** Compile dist/index.ts into a runnable dist/index.js (default true). */
+  bundle?: boolean
 }
 
 export interface RunBuildResult {
@@ -59,9 +62,7 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
     }
     // Strip ".workflow" extension and the leading "workflows/" prefix (relativePath
     // is workspace-root-relative; codegen output is rooted at <outDir>/workflows/).
-    const basePath = wf.relativePath
-      .replace(/^workflows\//, "")
-      .replace(/\.workflow$/, "")
+    const basePath = wf.relativePath.replace(/^workflows\//, "").replace(/\.workflow$/, "")
     const { source } = emitWorkflow({ workflow: wf.file, relativePath: basePath })
 
     // Slugify directory segments for the output path: [id] -> _id_
@@ -79,6 +80,16 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
     const indexPath = join(outDir, "index.ts")
     await writeFile(indexPath, indexSource, "utf-8")
     console.log(`✓ dist/index.ts`)
+    if (opts.bundle !== false && errors.length === 0) {
+      try {
+        await bundleServer(root, outDir)
+        console.log(`✓ dist/index.js (run it with \`node dist/index.js\`)`)
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e)
+        console.error(`✗ bundling dist/index.js failed: ${message}`)
+        errors.push({ workflow: "dist/index.js", message })
+      }
+    }
   }
 
   console.log(``)

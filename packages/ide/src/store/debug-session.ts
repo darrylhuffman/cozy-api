@@ -1,4 +1,3 @@
-import { create } from "zustand"
 import type {
   Breakpoint,
   ClientMessage,
@@ -6,10 +5,8 @@ import type {
   ServerMessage,
   WireLifecycleEvent,
 } from "@darrylondil/lorien-runtime"
-import {
-  loadBreakpoints,
-  saveBreakpoints,
-} from "./debug-breakpoints-storage"
+import { create } from "zustand"
+import { loadBreakpoints, saveBreakpoints } from "./debug-breakpoints-storage"
 
 export type NodeStatus = "running" | "completed" | "errored" | "paused"
 export type BodyKind = "none" | "json" | "xml" | "text" | "form"
@@ -158,9 +155,7 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
             // Defensive: run-started should always arrive before any event. If we land
             // here, the server skipped it or the IDE bundle is stale. Warn loudly and
             // create a placeholder so the timeline isn't lost.
-            console.warn(
-              `[debug-session] event arrived before run-started for runId=${runId}`,
-            )
+            console.warn(`[debug-session] event arrived before run-started for runId=${runId}`)
             const record: RunRecord = {
               runId,
               workflowPath: "",
@@ -175,9 +170,7 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
             runs = [record, ...s.runs].slice(0, 20)
           }
           runs = runs.map((r) =>
-            r.runId === runId
-              ? { ...r, events: [...r.events, { offsetMs, event }] }
-              : r,
+            r.runId === runId ? { ...r, events: [...r.events, { offsetMs, event }] } : r,
           )
           return { runs, selectedRunId: s.selectedRunId ?? runId }
         })
@@ -187,9 +180,7 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
         const { runId, level, message, offsetMs } = msg
         set((s) => ({
           runs: s.runs.map((r) =>
-            r.runId === runId
-              ? { ...r, logs: [...r.logs, { offsetMs, level, message }] }
-              : r,
+            r.runId === runId ? { ...r, logs: [...r.logs, { offsetMs, level, message }] } : r,
           ),
         }))
         return
@@ -214,9 +205,7 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
       case "resumed":
         set((s) => ({
           runs: s.runs.map((r) =>
-            r.runId === msg.runId
-              ? { ...r, pausedFrame: null, outcome: { kind: "running" } }
-              : r,
+            r.runId === msg.runId ? { ...r, pausedFrame: null, outcome: { kind: "running" } } : r,
           ),
         }))
         return
@@ -266,15 +255,10 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
   toggleBreakpoint: (bp) =>
     set((s) => {
       const existing = s.breakpoints.findIndex(
-        (b) =>
-          b.workflowPath === bp.workflowPath &&
-          b.nodeId === bp.nodeId &&
-          b.kind === bp.kind,
+        (b) => b.workflowPath === bp.workflowPath && b.nodeId === bp.nodeId && b.kind === bp.kind,
       )
       const next =
-        existing >= 0
-          ? s.breakpoints.filter((_, i) => i !== existing)
-          : [...s.breakpoints, bp]
+        existing >= 0 ? s.breakpoints.filter((_, i) => i !== existing) : [...s.breakpoints, bp]
       saveBreakpoints(next)
       return { breakpoints: next }
     }),
@@ -286,8 +270,7 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
 
   hydrateBreakpoints: () => set({ breakpoints: loadBreakpoints() }),
 
-  setRequestForm: (updater) =>
-    set((s) => ({ requestForm: updater(s.requestForm) })),
+  setRequestForm: (updater) => set((s) => ({ requestForm: updater(s.requestForm) })),
 
   sendContinue: (runId) => get().wsSender?.({ type: "continue", runId }),
   sendStep: (runId) => get().wsSender?.({ type: "step", runId }),

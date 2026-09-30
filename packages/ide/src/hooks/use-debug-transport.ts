@@ -1,8 +1,5 @@
+import type { ClientMessage, ServerMessage } from "@darrylondil/lorien-runtime"
 import { useEffect, useRef } from "react"
-import type {
-  ClientMessage,
-  ServerMessage,
-} from "@darrylondil/lorien-runtime"
 import { debugWsUrl } from "../lib/api"
 import { useDebugSessionStore } from "../store/debug-session"
 

@@ -19,7 +19,7 @@ export function removeMappings(wf: WorkflowFile, mappings: PathMapping[]): Workf
   const nextNodes: Record<string, NodeInstance> = { ...wf.nodes }
   for (const [tNode, group] of byTarget) {
     const inst = nextNodes[tNode]
-    if (!inst || !inst.in) continue
+    if (!inst?.in) continue
     nextNodes[tNode] = applyMappingRemovals(inst, group)
   }
   return { ...wf, nodes: nextNodes }

@@ -12,9 +12,7 @@ const tree: FileFolder = {
       type: "folder",
       id: "n-shared",
       name: "shared",
-      children: [
-        { type: "file", id: "f1", name: "a.ts", kind: "node", path: "nodes/shared/a.ts" },
-      ],
+      children: [{ type: "file", id: "f1", name: "a.ts", kind: "node", path: "nodes/shared/a.ts" }],
     },
     {
       type: "folder",

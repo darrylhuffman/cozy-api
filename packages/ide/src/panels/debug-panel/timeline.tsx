@@ -1,9 +1,9 @@
 import { useState } from "react"
-import { useDebugSessionStore, type RunRecord } from "@/store/debug-session"
+import { type RunRecord, useDebugSessionStore } from "@/store/debug-session"
 
 export function Timeline({ runId }: { runId: string | null }) {
   const run = useDebugSessionStore((s) =>
-    runId ? s.runs.find((r) => r.runId === runId) ?? null : null,
+    runId ? (s.runs.find((r) => r.runId === runId) ?? null) : null,
   )
 
   if (!run) {
@@ -19,15 +19,16 @@ export function Timeline({ runId }: { runId: string | null }) {
   return (
     <div className="flex flex-col gap-1 font-mono text-[11px]">
       {rows.map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: the timeline only ever appends
         <TimelineRow key={i} row={row} />
       ))}
       {run.outcome.kind === "ok" && (
-        <div className="text-green-700">
+        <div className="text-success">
           +{run.outcome.totalMs}ms ● complete {run.outcome.status}
         </div>
       )}
       {run.outcome.kind === "errored" && (
-        <div className="text-red-700">✕ {run.outcome.message}</div>
+        <div className="text-destructive">✕ {run.outcome.message}</div>
       )}
     </div>
   )
@@ -78,7 +79,6 @@ function foldEdges(run: RunRecord): FoldedRow[] {
         payload: e.event.error,
         precedingEdges: [],
       })
-      continue
     }
     // complete handled outside (it's on the outcome)
   }
@@ -90,7 +90,7 @@ function TimelineRow({ row }: { row: FoldedRow }) {
   const arrow = open ? "▾" : "▸"
   const tone =
     row.kind === "error"
-      ? "text-red-700"
+      ? "text-destructive"
       : row.kind === "before"
         ? "text-foreground"
         : "text-muted-foreground"
@@ -121,11 +121,11 @@ function TimelineRow({ row }: { row: FoldedRow }) {
               {"\n\n"}
             </>
           )}
-          <strong>{row.kind === "before" ? "input" : row.kind === "after" ? "output" : "error"}:</strong>
+          <strong>
+            {row.kind === "before" ? "input" : row.kind === "after" ? "output" : "error"}:
+          </strong>
           {"\n"}
-          {row.kind === "error"
-            ? String(row.payload)
-            : JSON.stringify(row.payload, null, 2)}
+          {row.kind === "error" ? String(row.payload) : JSON.stringify(row.payload, null, 2)}
         </pre>
       )}
     </div>

@@ -296,7 +296,6 @@ export function debugWsUrl(): string {
 
 // ── Node test cases ───────────────────────────────────────────────────────────
 
-
 export interface NodeCaseFileRun {
   /** `nodes/users/save-user.cases.json` */
   path: string
@@ -317,7 +316,10 @@ export interface NodeTestsRun {
  * Runs node cases on the IDE server (in a fresh subprocess, so node edits
  * apply). `only` maps a cases file to the case ids to run.
  */
-export async function runNodeTests(req: { filter?: string; only?: Record<string, string[]> }): Promise<NodeTestsRun> {
+export async function runNodeTests(req: {
+  filter?: string
+  only?: Record<string, string[]>
+}): Promise<NodeTestsRun> {
   const what = "Running node tests"
   const res = await request(
     "/api/tests/nodes",

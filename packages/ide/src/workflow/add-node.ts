@@ -43,7 +43,9 @@ export function idFromUses(uses: string): string {
 export function nodeIdFromUses(uses: string): string {
   const words = idFromUses(uses).split("-").filter(Boolean)
   const camel = words
-    .map((w, i) => (i === 0 ? w.charAt(0).toLowerCase() + w.slice(1) : w.charAt(0).toUpperCase() + w.slice(1)))
+    .map((w, i) =>
+      i === 0 ? w.charAt(0).toLowerCase() + w.slice(1) : w.charAt(0).toUpperCase() + w.slice(1),
+    )
     .join("")
   if (camel.length === 0) return "node"
   return /^[0-9]/.test(camel) ? `n${camel}` : camel

@@ -63,8 +63,7 @@ export function computeInitialInputExpansion(
     for (const k of Object.keys(nodeValues)) filled.add(k)
   }
   const requiredFields = inputRoot.children.map((c) => c.label)
-  const allSatisfied =
-    requiredFields.length > 0 && requiredFields.every((r) => filled.has(r))
+  const allSatisfied = requiredFields.length > 0 && requiredFields.every((r) => filled.has(r))
 
   // Fully satisfied → collapsed; partial/empty → expanded.
   return allSatisfied ? new Set() : new Set([""])

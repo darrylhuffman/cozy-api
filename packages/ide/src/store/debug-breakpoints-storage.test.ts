@@ -1,10 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import {
-  loadBreakpoints,
-  saveBreakpoints,
-  STORAGE_KEY,
-} from "./debug-breakpoints-storage"
 import type { Breakpoint } from "@darrylondil/lorien-runtime"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { loadBreakpoints, STORAGE_KEY, saveBreakpoints } from "./debug-breakpoints-storage"
 
 describe("debug-breakpoints-storage", () => {
   beforeEach(() => {

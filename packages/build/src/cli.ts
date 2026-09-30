@@ -27,7 +27,7 @@ function createProgram(): Command {
   return program
 }
 
-async function main(argv: string[] = process.argv): Promise<void> {
+export async function main(argv: string[] = process.argv): Promise<void> {
   const program = createProgram()
   await program.parseAsync(argv)
 }

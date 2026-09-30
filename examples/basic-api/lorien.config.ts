@@ -1,27 +1,27 @@
-import { defineConfig } from "@darrylondil/lorien-runtime";
+import { defineConfig } from "@darrylondil/lorien-runtime"
 
 interface User {
-  id: string;
-  email: string;
+  id: string
+  email: string
 }
 
 interface Db {
-  createUser(email: string, passwordHash: string): Promise<User>;
+  createUser(email: string, passwordHash: string): Promise<User>
 }
 
 const inMemoryDb: Db = {
   async createUser(email) {
-    return { id: crypto.randomUUID(), email };
+    return { id: crypto.randomUUID(), email }
   },
-};
+}
 
 interface Logger {
-  info(msg: string, fields?: Record<string, unknown>): void;
+  info(msg: string, fields?: Record<string, unknown>): void
 }
 
 const baseLogger: Logger = {
   info: (msg, fields) => console.log("[info]", msg, fields ?? ""),
-};
+}
 
 export default defineConfig({
   target: "hono",
@@ -29,4 +29,4 @@ export default defineConfig({
     db: inMemoryDb,
     logger: () => baseLogger,
   },
-});
+})

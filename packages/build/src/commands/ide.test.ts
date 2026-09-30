@@ -55,7 +55,7 @@ describe("PUT /api/workspace/file", () => {
   it("writes a .workflow file and returns path + bytes", async () => {
     const app = await makeApp()
     mkdirSync(join(dir, "workflows"))
-    const content = JSON.stringify({ lorien: 1, nodes: {} }, null, 2) + "\n"
+    const content = `${JSON.stringify({ lorien: 1, nodes: {} }, null, 2)}\n`
     const res = await app.request("/api/workspace/file", {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -159,10 +159,10 @@ describe("PUT /api/workspace/file?create=true", () => {
   it("PUT /api/workspace/file?create=true writes when the file is new", async () => {
     const app = await makeApp()
     const content = "export const x = 1\n"
-    const res = await app.request(
-      `/api/workspace/file?path=nodes%2Fbrand-new.ts&create=true`,
-      { method: "PUT", body: content },
-    )
+    const res = await app.request(`/api/workspace/file?path=nodes%2Fbrand-new.ts&create=true`, {
+      method: "PUT",
+      body: content,
+    })
     expect(res.status).toBe(200)
     expect(readFileSync(join(dir, "nodes", "brand-new.ts"), "utf-8")).toBe(content)
   })
@@ -337,7 +337,7 @@ describe("POST /api/workspace/folder", () => {
 
 describe("ide command — workflow hot-reload", () => {
   let dir: string
-  let portUsed: number
+  let _portUsed: number
   let stopServer: (() => Promise<void>) | null = null
 
   beforeEach(() => {
@@ -371,7 +371,7 @@ describe("ide command — workflow hot-reload", () => {
     // findAvailablePort scans upward from this if it's busy, so collisions are tolerated.
     const startPort = 40000 + Math.floor(Math.random() * 10000)
     const { port } = await runIde({ root: dir, port: startPort, open: false })
-    portUsed = port
+    _portUsed = port
     stopServer = async () => {
       // No-op: runIde does not currently expose a server-shutdown handle.
       // The server keeps listening until the vitest worker exits. Acceptable

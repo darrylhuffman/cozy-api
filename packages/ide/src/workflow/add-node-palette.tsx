@@ -37,10 +37,7 @@ export function AddNodePalette({ schemas, onPick }: Props) {
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
             >
               {color && (
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ background: color }}
-                />
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
               )}
               <span className="font-mono text-xs">{uses}</span>
             </button>

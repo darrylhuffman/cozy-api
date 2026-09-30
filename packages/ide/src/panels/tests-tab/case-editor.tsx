@@ -122,7 +122,7 @@ export function CaseEditor({
           Cancel
         </button>
         {problem && (
-          <span role="alert" className="text-red-700 dark:text-red-400">
+          <span role="alert" className="text-destructive">
             {problem}
           </span>
         )}

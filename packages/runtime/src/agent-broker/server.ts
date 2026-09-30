@@ -2,26 +2,13 @@ import type { Server as HttpServer, IncomingMessage } from "node:http"
 import type { Duplex } from "node:stream"
 import type { Hono } from "hono"
 import { cors } from "hono/cors"
-import { WebSocketServer, type WebSocket } from "ws"
+import { type WebSocket, WebSocketServer } from "ws"
 import { isLoopbackOriginString } from "../dev-server/cors.js"
 import { AvailabilityProbe } from "./availability.js"
-import {
-  spawnClaude,
-  type ClaudeProcess,
-  type SpawnClaudeOptions,
-} from "./subprocess.js"
-import { SubscriberRegistry, type SocketLike } from "./subscribers.js"
-import {
-  appendChatEvent,
-  createChat,
-  listChats,
-  loadChat,
-} from "./transcript.js"
-import type {
-  AgentName,
-  ClientMsg,
-  ServerMsg,
-} from "./types.js"
+import { type ClaudeProcess, type SpawnClaudeOptions, spawnClaude } from "./subprocess.js"
+import { type SocketLike, SubscriberRegistry } from "./subscribers.js"
+import { appendChatEvent, createChat, listChats, loadChat } from "./transcript.js"
+import type { AgentName, ClientMsg, ServerMsg } from "./types.js"
 
 export interface MountAgentBrokerOptions {
   projectRoot: string
@@ -29,20 +16,20 @@ export interface MountAgentBrokerOptions {
   availability?: AvailabilityProbe
 }
 
-export function mountAgentBroker(
-  app: Hono,
-  opts: MountAgentBrokerOptions,
-): void {
+export function mountAgentBroker(app: Hono, opts: MountAgentBrokerOptions): void {
   const availability = opts.availability ?? new AvailabilityProbe()
 
   // CORS for the REST endpoints — restricted to loopback origins so the
   // IDE (typically on localhost:5173 during dev) can fetch from the broker
   // (typically on localhost:3000) without exposing the dev-only API to the web.
-  app.use("/__lorien/agents/*", cors({
-    origin: (origin) => (isLoopbackOriginString(origin) ? origin : null),
-    allowMethods: ["GET", "POST", "OPTIONS"],
-    allowHeaders: ["content-type"],
-  }))
+  app.use(
+    "/__lorien/agents/*",
+    cors({
+      origin: (origin) => (isLoopbackOriginString(origin) ? origin : null),
+      allowMethods: ["GET", "POST", "OPTIONS"],
+      allowHeaders: ["content-type"],
+    }),
+  )
 
   app.get("/__lorien/agents/availability", async (c) => {
     const r = await availability.probe()
@@ -112,17 +99,12 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
     return c
   }
 
-  async function startProcess(
-    chatId: string,
-    lifecycle: ChatLifecycle,
-  ): Promise<ClaudeProcess> {
+  async function startProcess(chatId: string, lifecycle: ChatLifecycle): Promise<ClaudeProcess> {
     const override = opts.spawnOverride?.()
     const proc = spawnClaude({
       chatId,
       projectRoot: opts.projectRoot,
-      ...(lifecycle.sessionId !== null
-        ? { resumeSessionId: lifecycle.sessionId }
-        : {}),
+      ...(lifecycle.sessionId !== null ? { resumeSessionId: lifecycle.sessionId } : {}),
       ...(override ?? {}),
     })
     lifecycle.proc = proc
@@ -155,9 +137,7 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
           // (e.g. "Please run /login first", "command not found", ENOENT).
           const stderr = proc.stderrTail()
           const baseMessage = `The agent CLI exited (code ${code ?? "unknown"}) without producing output. Check that \`claude\` is installed and signed in.`
-          const message = stderr
-            ? `${baseMessage}\n\nStderr (last ~2KB):\n${stderr}`
-            : baseMessage
+          const message = stderr ? `${baseMessage}\n\nStderr (last ~2KB):\n${stderr}` : baseMessage
           emit(chatId, {
             type: "agent_error",
             chatId,
@@ -179,10 +159,7 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
     return proc
   }
 
-  async function handleMessage(
-    ws: WebSocket,
-    raw: string,
-  ): Promise<void> {
+  async function handleMessage(ws: WebSocket, raw: string): Promise<void> {
     let msg: ClientMsg
     try {
       msg = JSON.parse(raw) as ClientMsg
@@ -230,9 +207,7 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
         }
         // Persist to transcript but do NOT broadcast back — the sender already
         // knows what they typed; echo would cause duplicates in the UI.
-        await appendChatEvent(opts.projectRoot, msg.chatId, event).catch(
-          () => undefined,
-        )
+        await appendChatEvent(opts.projectRoot, msg.chatId, event).catch(() => undefined)
 
         if (!lifecycle.proc) {
           lifecycle.proc = await startProcess(msg.chatId, lifecycle)
@@ -273,24 +248,19 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
     })
   })
 
-  opts.server.on(
-    "upgrade",
-    (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-      const url = req.url ?? ""
-      if (!url.startsWith(WS_PATH)) return
-      const origin = req.headers.origin
-      if (!isLoopbackOriginString(origin)) {
-        socket.write(
-          "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n",
-        )
-        socket.destroy()
-        return
-      }
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit("connection", ws, req)
-      })
-    },
-  )
+  opts.server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    const url = req.url ?? ""
+    if (!url.startsWith(WS_PATH)) return
+    const origin = req.headers.origin
+    if (!isLoopbackOriginString(origin)) {
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n")
+      socket.destroy()
+      return
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req)
+    })
+  })
 
   // When the HTTP server closes, kill all live subprocesses so they don't
   // hold the working directory open (important on Windows where open handles

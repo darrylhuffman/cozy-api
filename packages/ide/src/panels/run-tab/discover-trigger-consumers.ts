@@ -50,10 +50,7 @@ export function discoverTriggerConsumers(
       if (parts.length === 2 && parts[0] === triggerNodeId) {
         const cat = parts[1] as Category
         if (CATEGORIES.includes(cat)) {
-          if (
-            Object.keys(acc[cat]).length === 0 &&
-            wholeObject[cat] === undefined
-          ) {
+          if (Object.keys(acc[cat]).length === 0 && wholeObject[cat] === undefined) {
             wholeObject[cat] = consumerSchema.inputs
           }
         }

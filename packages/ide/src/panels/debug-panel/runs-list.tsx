@@ -1,5 +1,5 @@
-import { useDebugSessionStore, type RunRecord } from "@/store/debug-session"
 import { cn } from "@/lib/utils"
+import { type RunRecord, useDebugSessionStore } from "@/store/debug-session"
 
 export function RunsList() {
   const runs = useDebugSessionStore((s) => s.runs)
@@ -9,8 +9,7 @@ export function RunsList() {
   if (runs.length === 0) {
     return (
       <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-        No runs yet. Fire a request from the Send tab or hit the dev server
-        from curl / Postman.
+        No runs yet. Fire a request from the Send tab or hit the dev server from curl / Postman.
       </div>
     )
   }
@@ -42,13 +41,12 @@ export function RunsList() {
 
 function StatusBadge({ run }: { run: RunRecord }) {
   const out = run.outcome
-  if (out.kind === "running")
-    return <span className="text-blue-500">▶</span>
+  if (out.kind === "running") return <span className="text-info">▶</span>
   if (out.kind === "paused" && run.pausedFrame)
-    return <span className="text-yellow-600 font-mono text-[10px]">⏸ {run.pausedFrame.nodeId}</span>
+    return <span className="text-primary font-mono text-[10px]">⏸ {run.pausedFrame.nodeId}</span>
   if (out.kind === "ok")
-    return <span className="text-green-600 font-mono text-[10px]">✓ {out.status}</span>
+    return <span className="text-success font-mono text-[10px]">✓ {out.status}</span>
   if (out.kind === "errored")
-    return <span className="text-red-600 font-mono text-[10px]">✕</span>
+    return <span className="text-destructive font-mono text-[10px]">✕</span>
   return null
 }

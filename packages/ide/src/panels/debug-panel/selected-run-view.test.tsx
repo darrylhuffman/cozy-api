@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { useDebugSessionStore } from "@/store/debug-session"
 import type { ServerMessage } from "@darrylondil/lorien-runtime"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it } from "vitest"
+import { useDebugSessionStore } from "@/store/debug-session"
 import { SelectedRunView } from "./selected-run-view"
 
 describe("SelectedRunView", () => {
@@ -17,7 +17,12 @@ describe("SelectedRunView", () => {
 
   it("renders Timeline + Logs tabs when a run is selected", () => {
     const s = useDebugSessionStore.getState()
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
     s.selectRun("rA")
     render(<SelectedRunView />)
     expect(screen.getByText("Timeline")).toBeInTheDocument()
@@ -26,7 +31,12 @@ describe("SelectedRunView", () => {
 
   it("tab buttons toggle which view shows", () => {
     const s = useDebugSessionStore.getState()
-    s.applyMessage({ type: "event", runId: "rA", event: { type: "before-node", nodeId: "x", input: {} }, offsetMs: 0 } as ServerMessage)
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
     s.selectRun("rA")
     render(<SelectedRunView />)
     fireEvent.click(screen.getByText("Logs"))

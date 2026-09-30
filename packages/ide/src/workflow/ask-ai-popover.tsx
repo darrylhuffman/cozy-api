@@ -29,7 +29,7 @@ export function AskAiPopover({
           type="button"
           aria-label="Ask AI"
           title="Ask AI about this workflow"
-          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <Sparkles className="h-3.5 w-3.5" />
           <span>Ask AI</span>

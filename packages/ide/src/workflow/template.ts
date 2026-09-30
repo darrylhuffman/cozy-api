@@ -25,14 +25,12 @@ export function expandTemplate(value: unknown, ctx: { workflowPath: string }): u
  *   "workflows/admin/users/delete.workflow" → "/admin/users"
  */
 export function deriveWorkflowPath(workflowFilePath: string): string {
-  const stripped = workflowFilePath
-    .replace(/^workflows\//, "")
-    .replace(/\.workflow$/, "")
+  const stripped = workflowFilePath.replace(/^workflows\//, "").replace(/\.workflow$/, "")
   const parts = stripped.split("/").filter(Boolean)
   if (parts.length === 0) return "/"
   const verbs = new Set(["create", "update", "delete", "list", "get", "show", "index"])
   if (parts.length > 1 && verbs.has(parts[parts.length - 1]!.toLowerCase())) {
     parts.pop()
   }
-  return "/" + parts.join("/")
+  return `/${parts.join("/")}`
 }

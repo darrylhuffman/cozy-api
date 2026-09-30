@@ -59,10 +59,7 @@ export function schemaToTree(schema: JsonSchema | undefined, parentPath = ""): P
  * The root is rendered as a branch when the schema has properties; otherwise
  * it collapses to a single leaf (id = "").
  */
-export function schemaToRootedTree(
-  schema: JsonSchema | undefined,
-  rootLabel = "input",
-): PortNode {
+export function schemaToRootedTree(schema: JsonSchema | undefined, rootLabel = "input"): PortNode {
   const children = schemaToTree(schema)
   return {
     id: "",

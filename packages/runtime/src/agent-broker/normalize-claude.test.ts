@@ -4,11 +4,7 @@ import { describe, expect, it } from "vitest"
 import { extractClaudeSessionId, normalizeClaude } from "./normalize-claude.js"
 import type { AgentEvent } from "./types.js"
 
-const FIXTURE_PATH = join(
-  import.meta.dirname,
-  "__fixtures__",
-  "claude-stream.jsonl",
-)
+const FIXTURE_PATH = join(import.meta.dirname, "__fixtures__", "claude-stream.jsonl")
 const FIXTURE_LINES = readFileSync(FIXTURE_PATH, "utf-8").trim().split("\n")
 
 describe("normalizeClaude", () => {
@@ -69,9 +65,7 @@ describe("normalizeClaude", () => {
   })
 
   it("returns [] for a JSON line with an unrecognized type", () => {
-    expect(
-      normalizeClaude(JSON.stringify({ type: "mystery", payload: 42 })),
-    ).toEqual([])
+    expect(normalizeClaude(JSON.stringify({ type: "mystery", payload: 42 }))).toEqual([])
   })
 
   it("stamps every emitted event with an ISO `at` timestamp", () => {
@@ -98,13 +92,8 @@ describe("normalizeClaude", () => {
       session_id: "s",
     })
     const out = normalizeClaude(line)
-    expect(out.map((e: AgentEvent) => e.kind)).toEqual([
-      "assistant_text",
-      "tool_use",
-    ])
-    expect((out[1] as Extract<AgentEvent, { kind: "tool_use" }>).tool).toBe(
-      "Edit",
-    )
+    expect(out.map((e: AgentEvent) => e.kind)).toEqual(["assistant_text", "tool_use"])
+    expect((out[1] as Extract<AgentEvent, { kind: "tool_use" }>).tool).toBe("Edit")
   })
 
   it("collapses unknown tool names to 'Other'", () => {
@@ -125,9 +114,7 @@ describe("normalizeClaude", () => {
       session_id: "s",
     })
     const out = normalizeClaude(line)
-    expect((out[0] as Extract<AgentEvent, { kind: "tool_use" }>).tool).toBe(
-      "Other",
-    )
+    expect((out[0] as Extract<AgentEvent, { kind: "tool_use" }>).tool).toBe("Other")
   })
 
   it("extractClaudeSessionId returns the session_id from a system/init line", () => {

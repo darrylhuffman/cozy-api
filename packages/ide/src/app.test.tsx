@@ -5,10 +5,7 @@ import { App } from "./app.js"
 beforeEach(() => {
   localStorage.clear()
   // No real backend in tests — stub fetch so FilesPanel falls back to mock data
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockRejectedValue(new Error("fetch not available in tests")),
-  )
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("fetch not available in tests")))
 })
 afterEach(() => {
   cleanup()

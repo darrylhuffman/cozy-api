@@ -58,7 +58,11 @@ const inputRoot = (children: PortNode[]): PortNode => ({
 
 describe("WorkflowNode", () => {
   it("renders the name derived from `uses` when no label is set", () => {
-    const data = makeData("myNode", { uses: "./nodes/myNode" }, { inputs: emptyInputRoot, outputs: [] })
+    const data = makeData(
+      "myNode",
+      { uses: "./nodes/myNode" },
+      { inputs: emptyInputRoot, outputs: [] },
+    )
     render(<WorkflowNode data={data} />)
     expect(screen.getByText("myNode")).toBeInTheDocument()
   })
@@ -126,7 +130,11 @@ describe("WorkflowNode", () => {
   })
 
   it("shows 'core' kind label for @core/ nodes", () => {
-    const data = makeData("request", { uses: "@core/http-request" }, { inputs: emptyInputRoot, outputs: [] })
+    const data = makeData(
+      "request",
+      { uses: "@core/http-request" },
+      { inputs: emptyInputRoot, outputs: [] },
+    )
     render(<WorkflowNode data={data} />)
     expect(screen.getByText("core")).toBeInTheDocument()
   })
@@ -138,13 +146,21 @@ describe("WorkflowNode", () => {
   })
 
   it("shows 'external' kind label for other uses", () => {
-    const data = makeData("ext", { uses: "some-package/node" }, { inputs: emptyInputRoot, outputs: [] })
+    const data = makeData(
+      "ext",
+      { uses: "some-package/node" },
+      { inputs: emptyInputRoot, outputs: [] },
+    )
     render(<WorkflowNode data={data} />)
     expect(screen.getByText("external")).toBeInTheDocument()
   })
 
   it("renders uses path in footer", () => {
-    const data = makeData("save", { uses: "./nodes/users/save-user" }, { inputs: emptyInputRoot, outputs: [] })
+    const data = makeData(
+      "save",
+      { uses: "./nodes/users/save-user" },
+      { inputs: emptyInputRoot, outputs: [] },
+    )
     render(<WorkflowNode data={data} />)
     expect(screen.getByText("./nodes/users/save-user")).toBeInTheDocument()
   })
@@ -199,12 +215,9 @@ describe("WorkflowNode", () => {
 
   it("renders correctly with zero ports (trigger node)", () => {
     const ports: NodePorts = { inputs: emptyInputRoot, outputs: [] }
-    const data = makeData(
-      "request",
-      { uses: "@core/http-request" },
-      ports,
-      { schemaName: "HTTP Request" },
-    )
+    const data = makeData("request", { uses: "@core/http-request" }, ports, {
+      schemaName: "HTTP Request",
+    })
     render(<WorkflowNode data={data} />)
     expect(screen.getByText("HTTP Request")).toBeInTheDocument()
     expect(screen.queryByTestId(/^handle-target/)).not.toBeInTheDocument()
@@ -457,23 +470,17 @@ describe("WorkflowNode", () => {
       makeData("n1", { uses: "@core/http-request" }, { inputs: emptyInputRoot, outputs: [] })
 
     it("applies lorien-running class when data.nodeStatus === 'running'", () => {
-      const { container } = render(
-        <WorkflowNode data={{ ...baseData(), nodeStatus: "running" }} />,
-      )
+      const { container } = render(<WorkflowNode data={{ ...baseData(), nodeStatus: "running" }} />)
       expect(container.querySelector(".lorien-running")).toBeTruthy()
     })
 
     it("applies lorien-paused class when data.nodeStatus === 'paused'", () => {
-      const { container } = render(
-        <WorkflowNode data={{ ...baseData(), nodeStatus: "paused" }} />,
-      )
+      const { container } = render(<WorkflowNode data={{ ...baseData(), nodeStatus: "paused" }} />)
       expect(container.querySelector(".lorien-paused")).toBeTruthy()
     })
 
     it("applies lorien-errored class when data.nodeStatus === 'errored'", () => {
-      const { container } = render(
-        <WorkflowNode data={{ ...baseData(), nodeStatus: "errored" }} />,
-      )
+      const { container } = render(<WorkflowNode data={{ ...baseData(), nodeStatus: "errored" }} />)
       expect(container.querySelector(".lorien-errored")).toBeTruthy()
     })
 
@@ -891,7 +898,7 @@ describe("WorkflowNode", () => {
       expect(badge.textContent).toBe("2")
       expect(badge.getAttribute("aria-label")).toContain("Missing required input email")
       expect(badge.getAttribute("title")).toContain("user.id is not an output")
-      expect(screen.getByTestId("node-card").className).toContain("border-red-500")
+      expect(screen.getByTestId("node-card").className).toContain("border-destructive")
     })
 
     it("uses the warning style when the node only has warnings", () => {
@@ -900,7 +907,7 @@ describe("WorkflowNode", () => {
       expect(screen.getByTestId("node-issue-badge").getAttribute("aria-label")).toBe(
         "1 problem: Unused",
       )
-      expect(screen.getByTestId("node-card").className).toContain("border-amber-500")
+      expect(screen.getByTestId("node-card").className).toContain("border-warning")
     })
   })
 
@@ -910,7 +917,9 @@ describe("WorkflowNode", () => {
     it("shows a passing badge once cases have run", () => {
       render(
         <WorkflowNode
-          data={makeData("a", { uses: "./nodes/a" }, base(), { tests: { total: 3, run: 3, passed: 3, failed: 0 } })}
+          data={makeData("a", { uses: "./nodes/a" }, base(), {
+            tests: { total: 3, run: 3, passed: 3, failed: 0 },
+          })}
         />,
       )
       const badge = screen.getByTestId("node-tests-badge")
@@ -921,7 +930,9 @@ describe("WorkflowNode", () => {
     it("shows failures as failed/run", () => {
       render(
         <WorkflowNode
-          data={makeData("a", { uses: "./nodes/a" }, base(), { tests: { total: 3, run: 2, passed: 1, failed: 1 } })}
+          data={makeData("a", { uses: "./nodes/a" }, base(), {
+            tests: { total: 3, run: 2, passed: 1, failed: 1 },
+          })}
         />,
       )
       expect(screen.getByTestId("node-tests-badge").textContent).toBe("1/2")

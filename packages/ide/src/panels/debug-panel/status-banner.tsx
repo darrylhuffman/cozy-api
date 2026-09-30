@@ -1,11 +1,11 @@
 import { askAi } from "@/ai/ask"
 import { fixFailedRun } from "@/ai/prompts"
-import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useDebugSessionStore } from "@/store/debug-session"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
 
 export function StatusBanner({ runId }: { runId: string | null }) {
   const run = useDebugSessionStore((s) =>
-    runId ? s.runs.find((r) => r.runId === runId) ?? null : null,
+    runId ? (s.runs.find((r) => r.runId === runId) ?? null) : null,
   )
   const sendContinue = useDebugSessionStore((s) => s.sendContinue)
   const sendStep = useDebugSessionStore((s) => s.sendStep)
@@ -17,7 +17,9 @@ export function StatusBanner({ runId }: { runId: string | null }) {
   if (out.kind === "running") {
     return (
       <BannerShell label="▶ Running…">
-        <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>Stop</ControlButton>
+        <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>
+          Stop
+        </ControlButton>
       </BannerShell>
     )
   }
@@ -29,7 +31,9 @@ export function StatusBanner({ runId }: { runId: string | null }) {
         {run.pausedFrame.phase === "before" && (
           <ControlButton onClick={() => sendStepOver(run.runId)}>Step Over</ControlButton>
         )}
-        <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>Stop</ControlButton>
+        <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>
+          Stop
+        </ControlButton>
       </BannerShell>
     )
   }
@@ -67,7 +71,7 @@ function BannerShell({
       className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs"
       data-testid="status-banner"
     >
-      <div className={variant === "error" ? "text-red-700" : ""}>{label}</div>
+      <div className={variant === "error" ? "text-destructive" : ""}>{label}</div>
       {children && <div className="flex gap-1">{children}</div>}
     </div>
   )
@@ -87,7 +91,7 @@ function ControlButton({
       type="button"
       className={
         variant === "danger"
-          ? "rounded-md border bg-background px-2 py-1 text-red-700 hover:bg-accent"
+          ? "rounded-md border bg-background px-2 py-1 text-destructive hover:bg-accent"
           : "rounded-md border bg-background px-2 py-1 hover:bg-accent"
       }
       onClick={onClick}

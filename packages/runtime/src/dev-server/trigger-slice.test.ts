@@ -11,9 +11,10 @@ describe("extractParams", () => {
   })
 
   it("extracts multiple :params", () => {
-    expect(
-      extractParams("/orgs/:org/users/:userId", "/orgs/acme/users/42"),
-    ).toEqual({ org: "acme", userId: "42" })
+    expect(extractParams("/orgs/:org/users/:userId", "/orgs/acme/users/42")).toEqual({
+      org: "acme",
+      userId: "42",
+    })
   })
 
   it("returns empty object when segment counts differ", () => {

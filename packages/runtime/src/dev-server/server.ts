@@ -1,6 +1,6 @@
 import type { Context, Hono } from "hono"
 import { resolveCoreNode } from "../core/registry.js"
-import { LifecycleEmitter } from "../exec/lifecycle.js"
+import type { LifecycleEmitter } from "../exec/lifecycle.js"
 import { runWorkflow, type WorkflowRunResult } from "../exec/run.js"
 import { computeExecutionPlan } from "../exec/topology.js"
 import type { AnyNodeOrTrigger, Services } from "../types.js"
@@ -32,19 +32,12 @@ export interface MountOptions {
   debug?: DebugIntegration
 }
 
-export function mountWorkflows(
-  app: Hono,
-  workflows: LoadedWorkflow[],
-  opts: MountOptions,
-): void {
+export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: MountOptions): void {
   for (const wf of workflows) {
     const { errors, depsByNode } = validateWorkflow(wf.file)
     if (errors.length > 0) {
-      console.error(
-        `Skipping ${wf.relativePath}: ${errors.length} validation error(s)`,
-      )
-      for (const e of errors)
-        console.error(`  - ${e.nodeId}.${e.field}: ${e.message}`)
+      console.error(`Skipping ${wf.relativePath}: ${errors.length} validation error(s)`)
+      for (const e of errors) console.error(`  - ${e.nodeId}.${e.field}: ${e.message}`)
       continue
     }
 
@@ -52,9 +45,7 @@ export function mountWorkflows(
       if (inst.uses !== "@core/http-request") continue
       const values = (inst.values ?? {}) as Record<string, unknown>
       const path = (values.path as string | undefined) ?? "/"
-      const method = (
-        (values.method as string | undefined) ?? "GET"
-      ).toUpperCase()
+      const method = ((values.method as string | undefined) ?? "GET").toUpperCase()
 
       const projectedFile = buildTriggerSlice(wf.file, nodeId, depsByNode)
       const { depsByNode: sliceDeps } = validateWorkflow(projectedFile)
@@ -110,8 +101,7 @@ export function mountWorkflows(
                 context: { requestId: runId, timestamp: startedAt },
               },
               services: opts.services,
-              resolveNode: (uses) =>
-                resolveCoreNode(uses) ?? opts.nodes[uses] ?? null,
+              resolveNode: (uses) => resolveCoreNode(uses) ?? opts.nodes[uses] ?? null,
               ...(run?.lifecycle ? { lifecycle: run.lifecycle } : {}),
               ...(run?.onBeforeNode ? { onBeforeNode: run.onBeforeNode } : {}),
               ...(run?.onAfterNode ? { onAfterNode: run.onAfterNode } : {}),

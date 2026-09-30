@@ -48,9 +48,9 @@ describe("computeInitialInputExpansion", () => {
 
   it("returns expanded root when only some fields are bound", () => {
     const root = rootBranch([leaf("email"), leaf("password")])
-    expect(
-      computeInitialInputExpansion(root, { email: "request.body.email" }, undefined),
-    ).toEqual(new Set([""]))
+    expect(computeInitialInputExpansion(root, { email: "request.body.email" }, undefined)).toEqual(
+      new Set([""]),
+    )
   })
 
   it("returns collapsed root when all required fields are bound", () => {
@@ -76,9 +76,7 @@ describe("computeInitialInputExpansion", () => {
 
   it("expands when neither in: nor values: covers all fields", () => {
     const root = rootBranch([leaf("method"), leaf("path")])
-    expect(
-      computeInitialInputExpansion(root, undefined, { method: "GET" }),
-    ).toEqual(new Set([""]))
+    expect(computeInitialInputExpansion(root, undefined, { method: "GET" })).toEqual(new Set([""]))
   })
 })
 
@@ -94,12 +92,8 @@ describe("computeInitialOutputExpansion", () => {
 
   it("walks deeply nested branches", () => {
     // Real port trees use dotted ids matching the schema path; mirror that here.
-    const tree = [
-      branch("body", [branch("body.user", [leaf("body.user.name")], "user")], "body"),
-    ]
-    expect(computeInitialOutputExpansion(tree)).toEqual(
-      new Set(["body", "body.user"]),
-    )
+    const tree = [branch("body", [branch("body.user", [leaf("body.user.name")], "user")], "body")]
+    expect(computeInitialOutputExpansion(tree)).toEqual(new Set(["body", "body.user"]))
   })
 
   it("skips inferred branches so they start collapsed", () => {
@@ -123,9 +117,7 @@ describe("computeInitialOutputExpansion", () => {
         ]),
       ]),
     ]
-    expect(computeInitialOutputExpansion(tree)).toEqual(
-      new Set(["body", "body.user"]),
-    )
+    expect(computeInitialOutputExpansion(tree)).toEqual(new Set(["body", "body.user"]))
   })
 })
 
@@ -145,10 +137,7 @@ describe("computeInitialExpansion (combined)", () => {
   it("expands input root when no `in:` is set", () => {
     const inputs = rootBranch([leaf("email"), leaf("password")])
     const outputs: PortNode[] = []
-    const init = computeInitialExpansion(
-      { inputs, outputs },
-      { uses: "./save" },
-    )
+    const init = computeInitialExpansion({ inputs, outputs }, { uses: "./save" })
     expect(init.inputs).toEqual(new Set([""]))
   })
 })

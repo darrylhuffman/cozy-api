@@ -1,5 +1,9 @@
 import { join, resolve } from "node:path"
-import { convertOpenApiSpec, loadOpenApiSpec, writeGeneratedFiles } from "@darrylondil/lorien-openapi"
+import {
+  convertOpenApiSpec,
+  loadOpenApiSpec,
+  writeGeneratedFiles,
+} from "@darrylondil/lorien-openapi"
 import type { Command } from "commander"
 
 export interface ImportOpenapiOptions {

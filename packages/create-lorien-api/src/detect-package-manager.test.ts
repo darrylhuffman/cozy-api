@@ -22,13 +22,13 @@ describe("detectPackageManager", () => {
     let savedAgent: string | undefined
 
     beforeEach(() => {
-      savedAgent = process.env["npm_config_user_agent"]
-      delete process.env["npm_config_user_agent"]
+      savedAgent = process.env.npm_config_user_agent
+      delete process.env.npm_config_user_agent
     })
 
     afterEach(() => {
       if (savedAgent !== undefined) {
-        process.env["npm_config_user_agent"] = savedAgent
+        process.env.npm_config_user_agent = savedAgent
       }
     })
 

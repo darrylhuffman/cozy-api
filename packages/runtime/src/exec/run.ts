@@ -149,7 +149,12 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<WorkflowRun
             throw new NodeRunError(nodeId, err)
           }
         }
-        lifecycle?.emit({ type: "after-node", nodeId, output: triggerOutputs as Record<string, unknown>, durationMs: 0 })
+        lifecycle?.emit({
+          type: "after-node",
+          nodeId,
+          output: triggerOutputs as Record<string, unknown>,
+          durationMs: 0,
+        })
         if (opts.onAfterNode) {
           try {
             await opts.onAfterNode(nodeId, triggerOutputs as Record<string, unknown>)
@@ -224,10 +229,7 @@ async function runOneNode(
     }
     const upstream = outputs.get(ref.nodeId)
     if (!upstream) {
-      throw new NodeRunError(
-        nodeId,
-        new Error(`upstream \`${ref.nodeId}\` produced no output`),
-      )
+      throw new NodeRunError(nodeId, new Error(`upstream \`${ref.nodeId}\` produced no output`))
     }
     let v: unknown = upstream
     for (const seg of ref.path) {
@@ -260,10 +262,7 @@ async function runOneNode(
       }
       const upstream = outputs.get(ref.nodeId)
       if (!upstream) {
-        throw new NodeRunError(
-          nodeId,
-          new Error(`upstream \`${ref.nodeId}\` produced no output`),
-        )
+        throw new NodeRunError(nodeId, new Error(`upstream \`${ref.nodeId}\` produced no output`))
       }
       let v: unknown = upstream
       for (const seg of ref.path) {

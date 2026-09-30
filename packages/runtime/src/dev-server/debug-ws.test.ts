@@ -1,7 +1,7 @@
 import { createServer, type Server as HttpServer } from "node:http"
+import { Hono } from "hono"
 import { describe, expect, it } from "vitest"
 import { WebSocket } from "ws"
-import { Hono } from "hono"
 import { DebugSession } from "./debug-session.js"
 import { attachDebugWebSocket } from "./debug-ws.js"
 

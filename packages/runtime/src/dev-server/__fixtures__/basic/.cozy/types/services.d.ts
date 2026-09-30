@@ -3,8 +3,8 @@
 
 declare module "@Lorien/runtime" {
   interface Services {
-    db: unknown; // TODO: refine this type
+    db: unknown // TODO: refine this type
   }
 }
 
-export {};
+export {}

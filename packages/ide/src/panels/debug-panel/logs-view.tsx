@@ -10,7 +10,7 @@ interface DisplayRow {
 
 export function LogsView({ runId }: { runId: string | null }) {
   const run = useDebugSessionStore((s) =>
-    runId ? s.runs.find((r) => r.runId === runId) ?? null : null,
+    runId ? (s.runs.find((r) => r.runId === runId) ?? null) : null,
   )
   const [filter, setFilter] = useState("")
 
@@ -67,10 +67,7 @@ export function LogsView({ runId }: { runId: string | null }) {
       />
       <div className="flex flex-col gap-1 font-mono text-[11px]">
         {filtered.map((row) => (
-          <LogRow
-            key={`${row.offsetMs}-${row.level}-${row.message.slice(0, 40)}`}
-            row={row}
-          />
+          <LogRow key={`${row.offsetMs}-${row.level}-${row.message.slice(0, 40)}`} row={row} />
         ))}
       </div>
     </div>
@@ -81,11 +78,11 @@ function LogRow({ row }: { row: DisplayRow }) {
   const [open, setOpen] = useState(false)
   const tone =
     row.level === "error"
-      ? "text-red-700"
+      ? "text-destructive"
       : row.level === "warn"
-        ? "text-yellow-700"
+        ? "text-primary"
         : row.level === "info"
-          ? "text-blue-700"
+          ? "text-info"
           : "text-foreground"
   return (
     <div data-testid="log-row">

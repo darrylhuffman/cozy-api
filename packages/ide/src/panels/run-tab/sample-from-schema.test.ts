@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest"
-import { sampleFromSchema } from "./sample-from-schema"
 import type { JsonSchema } from "@/lib/api"
+import { sampleFromSchema } from "./sample-from-schema"
 
 describe("sampleFromSchema", () => {
   it("returns null for null/undefined", () => {
     expect(sampleFromSchema(null)).toBeNull()
   })
 
-  it('returns default if present (over enum, over type)', () => {
+  it("returns default if present (over enum, over type)", () => {
     const schema: JsonSchema = { type: "string", default: "preset", enum: ["a", "b"] }
     expect(sampleFromSchema(schema)).toBe("preset")
   })

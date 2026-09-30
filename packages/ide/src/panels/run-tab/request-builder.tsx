@@ -1,9 +1,9 @@
 import { useState } from "react"
 import { askAi } from "@/ai/ask"
 import { explainRequestFailure } from "@/ai/prompts"
-import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { activeEnvironment, useEnvironments } from "@/store/environments"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { requestIdFromName, useRequestCollections } from "@/store/request-collections"
 import { useRequestEditor } from "@/store/request-editor"
 import { AssertionsEditor } from "./assertions-editor"
@@ -208,7 +208,7 @@ function ActionRow({ workflowPath }: { workflowPath: string }) {
         </button>
       )}
       {problem && (
-        <span role="alert" className="text-red-700 dark:text-red-400">
+        <span role="alert" className="text-destructive">
           {problem}
         </span>
       )}

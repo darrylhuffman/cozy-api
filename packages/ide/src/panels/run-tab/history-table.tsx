@@ -1,8 +1,5 @@
 import { useState } from "react"
-import {
-  useRequestHistoryStore,
-  type RequestHistoryEntry,
-} from "@/store/request-history"
+import { type RequestHistoryEntry, useRequestHistoryStore } from "@/store/request-history"
 
 export function HistoryTable() {
   const entries = useRequestHistoryStore((s) => s.entries)
@@ -17,9 +14,7 @@ export function HistoryTable() {
 
   return (
     <div className="flex flex-col gap-1 text-xs">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        History
-      </div>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">History</div>
       {entries.map((e) => (
         <HistoryRow key={e.id} entry={e} />
       ))}
@@ -54,7 +49,7 @@ function HistoryRow({ entry }: { entry: RequestHistoryEntry }) {
             <div className="text-muted-foreground">In flight…</div>
           )}
           {entry.outcome.kind === "network-error" && (
-            <div className="text-red-700">Network error: {entry.outcome.message}</div>
+            <div className="text-destructive">Network error: {entry.outcome.message}</div>
           )}
           {(entry.outcome.kind === "ok" || entry.outcome.kind === "error") && (
             <ResponseView outcome={entry.outcome} />
@@ -74,23 +69,18 @@ function StatusIndicator({ outcome }: { outcome: RequestHistoryEntry["outcome"] 
       />
     )
   if (outcome.kind === "ok")
-    return (
-      <span
-        data-testid="status-ok"
-        className="inline-block h-2 w-2 rounded-full bg-green-500"
-      />
-    )
+    return <span data-testid="status-ok" className="inline-block h-2 w-2 rounded-full bg-success" />
   if (outcome.kind === "error")
     return (
       <span
         data-testid="status-error"
-        className="inline-block h-2 w-2 rounded-full bg-red-500"
+        className="inline-block h-2 w-2 rounded-full bg-destructive"
       />
     )
   return (
     <span
       data-testid="status-network-error"
-      className="inline-block h-2 w-2 rounded-full bg-gray-400"
+      className="inline-block h-2 w-2 rounded-full bg-muted-foreground"
     />
   )
 }
@@ -101,9 +91,7 @@ function ResponseView({
   outcome: Extract<RequestHistoryEntry["outcome"], { kind: "ok" | "error" }>
 }) {
   const bodyText =
-    typeof outcome.body === "string"
-      ? outcome.body
-      : JSON.stringify(outcome.body, null, 2)
+    typeof outcome.body === "string" ? outcome.body : JSON.stringify(outcome.body, null, 2)
   return (
     <div className="flex flex-col gap-2">
       <div>

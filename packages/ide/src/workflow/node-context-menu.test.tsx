@@ -1,5 +1,5 @@
-import React from "react"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import type React from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 // Popover uses portals — mock to render inline

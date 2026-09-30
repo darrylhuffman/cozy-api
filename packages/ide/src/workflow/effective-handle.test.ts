@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest"
-import type { PortNode } from "./schema-to-tree.js"
 import {
   computeVisibleInputPaths,
   computeVisibleOutputPaths,
   effectiveHandle,
 } from "./effective-handle.js"
+import type { PortNode } from "./schema-to-tree.js"
 
 const leaf = (id: string, label = id): PortNode => ({
   id,
@@ -31,9 +31,7 @@ const emptyRoot: PortNode = { id: "", label: "input", children: [], isLeaf: true
 
 describe("effectiveHandle (visible-paths model)", () => {
   it("returns the leaf itself when its full path is visible", () => {
-    expect(effectiveHandle("user.email", new Set(["", "user", "user.email"]))).toBe(
-      "user.email",
-    )
+    expect(effectiveHandle("user.email", new Set(["", "user", "user.email"]))).toBe("user.email")
   })
 
   it("walks up to the deepest visible ancestor", () => {
@@ -62,14 +60,9 @@ describe("effectiveHandle (visible-paths model)", () => {
   it("walks deep paths until something matches", () => {
     expect(effectiveHandle("body.user.email", new Set([""]))).toBe("")
     expect(effectiveHandle("body.user.email", new Set(["", "body"]))).toBe("body")
-    expect(effectiveHandle("body.user.email", new Set(["", "body", "body.user"]))).toBe(
-      "body.user",
-    )
+    expect(effectiveHandle("body.user.email", new Set(["", "body", "body.user"]))).toBe("body.user")
     expect(
-      effectiveHandle(
-        "body.user.email",
-        new Set(["", "body", "body.user", "body.user.email"]),
-      ),
+      effectiveHandle("body.user.email", new Set(["", "body", "body.user", "body.user.email"])),
     ).toBe("body.user.email")
   })
 
@@ -104,18 +97,14 @@ describe("computeVisibleInputPaths", () => {
 
   it("does not descend into a branch whose path is not expanded", () => {
     const root = rootBranch([branch("user", [leaf("user.email")])])
-    expect(computeVisibleInputPaths(root, new Set([""]))).toEqual(
-      new Set(["", "user"]),
-    )
+    expect(computeVisibleInputPaths(root, new Set([""]))).toEqual(new Set(["", "user"]))
   })
 })
 
 describe("computeVisibleOutputPaths", () => {
   it("always includes every top-level port id", () => {
     const outputs = [leaf("body"), leaf("headers")]
-    expect(computeVisibleOutputPaths(outputs, new Set())).toEqual(
-      new Set(["body", "headers"]),
-    )
+    expect(computeVisibleOutputPaths(outputs, new Set())).toEqual(new Set(["body", "headers"]))
   })
 
   it("reveals children of an expanded branch", () => {
@@ -131,11 +120,9 @@ describe("computeVisibleOutputPaths", () => {
   })
 
   it("recurses through deeply expanded branches", () => {
-    const outputs = [
-      branch("body", [branch("body.user", [leaf("body.user.name")])]),
-    ]
-    expect(
-      computeVisibleOutputPaths(outputs, new Set(["body", "body.user"])),
-    ).toEqual(new Set(["body", "body.user", "body.user.name"]))
+    const outputs = [branch("body", [branch("body.user", [leaf("body.user.name")])])]
+    expect(computeVisibleOutputPaths(outputs, new Set(["body", "body.user"]))).toEqual(
+      new Set(["body", "body.user", "body.user.name"]),
+    )
   })
 })

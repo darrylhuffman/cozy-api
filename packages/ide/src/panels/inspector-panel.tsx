@@ -1,25 +1,40 @@
+import { Sparkles } from "lucide-react"
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { RunTab } from "./run-tab"
-import { TestsTab } from "./tests-tab"
 import type { JsonSchema, NodeInstance } from "@/lib/api"
+import { type InspectorTab, useInspectorTab } from "@/store/inspector-tab"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useSchemas } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
-import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkflowDrafts } from "@/store/workflow-drafts"
 import { isValidNodeId } from "@/workflow/diagnose"
 import { renameNode } from "@/workflow/graph-ops"
 import { expandTemplate } from "@/workflow/template"
+import { AgentsPanel } from "./agents/agents-panel"
+import { RunTab } from "./run-tab"
+import { TestsTab } from "./tests-tab"
 
 export function InspectorPanel() {
+  const tab = useInspectorTab((s) => s.tab)
+  const setTab = useInspectorTab((s) => s.setTab)
   return (
-    <Tabs defaultValue="inspect" className="flex h-full flex-col">
-      <TabsList className="m-2 grid w-[calc(100%-1rem)] grid-cols-3">
-        <TabsTrigger value="inspect">Inspect</TabsTrigger>
-        <TabsTrigger value="tests">Tests</TabsTrigger>
-        <TabsTrigger value="run">Run</TabsTrigger>
-      </TabsList>
+    <Tabs
+      value={tab}
+      onValueChange={(v) => setTab(v as InspectorTab)}
+      className="flex h-full flex-col gap-0 bg-card"
+    >
+      <div className="border-b border-border p-2">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="inspect">Inspect</TabsTrigger>
+          <TabsTrigger value="tests">Tests</TabsTrigger>
+          <TabsTrigger value="run">Run</TabsTrigger>
+          <TabsTrigger value="agents" className="gap-1">
+            <Sparkles aria-hidden className="h-3 w-3 text-ai" />
+            Agents
+          </TabsTrigger>
+        </TabsList>
+      </div>
       <TabsContent value="inspect" className="flex-1 overflow-auto p-3">
         <InspectContent />
       </TabsContent>
@@ -28,6 +43,9 @@ export function InspectorPanel() {
       </TabsContent>
       <TabsContent value="run" className="flex-1 overflow-auto p-3">
         <RunTab />
+      </TabsContent>
+      <TabsContent value="agents" className="min-h-0 flex-1 overflow-hidden">
+        <AgentsPanel />
       </TabsContent>
     </Tabs>
   )
@@ -75,10 +93,7 @@ function InspectContent() {
             k="color"
             v={
               <span className="flex items-center gap-2">
-                <span
-                  className="h-3 w-3 rounded-sm"
-                  style={{ background: schema.color }}
-                />
+                <span className="h-3 w-3 rounded-sm" style={{ background: schema.color }} />
                 <span>{schema.color}</span>
               </span>
             }
@@ -184,11 +199,11 @@ function NodeIdField({
               e.currentTarget.blur()
             }
           }}
-          className="h-6 flex-1 rounded border border-border bg-background px-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary aria-[invalid]:border-red-500"
+          className="h-6 flex-1 rounded border border-border bg-background px-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary aria-[invalid]:border-destructive"
         />
       </label>
       {error && (
-        <span role="alert" className="pl-6 text-[11px] text-red-600 dark:text-red-400">
+        <span role="alert" className="pl-6 text-[11px] text-destructive">
           {error}
         </span>
       )}
@@ -199,9 +214,7 @@ function NodeIdField({
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
+      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
       {children}
     </div>
   )
@@ -239,13 +252,7 @@ function SchemaTree({
             ? effectiveInputValue(key, sub, instance, workflowPath ?? "")
             : null
         return (
-          <SchemaTreeRow
-            key={key}
-            name={key}
-            schema={sub}
-            depth={depth}
-            effectiveValue={value}
-          />
+          <SchemaTreeRow key={key} name={key} schema={sub} depth={depth} effectiveValue={value} />
         )
       })}
     </ul>
@@ -261,10 +268,7 @@ function SchemaTreeRow({
   name: string
   schema: JsonSchema
   depth: number
-  effectiveValue?:
-    | { kind: "reference"; value: string }
-    | { kind: "literal"; value: unknown }
-    | null
+  effectiveValue?: { kind: "reference"; value: string } | { kind: "literal"; value: unknown } | null
 }) {
   const isObject = schema.type === "object" && schema.properties
   const isArray = schema.type === "array" && schema.items

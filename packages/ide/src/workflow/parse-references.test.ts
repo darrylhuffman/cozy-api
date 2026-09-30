@@ -60,9 +60,9 @@ describe("extractReferences", () => {
       b: {
         uses: "@core/transform",
         in: {
-          url: "https://example.com/api",   // URL — not a reference
-          method: "POST",                    // plain string
-          template: "Hello, world!",         // contains space — not a reference
+          url: "https://example.com/api", // URL — not a reference
+          method: "POST", // plain string
+          template: "Hello, world!", // contains space — not a reference
         },
       },
     })

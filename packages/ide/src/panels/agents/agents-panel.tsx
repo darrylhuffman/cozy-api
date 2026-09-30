@@ -34,9 +34,7 @@ export function AgentsPanel(): React.ReactElement {
       <div className="flex-1 overflow-hidden">
         {active?.kind === "picker" && <AgentPicker pickerId={active.id} />}
         {active?.kind === "chat" && <ChatView chatId={active.id} />}
-        {!active && (
-          <div className="p-4 text-sm text-muted-foreground">No active chat.</div>
-        )}
+        {!active && <div className="p-4 text-sm text-muted-foreground">No active chat.</div>}
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
-import React from "react"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type React from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/components/ui/dialog", () => ({
@@ -17,8 +17,8 @@ vi.mock("@/lib/api", () => ({
   fetchWorkspaceTree: vi.fn(),
 }))
 
-import { createWorkspaceFile } from "@/lib/api"
 import type { FileFolder } from "@/data/mock-files"
+import { createWorkspaceFile } from "@/lib/api"
 import { NewWorkflowDialog } from "./new-workflow-dialog"
 
 const SEED = '{"lorien":1,"nodes":{}}\n'
@@ -27,9 +27,7 @@ const workflowsTree: FileFolder = {
   type: "folder",
   id: "wf-root",
   name: "workflows",
-  children: [
-    { type: "folder", id: "wf-users", name: "users", children: [] },
-  ],
+  children: [{ type: "folder", id: "wf-users", name: "users", children: [] }],
 }
 
 afterEach(() => {

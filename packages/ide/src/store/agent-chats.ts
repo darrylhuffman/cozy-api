@@ -313,8 +313,7 @@ export const useAgentChats = create<AgentChatsState>((set, get) => {
           ...tab,
           events: [...tab.events, event],
           title,
-          turnInFlight:
-            event.kind === "turn_done" ? false : tab.turnInFlight,
+          turnInFlight: event.kind === "turn_done" ? false : tab.turnInFlight,
         }
         return { chats: { ...s.chats, [chatId]: updated } }
       })

@@ -44,9 +44,9 @@ afterEach(() => {
 
 describe("useDebugTransport", () => {
   it("opens a WS to debugWsUrl() and sends hello on open with current breakpoints", () => {
-    useDebugSessionStore.getState().setBreakpoints([
-      { workflowPath: "wf", nodeId: "n1", kind: "before" },
-    ])
+    useDebugSessionStore
+      .getState()
+      .setBreakpoints([{ workflowPath: "wf", nodeId: "n1", kind: "before" }])
     const { unmount } = renderHook(() => useDebugTransport())
     expect(FakeWS.instances.length).toBe(1)
     const ws = FakeWS.instances[0]!
@@ -58,9 +58,7 @@ describe("useDebugTransport", () => {
     expect(helloRaw).toBeDefined()
     const hello = JSON.parse(helloRaw!) as { type: string; breakpoints: unknown[] }
     expect(hello.type).toBe("hello")
-    expect(hello.breakpoints).toEqual([
-      { workflowPath: "wf", nodeId: "n1", kind: "before" },
-    ])
+    expect(hello.breakpoints).toEqual([{ workflowPath: "wf", nodeId: "n1", kind: "before" }])
     unmount()
   })
 

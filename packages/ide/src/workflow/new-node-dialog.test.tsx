@@ -1,5 +1,5 @@
-import React from "react"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type React from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 // Dialog uses portals which don't render in jsdom — mock it to render inline
@@ -18,8 +18,8 @@ vi.mock("@/lib/api", () => ({
   fetchWorkspaceTree: vi.fn(),
 }))
 
-import { createWorkspaceFile, fetchWorkspaceTree } from "@/lib/api"
 import type { FileFolder } from "@/data/mock-files"
+import { createWorkspaceFile, fetchWorkspaceTree } from "@/lib/api"
 import { NewNodeDialog } from "./new-node-dialog"
 
 const TEMPLATE = `import { defineNode } from "@darrylondil/lorien-runtime"
@@ -232,7 +232,10 @@ describe("NewNodeDialog", () => {
     await act(async () => {
       fireEvent.submit(input.closest("form")!)
     })
-    expect(createWorkspaceFile).toHaveBeenCalledWith("nodes/submitted-by-enter.ts", expect.any(String))
+    expect(createWorkspaceFile).toHaveBeenCalledWith(
+      "nodes/submitted-by-enter.ts",
+      expect.any(String),
+    )
     expect(onCreated).toHaveBeenCalledWith("./nodes/submitted-by-enter")
   })
 

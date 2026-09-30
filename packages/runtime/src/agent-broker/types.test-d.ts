@@ -1,11 +1,5 @@
 import { expectTypeOf } from "vitest"
-import type {
-  AgentEvent,
-  AgentName,
-  AvailabilityResponse,
-  ClientMsg,
-  ServerMsg,
-} from "./types.js"
+import type { AgentEvent, AgentName, AvailabilityResponse, ClientMsg, ServerMsg } from "./types.js"
 
 // AgentName is a closed union of the two agents we plan to support.
 expectTypeOf<AgentName>().toEqualTypeOf<"claude" | "codex">()

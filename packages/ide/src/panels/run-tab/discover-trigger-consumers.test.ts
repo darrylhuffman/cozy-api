@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { discoverTriggerConsumers } from "./discover-trigger-consumers"
 import type { NodeSchemas, WorkflowFile } from "@/lib/api"
+import { discoverTriggerConsumers } from "./discover-trigger-consumers"
 
 const saveUserSchema: NodeSchemas = {
   inputs: {

@@ -1,17 +1,17 @@
 import type { RequestRunResult, SavedRequest } from "@darrylondil/lorien-runtime/requests"
 import { Play, Plus, Sparkles, Trash2 } from "lucide-react"
+import { useEffect, useState } from "react"
 import { askAi } from "@/ai/ask"
 import { generateRequests } from "@/ai/prompts"
-import { useLiveWorkflowStore } from "@/store/live-workflow"
-import { useSchemasStore } from "@/store/schemas"
-import { useEffect, useState } from "react"
 import { subscribeToFileEvents } from "@/lib/events"
 import { cn } from "@/lib/utils"
 import { confirmAction } from "@/store/confirm"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { activeEnvironment, useEnvironments } from "@/store/environments"
+import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { resultKey, useRequestCollections } from "@/store/request-collections"
 import { useRequestEditor } from "@/store/request-editor"
+import { useSchemasStore } from "@/store/schemas"
 import { savedRequestToForm } from "./saved-request-form"
 import { sendAll, sendRequest } from "./send-request"
 
@@ -112,8 +112,8 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
             className={cn(
               "rounded px-1.5 text-[10px] font-medium",
               passed === ran.length
-                ? "bg-green-500/15 text-green-700 dark:text-green-400"
-                : "bg-red-500/15 text-red-700 dark:text-red-400",
+                ? "bg-success/15 text-success"
+                : "bg-destructive/15 text-destructive",
             )}
           >
             {passed}/{ran.length} passed
@@ -139,11 +139,29 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
           <Plus className="h-3 w-3" />
           New
         </button>
+        <button
+          type="button"
+          title="Have Claude write requests for this workflow"
+          onClick={() =>
+            askAi(
+              generateRequests({
+                workflowPath,
+                workflow: useLiveWorkflowStore.getState().workflow,
+                existing: requests,
+                schemas: useSchemasStore.getState().schemas,
+              }),
+            )
+          }
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-ai hover:bg-accent"
+        >
+          <Sparkles className="h-3 w-3" />
+          Write with AI
+        </button>
       </div>
       {entry?.error && (
         <div
           role="alert"
-          className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-red-700 dark:text-red-400"
+          className="rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive"
         >
           {entry.error}
         </div>
@@ -173,8 +191,8 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
                   !r
                     ? "border border-muted-foreground/50"
                     : r.passed
-                      ? "bg-green-500"
-                      : "bg-red-500",
+                      ? "bg-success"
+                      : "bg-destructive",
                 )}
               />
               <button

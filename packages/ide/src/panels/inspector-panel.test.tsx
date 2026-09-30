@@ -22,7 +22,9 @@ vi.mock("@/components/ui/tabs", () => ({
     <div data-testid="tabs-list">{children}</div>
   ),
   TabsTrigger: ({ value, children }: { value: string; children: React.ReactNode }) => (
-    <button data-testid={`trigger-${value}`}>{children}</button>
+    <button type="button" data-testid={`trigger-${value}`}>
+      {children}
+    </button>
   ),
   // Like Radix, only the active (default "inspect") tab's content is mounted.
   TabsContent: ({ value, children }: { value: string; children: React.ReactNode }) =>
@@ -30,9 +32,9 @@ vi.mock("@/components/ui/tabs", () => ({
 }))
 
 import { fetchWorkspaceSchemas } from "@/lib/api"
-import { useSelectionStore } from "@/store/selection"
-import { resetSchemasStore } from "@/store/schemas"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
+import { resetSchemasStore } from "@/store/schemas"
+import { useSelectionStore } from "@/store/selection"
 import { useWorkflowDrafts } from "@/store/workflow-drafts"
 import { InspectorPanel } from "./inspector-panel"
 
@@ -375,9 +377,9 @@ describe("InspectorPanel — rename node", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/letters, digits/)
     fireEvent.blur(input)
     expect(input).toHaveValue("save")
-    expect(Object.keys(useWorkflowDrafts.getState().drafts["tab-1"]?.workflow.nodes ?? {})).toContain(
-      "save",
-    )
+    expect(
+      Object.keys(useWorkflowDrafts.getState().drafts["tab-1"]?.workflow.nodes ?? {}),
+    ).toContain("save")
   })
 
   it("rejects ids already in use", () => {
