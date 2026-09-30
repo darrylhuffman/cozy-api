@@ -94,6 +94,16 @@ describe("subscribeToFileEvents", () => {
     ])
   })
 
+  it("passes on the server's ready signal with an empty path", async () => {
+    const { subscribeToFileEvents } = await import("./events.js")
+
+    const received: { type: string; path: string }[] = []
+    subscribeToFileEvents((e) => received.push(e))
+    lastFakeSource!.dispatchMessage("ready", "{}")
+
+    expect(received).toEqual([{ type: "ready", path: "" }])
+  })
+
   it("unsubscribe removes the listener", async () => {
     const { subscribeToFileEvents } = await import("./events.js")
 

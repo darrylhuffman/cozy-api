@@ -154,7 +154,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
   // The header carries the node's colour: its accent when it declares one,
   // otherwise the colour of its kind. Mixed in sRGB so low-chroma card colours
   // don't drag the hue around the wheel.
-  const tint = accent ?? KIND_TINT[kindLabel]
+  const tint = nodeTint(instance.uses, color)
   const headerBg = `color-mix(in srgb, ${tint} 10%, var(--popover))`
   const cardBg = accent ? `color-mix(in srgb, ${accent} 6%, var(--popover))` : undefined
 
@@ -252,6 +252,16 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
 }
 
 const NODE_WIDTH = 270
+
+/**
+ * A node's colour: its declared accent, otherwise the colour of its kind.
+ * Shared by the card header and the minimap.
+ */
+export function nodeTint(uses: string, color?: string | null): string {
+  if (color) return resolveAccentColor(color)
+  if (uses.startsWith("@core/")) return KIND_TINT.core as string
+  return (uses.startsWith("./") ? KIND_TINT.node : KIND_TINT.external) as string
+}
 
 const KIND_TINT: Record<string, string> = {
   node: "var(--ai)",

@@ -1,4 +1,5 @@
-export type FileEvent = { type: "change" | "add" | "unlink"; path: string }
+/** "ready" (path "") means the server started watching: anything may have changed. */
+export type FileEvent = { type: "change" | "add" | "unlink" | "ready"; path: string }
 
 type Listener = (event: FileEvent) => void
 
@@ -20,6 +21,9 @@ function ensureConnected(): void {
   source.addEventListener("change", dispatch("change") as EventListenerOrEventListenerObject)
   source.addEventListener("add", dispatch("add") as EventListenerOrEventListenerObject)
   source.addEventListener("unlink", dispatch("unlink") as EventListenerOrEventListenerObject)
+  source.addEventListener("ready", (() => {
+    for (const l of listeners) l({ type: "ready", path: "" })
+  }) as EventListenerOrEventListenerObject)
   source.addEventListener("error", () => {
     // EventSource auto-reconnects; just log
     console.warn("/api/events disconnected; will reconnect")

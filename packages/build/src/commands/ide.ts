@@ -32,6 +32,12 @@ import { makeDebugIntegration } from "./debug-integration.js"
 import { introspectProviders } from "./introspect-providers.js"
 import { introspectWorkspace, invalidateSchemaCache } from "./introspect-workspace.js"
 import { type NodeCasesRequest, type NodeCasesRun, runNodeCasesInWorker } from "./run-node-cases.js"
+import {
+  deleteWorkspaceItem,
+  renameWorkspaceItem,
+  WorkspaceItemError,
+  workspaceItemUsage,
+} from "./workspace-items.js"
 import { collectWorkspaceTypes } from "./workspace-types.js"
 
 // ── FileNode types (mirrors packages/ide/src/data/mock-files.ts) ─────────────
@@ -261,6 +267,48 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
     }
   })
 
+  // ── Rename / delete a workflow or node (with its requests or cases) ──────
+
+  const itemError = (e: unknown) => {
+    if (e instanceof WorkspaceItemError) return { body: { error: e.message }, status: e.status }
+    return { body: { error: (e as Error).message }, status: 500 as const }
+  }
+
+  app.post("/api/workspace/rename", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { from?: unknown; to?: unknown } | null
+    if (!body || typeof body.from !== "string" || typeof body.to !== "string") {
+      return c.json({ error: "Body must be { from: string, to: string }" }, 400)
+    }
+    try {
+      return c.json(await renameWorkspaceItem(resolve(workspaceRoot), body.from, body.to))
+    } catch (e) {
+      const { body: err, status } = itemError(e)
+      return c.json(err, status)
+    }
+  })
+
+  app.get("/api/workspace/usage", async (c) => {
+    const rawPath = c.req.query("path")
+    if (!rawPath) return c.json({ error: "Missing ?path= query parameter" }, 400)
+    try {
+      return c.json(await workspaceItemUsage(resolve(workspaceRoot), rawPath))
+    } catch (e) {
+      const { body: err, status } = itemError(e)
+      return c.json(err, status)
+    }
+  })
+
+  app.delete("/api/workspace/file", async (c) => {
+    const rawPath = c.req.query("path")
+    if (!rawPath) return c.json({ error: "Missing ?path= query parameter" }, 400)
+    try {
+      return c.json(await deleteWorkspaceItem(resolve(workspaceRoot), rawPath))
+    } catch (e) {
+      const { body: err, status } = itemError(e)
+      return c.json(err, status)
+    }
+  })
+
   // ── Node test cases ────────────────────────────────────────────────────────
 
   app.post("/api/tests/nodes", async (c) => {
@@ -346,6 +394,11 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
       })
       watcher.on("unlink", (p) => {
         void emit("unlink", p)
+      })
+      // Files created before the watcher finished its first scan raise no
+      // "add"; "ready" tells the client to re-read the tree once.
+      watcher.on("ready", () => {
+        void stream.writeSSE({ event: "ready", data: "{}" }).catch(() => {})
       })
 
       // Periodic keep-alive so proxies don't close the connection
