@@ -5,6 +5,10 @@ test("runs the workflow's saved requests from the Run tab", async ({ ide }) => {
   await ide.getByRole("tab", { name: "Run" }).click()
   await ide.getByRole("button", { name: "Run all" }).click()
   await expect(ide.getByText("2/2 passed")).toBeVisible({ timeout: 20_000 })
+  // The Debug panel follows the requests just sent: the newest run is selected.
+  const rows = ide.getByTestId("runs-row")
+  await expect(rows).toHaveCount(2)
+  await expect(rows.first()).toHaveAttribute("aria-current", "true")
 })
 
 test("runs a node's test cases from the Tests tab and badges the node", async ({ ide }) => {

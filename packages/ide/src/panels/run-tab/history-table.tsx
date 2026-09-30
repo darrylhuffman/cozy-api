@@ -19,7 +19,10 @@ export function HistoryTable() {
           No requests yet. Send a request to populate the history.
         </div>
       ) : (
-        <div className="flex flex-col gap-px">
+        <div
+          data-testid="history-list"
+          className="flex max-h-64 flex-col gap-px overflow-y-auto overscroll-contain"
+        >
           {entries.map((e) => (
             <HistoryRow key={e.id} entry={e} />
           ))}
