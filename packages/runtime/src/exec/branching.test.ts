@@ -5,7 +5,7 @@ import { defineNode } from "../define-node.js"
 import type { AnyNodeOrTrigger } from "../types.js"
 import { parseWorkflow } from "../workflow/parse.js"
 import { validateWorkflow } from "../workflow/validate.js"
-import { RequestValidationError } from "./errors.js"
+import { NoResponseError, RequestValidationError } from "./errors.js"
 import { LifecycleEmitter } from "./lifecycle.js"
 import { runWorkflow } from "./run.js"
 import { computeExecutionPlan } from "./topology.js"
@@ -147,5 +147,32 @@ describe("request validation", () => {
 
   it("passes valid input through", async () => {
     await expect(exec({ minCapacity: "4" })).resolves.toMatchObject({ body: 4 })
+  })
+})
+
+describe("no Response ran", () => {
+  it("fails the run instead of answering 200 with a null body", async () => {
+    const noNotFound = parseWorkflow({
+      lorien: 1,
+      nodes: {
+        Request: { uses: "@core/http-request", values: { path: "/rooms/:id", method: "GET" } },
+        FindRoom: { uses: "./find-room", in: { id: "Request.params.id" } },
+        Ok: { uses: "@core/response", when: "FindRoom.found", in: { body: "FindRoom.room" } },
+      },
+    })
+    const { depsByNode } = validateWorkflow(noNotFound)
+    const go = (id: string) =>
+      runWorkflow({
+        workflow: noNotFound,
+        plan: computeExecutionPlan(noNotFound, depsByNode),
+        triggerNodeId: "Request",
+        triggerOutputs: { body: null, params: { id }, query: {}, headers: {}, context: {} },
+        services: {},
+        resolveNode: (u) => resolveCoreNode(u) ?? nodes[u] ?? null,
+      })
+    expect((await go("r1")).body).toEqual({ name: "Oak" })
+    const err = await go("nope").catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(NoResponseError)
+    expect((err as Error).message).toContain("skipped: Ok")
   })
 })

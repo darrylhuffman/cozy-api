@@ -20,6 +20,23 @@ export class NodeRunError extends WorkflowError {
   }
 }
 
+/**
+ * The run finished without any @core/response node running: every Response
+ * was skipped by its `when` (or the workflow has none). Answering 200 with a
+ * null body would hide the missing branch, so the route answers 500.
+ */
+export class NoResponseError extends WorkflowError {
+  constructor(skipped: string[]) {
+    super(
+      skipped.length > 0
+        ? `no Response node ran (skipped: ${skipped.join(", ")}); add a Response for this case`
+        : "the workflow has no Response node",
+      null,
+    )
+    this.name = "NoResponseError"
+  }
+}
+
 /** One reason a request was rejected, located in the request ("query.minCapacity"). */
 export interface RequestIssue {
   path: string

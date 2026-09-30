@@ -308,8 +308,16 @@ function renderRun(
   }
 
   if (!returned) {
+    // Every Response was skipped by its `when`: a missing branch, not a 200.
+    const responses = [...sliceIds]
+      .filter((id) => workflow.nodes[id]?.uses === "@core/response")
+      .sort()
+    const message =
+      responses.length > 0
+        ? `no Response node ran (skipped: ${responses.join(", ")}); add a Response for this case`
+        : "the workflow has no Response node"
     body.push("")
-    body.push(`return { status: 200, headers: {}, body: null }`)
+    body.push(`throw new Error(${JSON.stringify(message)})`)
   }
 
   lines.push(`/** ${trigger.method} ${trigger.path} */`)

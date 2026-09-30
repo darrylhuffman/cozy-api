@@ -376,7 +376,7 @@ describe("emitWorkflow — response", () => {
     expect(source).toMatch(/"content-type": "application\/json"/)
   })
 
-  it("emits a default 200 null Response when no @core/response is wired", () => {
+  it("throws instead of answering 200 null when no @core/response is wired", () => {
     const { source } = emitWorkflow({
       workflow: wf({
         lorien: 1,
@@ -390,7 +390,25 @@ describe("emitWorkflow — response", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/return \{ status: 200, headers: \{\}, body: null \}/)
+    expect(source).toContain(`throw new Error("the workflow has no Response node")`)
+    expect(source).not.toContain("body: null }")
+  })
+
+  it("throws, naming the skipped Responses, when every Response has a false `when`", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/x/:id", method: "GET" } },
+          find: { uses: "./nodes/find", in: { id: "req.params.id" } },
+          Ok: { uses: "@core/response", when: "find.found", in: { body: "find" } },
+        },
+      }),
+      relativePath: "x",
+    })
+    expect(source).toContain(
+      `throw new Error("no Response node ran (skipped: Ok); add a Response for this case")`,
+    )
   })
 })
 

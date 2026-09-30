@@ -34,7 +34,12 @@ export { mountWorkflows } from "./dev-server/server.js"
 export type { StartServerOptions } from "./dev-server/start.js"
 export { startLorienServer } from "./dev-server/start.js"
 export type { RequestIssue } from "./exec/errors.js"
-export { NodeRunError, RequestValidationError, WorkflowError } from "./exec/errors.js"
+export {
+  NodeRunError,
+  NoResponseError,
+  RequestValidationError,
+  WorkflowError,
+} from "./exec/errors.js"
 export type { LifecycleEvent, LifecycleEventType } from "./exec/lifecycle.js"
 export { LifecycleEmitter } from "./exec/lifecycle.js"
 export type { RunWorkflowOptions, WorkflowRunResult } from "./exec/run.js"
