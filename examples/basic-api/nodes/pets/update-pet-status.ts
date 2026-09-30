@@ -1,7 +1,6 @@
 import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
-import type { PetStoreDb } from "../../src/db.js"
-import { idSchema, petSchema, petStatusSchema } from "../../src/schemas.js"
+import { idSchema, petSchema, petStatusSchema } from "../../lib/schemas.js"
 
 export default defineNode({
   name: "Update Pet Status",
@@ -20,8 +19,7 @@ export default defineNode({
    * @param input - The pet id and the new status.
    * @returns 200 with the updated pet, or 404 when there is no such pet.
    */
-  async run({ id, status }, services) {
-    const { db } = services as { db: PetStoreDb }
+  async run({ id, status }, { db }) {
     const pet = await db.updatePetStatus(id, status)
     if (!pet) return { status: 404, body: { error: `pet ${id} not found` } }
     return { status: 200, body: pet }

@@ -1,6 +1,5 @@
 import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
-import type { PetStoreDb } from "../../src/db.js"
 
 export default defineNode({
   name: "Get Inventory",
@@ -14,8 +13,7 @@ export default defineNode({
    *
    * @returns How many pets are available, pending and sold.
    */
-  async run(_input, services) {
-    const { db } = services as { db: PetStoreDb }
+  async run(_input, { db }) {
     return { inventory: await db.inventory() }
   },
 })

@@ -40,11 +40,14 @@ Lorien is a monorepo of five packages:
 
 ```
 my-app/
-├── lorien.config.ts        # service registry (db, logger, etc.)
+├── lorien.config.ts        # build target
 ├── workflows/              # HTTP routes as JSON dependency graphs
 │   └── *.workflow
-├── nodes/                  # typed compute units (defineNode)
+├── nodes/                  # typed compute units (defineNode): all business logic
 │   └── *.ts
+├── providers/              # injected dependencies (defineProvider): db, logger, clients
+│   └── <name>.ts           #   singleton, scoped (per request) or transient
+├── lib/                    # plain shared code: zod schemas, helpers
 ├── src/
 │   └── server.ts           # entrypoint — calls startLorienServer
 ├── AGENTS.md               # author's guide for humans + AI agents

@@ -30,10 +30,10 @@ describe("equivalence: interpreter == codegen", () => {
       await import(pathToFileURL(join(basicApiRoot, "nodes", "pets", "find-pet.ts")).href)
     ).default
 
-    // The generated .gen.ts uses the example's lorien.config services directly,
-    // so the interpreter gets the same ones: both read the seeded pet store.
-    const configMod = await import(pathToFileURL(join(basicApiRoot, "lorien.config.ts")).href)
-    const services = (configMod.default as { services: Record<string, unknown> }).services
+    // The interpreter gets the singletons the generated providers.gen.ts created,
+    // so both sides read the same seeded pet store.
+    const providersGen = await import(pathToFileURL(join(distDir, "providers.gen.ts")).href)
+    const services = providersGen.singletons as Record<string, unknown>
 
     for (const id of ["1", "99999"]) {
       // --- Interpreter side ---

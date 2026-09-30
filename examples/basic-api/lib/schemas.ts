@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { PET_STATUSES } from "./db.js"
+import { PET_STATUSES } from "../providers/db/open.js"
 
 export const petStatusSchema = z.enum(PET_STATUSES)
 

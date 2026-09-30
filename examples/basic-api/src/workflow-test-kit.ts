@@ -7,7 +7,7 @@ import {
   type Services,
   type WorkflowFile,
 } from "@darrylondil/lorien-runtime"
-import { openPetStoreDb, type PetStoreDb } from "./db.js"
+import { openPetStoreDb, type PetStoreDb } from "../providers/db/open.js"
 
 const root = join(import.meta.dirname, "..")
 

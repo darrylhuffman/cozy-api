@@ -1,7 +1,6 @@
 import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
-import type { PetStoreDb } from "../../src/db.js"
-import { idSchema, orderSchema } from "../../src/schemas.js"
+import { idSchema, orderSchema } from "../../lib/schemas.js"
 
 export default defineNode({
   name: "Place Order",
@@ -20,8 +19,7 @@ export default defineNode({
    * @param input - The pet to order and how many.
    * @returns 201 with the order, 404 for an unknown pet, or 409 when it is not available.
    */
-  async run({ petId, quantity }, services) {
-    const { db } = services as { db: PetStoreDb }
+  async run({ petId, quantity }, { db }) {
     const pet = await db.getPet(petId)
     if (!pet) return { status: 404, body: { error: `pet ${petId} not found` } }
     if (pet.status !== "available") {
