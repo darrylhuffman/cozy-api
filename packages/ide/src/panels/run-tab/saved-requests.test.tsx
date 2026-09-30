@@ -135,6 +135,7 @@ describe("saved requests", () => {
     expect(useDebugSessionStore.getState().requestForm.headers).toEqual([
       ["Authorization", "Bearer {{token}}"],
     ])
+    fireEvent.click(screen.getByRole("button", { name: /^Checks/ }))
     expect(screen.getAllByTestId("assertion-row")).toHaveLength(1)
   })
 
@@ -185,6 +186,7 @@ describe("request builder", () => {
     fireEvent.change(screen.getByLabelText("Request name"), {
       target: { value: "Rejects bad email" },
     })
+    fireEvent.click(screen.getByRole("button", { name: /^Checks/ }))
     fireEvent.click(screen.getByText("+ Add check"))
     fireEvent.change(screen.getByLabelText("Expected value"), { target: { value: "422" } })
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
@@ -217,6 +219,7 @@ describe("request builder", () => {
   it("Send shows the response, check results and undefined variables", async () => {
     render(<Harness />)
     await screen.findByText("Creates a user")
+    fireEvent.click(screen.getByRole("button", { name: /^Checks/ }))
     fireEvent.click(screen.getByText("+ Add check"))
     fireEvent.click(screen.getByRole("button", { name: "Send" }))
     const result = await screen.findByTestId("request-result")
@@ -228,6 +231,7 @@ describe("request builder", () => {
   it("asks the AI why a failed request failed", async () => {
     render(<Harness />)
     await screen.findByText("Creates a user")
+    fireEvent.click(screen.getByRole("button", { name: /^Checks/ }))
     fireEvent.click(screen.getByText("+ Add check"))
     fireEvent.click(screen.getByRole("button", { name: "Send" }))
     fireEvent.click(await screen.findByRole("button", { name: /Ask AI why it failed/ }))

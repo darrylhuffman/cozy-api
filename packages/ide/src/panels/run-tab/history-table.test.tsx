@@ -9,8 +9,16 @@ describe("HistoryTable", () => {
     useRequestHistoryStore.setState({ entries: [] })
   })
 
+  it("starts collapsed, showing the count in its header", () => {
+    render(<HistoryTable />)
+    const header = screen.getByRole("button", { name: /^History/ })
+    expect(header.getAttribute("aria-expanded")).toBe("false")
+    expect(screen.queryByText(/No requests yet/)).toBeNull()
+  })
+
   it("renders empty state when there are no entries", () => {
     render(<HistoryTable />)
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }))
     expect(screen.getByText(/no requests yet/i)).toBeInTheDocument()
   })
 
@@ -28,6 +36,7 @@ describe("HistoryTable", () => {
       startedAt: 1001,
     })
     render(<HistoryTable />)
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }))
     expect(screen.getAllByTestId("history-row")).toHaveLength(2)
   })
 
@@ -39,6 +48,7 @@ describe("HistoryTable", () => {
       startedAt: 1000,
     })
     render(<HistoryTable />)
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }))
     expect(screen.getByTestId("status-in-flight")).toBeInTheDocument()
   })
 
@@ -53,6 +63,7 @@ describe("HistoryTable", () => {
       .getState()
       .setResponse(id, { status: 200, headers: {}, body: null, durationMs: 1 })
     render(<HistoryTable />)
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }))
     expect(screen.getByTestId("status-ok")).toBeInTheDocument()
   })
 
@@ -67,6 +78,7 @@ describe("HistoryTable", () => {
       .getState()
       .setResponse(id, { status: 500, headers: {}, body: { error: "boom" }, durationMs: 1 })
     render(<HistoryTable />)
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }))
     expect(screen.getByTestId("status-error")).toBeInTheDocument()
   })
 
@@ -79,6 +91,7 @@ describe("HistoryTable", () => {
     })
     useRequestHistoryStore.getState().setError(id, "refused")
     render(<HistoryTable />)
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }))
     expect(screen.getByTestId("status-network-error")).toBeInTheDocument()
   })
 
@@ -96,6 +109,7 @@ describe("HistoryTable", () => {
       durationMs: 7,
     })
     render(<HistoryTable />)
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }))
     expect(screen.queryByTestId("response-details")).not.toBeInTheDocument()
     fireEvent.click(screen.getByTestId("history-row"))
     expect(screen.getByTestId("response-details")).toBeInTheDocument()

@@ -19,6 +19,7 @@ import {
   responseBodySchema,
   schemaFromValue,
 } from "./check-paths"
+import { CollapsibleSection } from "./collapsible-section"
 import { KeyValueGrid } from "./key-value-grid"
 import { methodTone } from "./method-tone"
 import { MocksEditor } from "./mocks-editor"
@@ -205,16 +206,13 @@ export function RequestBuilder({ workflowPath }: { workflowPath: string }) {
           )}
         </div>
       </div>
-      <section className="flex flex-col gap-1.5" aria-label="Checks">
-        <div className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Checks {expect.length}
-        </div>
+      <CollapsibleSection title="Checks" count={expect.length}>
         <AssertionsEditor
           value={expect}
           shapes={shapes}
           onChange={(next) => useRequestEditor.getState().setExpect(next)}
         />
-      </section>
+      </CollapsibleSection>
       {lastResult && (
         <RequestResult
           result={lastResult}

@@ -1,19 +1,14 @@
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { type RequestHistoryEntry, useRequestHistoryStore } from "@/store/request-history"
+import { CollapsibleSection } from "./collapsible-section"
 import { methodTone } from "./method-tone"
 
 export function HistoryTable() {
   const entries = useRequestHistoryStore((s) => s.entries)
 
   return (
-    <div className="flex flex-col gap-1 text-[13px]">
-      <div className="flex items-baseline gap-2">
-        <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-          History
-        </span>
-        <span className="text-[11px] text-muted-foreground">this session</span>
-      </div>
+    <CollapsibleSection title="History" count={entries.length} hint="this session">
       {entries.length === 0 ? (
         <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
           No requests yet. Send a request to populate the history.
@@ -21,14 +16,14 @@ export function HistoryTable() {
       ) : (
         <div
           data-testid="history-list"
-          className="flex max-h-64 flex-col gap-px overflow-y-auto overscroll-contain"
+          className="flex max-h-64 flex-col gap-px overflow-y-auto overscroll-contain text-[13px]"
         >
           {entries.map((e) => (
             <HistoryRow key={e.id} entry={e} />
           ))}
         </div>
       )}
-    </div>
+    </CollapsibleSection>
   )
 }
 
