@@ -1,4 +1,6 @@
+import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
+import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
@@ -39,6 +41,18 @@ describe("scaffold", () => {
       const stat = statSync(join(target, f))
       expect(stat.isFile()).toBe(true)
     }
+  })
+
+  it("passes its own lint script as written", async () => {
+    const target = join(dir, "lint-app")
+    await scaffold({ target, name: "lint-app", pm: "pnpm" })
+    const biome = createRequire(import.meta.url).resolve("@biomejs/biome/bin/biome")
+    const result = spawnSync(process.execPath, [biome, "check", "."], {
+      cwd: target,
+      encoding: "utf-8",
+    })
+    expect(result.stdout + result.stderr).not.toMatch(/×/)
+    expect(result.status).toBe(0)
   })
 
   it("package.json has the project name", async () => {

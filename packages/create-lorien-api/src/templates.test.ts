@@ -38,7 +38,8 @@ describe("template renderers", () => {
   it("package.json can run the biome.json it ships, and lets pnpm build esbuild", () => {
     const pkg = JSON.parse(renderPackageJson(ctx))
     expect(pkg.scripts.lint).toBe("biome check .")
-    expect(pkg.devDependencies["@biomejs/biome"]).toMatch(/^\^2\./)
+    const schema = JSON.parse(renderBiomeJson()).$schema as string
+    expect(schema).toContain(`/${pkg.devDependencies["@biomejs/biome"]}/`)
     expect(pkg.pnpm.onlyBuiltDependencies).toEqual(["esbuild"])
   })
 

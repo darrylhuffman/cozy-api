@@ -342,7 +342,7 @@ export function renderPackageJson(ctx: TemplateContext): string {
       zod: "^4.4.3",
     },
     devDependencies: {
-      "@biomejs/biome": "^2.4.15",
+      "@biomejs/biome": "2.4.15",
       "@darrylondil/lorien-build": LORIEN_RANGE,
       "@darrylondil/lorien-runtime": LORIEN_RANGE,
       "@types/node": "^25.9.1",
@@ -396,6 +396,8 @@ export function renderBiomeJson(): string {
       indentWidth: 2,
       lineWidth: 100,
     },
+    // lorien and the IDE write JSON one item per line; keep it that way.
+    json: { formatter: { expand: "always" } },
     javascript: {
       formatter: {
         semicolons: "asNeeded",
@@ -526,9 +528,9 @@ export default defineNode({
 }
 
 export function renderServerEntry(): string {
-  return `import { serve } from "@hono/node-server"
-import { startLorienServer } from "@darrylondil/lorien-runtime"
+  return `import { startLorienServer } from "@darrylondil/lorien-runtime"
 import { attachAgentBroker, mountAgentBroker } from "@darrylondil/lorien-runtime/agent-broker"
+import { serve } from "@hono/node-server"
 
 const app = await startLorienServer()
 mountAgentBroker(app, { projectRoot: process.cwd() })
