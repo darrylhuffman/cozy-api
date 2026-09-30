@@ -98,3 +98,24 @@ test("overflowing workflow tabs scroll with arrows instead of a scrollbar", asyn
   expect(await strip.evaluate((el) => el.scrollLeft)).toBe(0)
   await expect(right).toBeVisible()
 })
+
+test("tabs reorder by drag and close from a right-click menu", async ({ ide }) => {
+  await ide.getByRole("button", { name: "get.workflow" }).click()
+  await ide.getByRole("button", { name: "save-user.ts" }).click()
+  await ide.getByRole("button", { name: "test.ts" }).click()
+  const strip = ide.getByTestId("editor-tab-strip")
+  const order = () =>
+    strip.locator("[data-tab-id]").evaluateAll((els) => els.map((e) => e.textContent?.trim()))
+  await expect.poll(order).toEqual(["get.workflow", "save-user.ts", "test.ts"])
+
+  // Drag test.ts in front of get.workflow.
+  const first = strip.locator("[data-tab-id]").first()
+  await strip.getByRole("button", { name: "test.ts", exact: true }).dragTo(first, {
+    targetPosition: { x: 4, y: 10 },
+  })
+  await expect.poll(order).toEqual(["test.ts", "get.workflow", "save-user.ts"])
+
+  await strip.getByRole("button", { name: "get.workflow", exact: true }).click({ button: "right" })
+  await ide.getByRole("menuitem", { name: "Close others" }).click()
+  await expect.poll(order).toEqual(["get.workflow"])
+})

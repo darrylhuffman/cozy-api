@@ -1,4 +1,5 @@
 import { AlertCircle, FileEdit, FileText, Terminal, User } from "lucide-react"
+import { useState } from "react"
 import Markdown from "react-markdown"
 import { splitPrompt } from "@/ai/prompts"
 
@@ -45,25 +46,59 @@ export function ToolUseRead({ path }: { path: string }): React.ReactElement {
 
 interface ToolUseEditProps {
   path: string
+  /** Text the edit replaced (Edit). Absent for a whole-file Write. */
+  before?: string | undefined
+  /** Text the edit wrote (Edit's new text, or Write's whole content). */
+  after?: string | undefined
 }
 
-export function ToolUseEdit({ path }: ToolUseEditProps): React.ReactElement {
+export function ToolUseEdit({ path, before, after }: ToolUseEditProps): React.ReactElement {
+  const [open, setOpen] = useState(false)
+  const hasDiff = before !== undefined || after !== undefined
   return (
-    <div className="flex items-center gap-2 rounded-sm bg-muted/30 px-2 py-1 text-xs">
-      <FileEdit className="h-3 w-3 text-foreground" />
-      <span>Edited</span>
-      <code className="rounded bg-muted/40 px-1 font-mono">{path}</code>
-      <button
-        type="button"
-        className="ml-auto rounded-sm border border-border bg-background px-2 py-0.5 text-[10px] hover:bg-accent"
-        onClick={() => {
-          // Diff viewer integration deferred to a follow-up.
-          console.info("[lorien] view diff not implemented yet:", path)
-        }}
-      >
-        view diff
-      </button>
+    <div className="rounded-md border border-border bg-card text-xs">
+      <div className="flex items-center gap-2 px-2 py-1.5">
+        <FileEdit className="h-3 w-3 text-info" />
+        <span>Edited</span>
+        <code className="min-w-0 truncate font-mono text-[11px]">{path}</code>
+        {hasDiff && (
+          <button
+            type="button"
+            aria-expanded={open}
+            className="ml-auto shrink-0 rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-accent"
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? "Hide diff" : "View diff"}
+          </button>
+        )}
+      </div>
+      {open && hasDiff && <InlineDiff before={before ?? ""} after={after ?? ""} />}
     </div>
+  )
+}
+
+/** Before/after lines of an edit: removed lines in red, added in green. */
+function InlineDiff({ before, after }: { before: string; after: string }): React.ReactElement {
+  const removed = before === "" ? [] : before.split("\n")
+  const added = after === "" ? [] : after.split("\n")
+  return (
+    <pre
+      data-testid="edit-diff"
+      className="max-h-72 overflow-auto border-t border-border py-1 font-mono text-[11px] leading-[1.6]"
+    >
+      {removed.map((line, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: diff lines are positional
+        <div key={`-${i}`} className="bg-destructive/10 px-2 text-destructive">
+          - {line}
+        </div>
+      ))}
+      {added.map((line, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: diff lines are positional
+        <div key={`+${i}`} className="bg-success/10 px-2 text-success">
+          + {line}
+        </div>
+      ))}
+    </pre>
   )
 }
 
@@ -86,17 +121,17 @@ export function ToolUseBash({ command, exitCode }: ToolUseBashProps): React.Reac
   )
 }
 
-/**
- * Inline error card. Currently unused — agent errors and subprocess-exit
- * notifications are surfaced via the persistent banner in `ChatView` (driven
- * by `tab.error`). Kept exported for future use when we decide to render
- * errors inline alongside the message stream instead.
- */
+/** An agent error or subprocess exit, shown inline at the end of the chat. */
 export function AssistantError({ message }: { message: string }): React.ReactElement {
   return (
-    <div className="flex items-start gap-2 rounded-sm border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+    <div
+      role="alert"
+      className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive"
+    >
       <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <div className="flex-1">{message}</div>
+      <div className="max-h-48 flex-1 overflow-y-auto whitespace-pre-wrap font-mono text-[11px]">
+        {message}
+      </div>
     </div>
   )
 }

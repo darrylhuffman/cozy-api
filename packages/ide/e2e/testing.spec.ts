@@ -19,4 +19,6 @@ test("runs a node's test cases from the Tests tab and badges the node", async ({
     "aria-label",
     /4 of 4 passing/,
   )
+  // The Explorer shows the pass count next to the node file too.
+  await expect(ide.getByRole("img", { name: "4 of 4 tests passing" })).toBeVisible()
 })

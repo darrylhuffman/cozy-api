@@ -18,6 +18,7 @@ import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
 import { useCommands } from "@/store/commands"
 import { useDockviewApi } from "@/store/dockview-api"
+import { caseSummary, useNodeCases } from "@/store/node-cases"
 import { useTabsStore } from "@/store/tabs"
 import { NewFolderDialog } from "@/workflow/new-folder-dialog"
 import { NewNodeDialog } from "@/workflow/new-node-dialog"
@@ -462,7 +463,38 @@ function Leaf({
           node.kind === "workflow" ? "text-primary" : "text-info",
         )}
       />
-      <span className="truncate">{node.name}</span>
+      <span className="min-w-0 flex-1 truncate">{node.name}</span>
+      {node.kind === "node" && node.path && <NodeTestCount nodeFile={node.path} />}
     </button>
+  )
+}
+
+/** Passing cases next to a node file, once its cases have run. */
+function NodeTestCount({ nodeFile }: { nodeFile: string }) {
+  // Select a string: a fresh summary object each time would re-render forever.
+  const key = useNodeCases((s) => {
+    const sum = caseSummary(s, nodeFile)
+    return sum ? `${sum.passed}/${sum.failed}/${sum.run}` : ""
+  })
+  if (!key) return null
+  const [passed = 0, failed = 0, run = 0] = key.split("/").map(Number)
+  const sum = { passed, failed, run }
+  if (sum.run === 0) return null
+  const ok = sum.failed === 0
+  const label = ok
+    ? `${sum.passed} of ${sum.run} tests passing`
+    : `${sum.failed} of ${sum.run} tests failing`
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className={cn(
+        "mr-1 shrink-0 font-mono text-[10.5px]",
+        ok ? "text-success" : "text-destructive",
+      )}
+    >
+      {ok ? `${sum.passed}/${sum.run}` : `${sum.failed} ✕`}
+    </span>
   )
 }
