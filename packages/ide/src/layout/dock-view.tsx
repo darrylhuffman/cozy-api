@@ -13,7 +13,7 @@ import { EditorPanel } from "@/panels/editor-panel"
 import { FilesPanel } from "@/panels/files-panel"
 import { InspectorPanel } from "@/panels/inspector-panel"
 import { useDockviewApi } from "@/store/dockview-api"
-import { useThemeStore } from "@/store/theme"
+import { useActiveTheme } from "@/store/theme"
 import { buildDefaultLayout, loadSavedLayout, saveLayout } from "./default-layout"
 
 const components = {
@@ -42,7 +42,7 @@ function NoCloseTab(props: IDockviewPanelHeaderProps) {
 }
 
 export function DockView() {
-  const theme = useThemeStore((s) => s.theme)
+  const mode = useActiveTheme().mode
   const setApi = useDockviewApi((s) => s.setApi)
 
   const onReady = useCallback(
@@ -76,7 +76,7 @@ export function DockView() {
       onReady={onReady}
       components={components}
       defaultTabComponent={NoCloseTab}
-      className={theme === "dark" ? "dockview-theme-dark" : "dockview-theme-light"}
+      className={mode === "dark" ? "dockview-theme-dark" : "dockview-theme-light"}
     />
   )
 }

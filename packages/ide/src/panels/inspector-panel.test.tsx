@@ -11,6 +11,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
   }
 })
 
+vi.mock("@/lib/open-code-file", () => ({ openCodeFile: vi.fn() }))
+vi.mock("@/ai/ask", () => ({ askAi: vi.fn(), showAgents: vi.fn() }))
+
 // Mock shadcn Tabs components inline so they render in jsdom without portals
 vi.mock("@/components/ui/tabs", () => ({
   Tabs: ({ children, defaultValue }: { children: React.ReactNode; defaultValue?: string }) => (
@@ -31,7 +34,9 @@ vi.mock("@/components/ui/tabs", () => ({
     value === "inspect" ? <div data-testid={`content-${value}`}>{children}</div> : null,
 }))
 
+import { askAi } from "@/ai/ask"
 import { fetchWorkspaceSchemas } from "@/lib/api"
+import { openCodeFile } from "@/lib/open-code-file"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { resetSchemasStore } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
@@ -129,7 +134,7 @@ describe("InspectorPanel — InspectContent", () => {
       },
     })
     useSelectionStore.setState({ selectedNodeId: "save" })
-    render(<InspectorPanel />)
+    const { container } = render(<InspectorPanel />)
 
     await waitFor(() => {
       // The color text label appears next to the swatch
@@ -137,7 +142,7 @@ describe("InspectorPanel — InspectContent", () => {
     })
 
     // The swatch span has the background style set
-    const swatch = document.querySelector<HTMLElement>('[style*="background"]')
+    const swatch = container.querySelector<HTMLElement>('[style*="background"]')
     expect(swatch).not.toBeNull()
     // jsdom normalises hex to rgb — just verify an inline style exists
     expect(swatch?.style.background).toBeTruthy()
@@ -396,5 +401,62 @@ describe("InspectorPanel — rename node", () => {
     fireEvent.blur(input)
     expect(input).toHaveValue("save")
     expect(useWorkflowDrafts.getState().drafts["tab-1"]?.past).toHaveLength(0)
+  })
+})
+
+describe("InspectorPanel — actions and input values", () => {
+  it("View source opens the local node's .ts file", async () => {
+    useSelectionStore.setState({ selectedNodeId: "save" })
+    render(<InspectorPanel />)
+    fireEvent.click(await screen.findByRole("button", { name: "View source" }))
+    expect(openCodeFile).toHaveBeenCalledWith("nodes/save-user.ts")
+  })
+
+  it("hides View source for package nodes", async () => {
+    useSelectionStore.setState({ selectedNodeId: "response" })
+    render(<InspectorPanel />)
+    await screen.findByRole("button", { name: "Explain" })
+    expect(screen.queryByRole("button", { name: "View source" })).not.toBeInTheDocument()
+  })
+
+  it("Explain asks the AI about the selected node", async () => {
+    useSelectionStore.setState({ selectedNodeId: "save" })
+    render(<InspectorPanel />)
+    fireEvent.click(await screen.findByRole("button", { name: "Explain" }))
+    expect(askAi).toHaveBeenCalledWith(expect.objectContaining({ title: "Explain save" }))
+  })
+
+  it("shows reference, literal and default input values with distinct styling", async () => {
+    useLiveWorkflowStore.setState({
+      workflow: {
+        lorien: 1,
+        nodes: {
+          save: {
+            uses: "./nodes/save-user",
+            in: { email: "req.body.email" },
+            values: { role: "admin" },
+          },
+        },
+      },
+      tabId: "tab-1",
+    })
+    vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
+      "./nodes/save-user": {
+        inputs: {
+          type: "object",
+          properties: {
+            email: { type: "string" },
+            role: { type: "string" },
+            active: { type: "boolean", default: true },
+          },
+        },
+        outputs: { type: "object", properties: {} },
+      },
+    })
+    useSelectionStore.setState({ selectedNodeId: "save" })
+    render(<InspectorPanel />)
+    expect(await screen.findByText("req.body.email")).toHaveClass("text-primary")
+    expect(screen.getByText('"admin"')).toHaveClass("text-foreground")
+    expect(screen.getByText("true")).toHaveClass("italic", "text-muted-foreground")
   })
 })

@@ -306,6 +306,25 @@ describe("debug-session store — run-started", () => {
     expect(s.selectedRunId).toBe("r-1")
   })
 
+  it("selects a new run over the current one only right after the IDE sent a request", () => {
+    const start = (runId: string) =>
+      useDebugSessionStore.getState().applyMessage({
+        type: "run-started",
+        runId,
+        workflowPath: "workflows/pets/add.workflow",
+        triggerNodeId: "Request",
+        request: { method: "POST", path: "/pets" },
+      })
+    start("r-1")
+    start("r-2")
+    // A request from elsewhere (curl) doesn't steal the selection.
+    expect(useDebugSessionStore.getState().selectedRunId).toBe("r-1")
+
+    useDebugSessionStore.getState().followNextRuns()
+    start("r-3")
+    expect(useDebugSessionStore.getState().selectedRunId).toBe("r-3")
+  })
+
   it("is idempotent — duplicate run-started for same runId does not duplicate the record", () => {
     const request: RequestEnvelope = { method: "GET", path: "/health" }
     const msg = {

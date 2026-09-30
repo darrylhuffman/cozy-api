@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 import {
   AssistantError,
@@ -28,10 +28,21 @@ describe("cards", () => {
     expect(screen.getByText("nodes/users/save-user.ts")).toBeInTheDocument()
   })
 
-  it("ToolUseEdit shows path and a 'view diff' button", () => {
-    render(<ToolUseEdit path="nodes/save-user.ts" />)
+  it("ToolUseEdit shows the path and opens the diff", () => {
+    render(<ToolUseEdit path="nodes/save-user.ts" before={"a\nb"} after="c" />)
     expect(screen.getByText("nodes/save-user.ts")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /view diff/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /view diff/i }))
+    const diff = screen.getByTestId("edit-diff")
+    expect(diff.textContent).toContain("- a")
+    expect(diff.textContent).toContain("- b")
+    expect(diff.textContent).toContain("+ c")
+    fireEvent.click(screen.getByRole("button", { name: /hide diff/i }))
+    expect(screen.queryByTestId("edit-diff")).toBeNull()
+  })
+
+  it("ToolUseEdit has no diff button without before/after text", () => {
+    render(<ToolUseEdit path="nodes/save-user.ts" />)
+    expect(screen.queryByRole("button", { name: /view diff/i })).toBeNull()
   })
 
   it("ToolUseBash shows the command", () => {

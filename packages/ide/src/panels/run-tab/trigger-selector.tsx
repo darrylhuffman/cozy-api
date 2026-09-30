@@ -132,8 +132,8 @@ export function TriggerSelector() {
 
   if (triggers.length === 0) {
     return (
-      <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-        Add an <code>@core/http-request</code> node to debug this workflow.
+      <div className="w-full rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
+        Add an <code className="font-mono">@core/http-request</code> node to debug this workflow.
       </div>
     )
   }
@@ -141,8 +141,8 @@ export function TriggerSelector() {
   const current = triggers.find((t) => t.nodeId === selected) ?? triggers[0]!
 
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="text-muted-foreground">Trigger:</span>
+    <div className="flex min-w-0 items-center gap-2 text-xs">
+      <span className="shrink-0 text-muted-foreground">Trigger</span>
       <Select
         value={current.nodeId}
         onValueChange={(id) => {
@@ -150,7 +150,7 @@ export function TriggerSelector() {
           if (t) pickTrigger(t, workflow, schemas)
         }}
       >
-        <SelectTrigger className="h-7 min-w-[180px] text-xs">
+        <SelectTrigger className="h-7 min-w-0 max-w-[200px] gap-1.5 bg-background px-2 font-mono text-xs">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

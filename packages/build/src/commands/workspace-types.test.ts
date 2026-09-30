@@ -38,6 +38,15 @@ beforeEach(async () => {
   await put(".lorien/types/services.d.ts", "export {}")
 })
 
+async function putSources() {
+  await put("src/db.ts", "export const db = 1")
+  await put("src/db.test.ts", "export {}")
+  await put("lorien.config.ts", "export default {}")
+  await put("nodes/pets/add-pet.ts", "export {}")
+  await put("workflows/pets/add.test.ts", "export {}")
+  await put("dist/server.d.ts", "export {}")
+}
+
 afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
@@ -56,6 +65,13 @@ describe("collectWorkspaceTypes", () => {
       "node_modules/zod/v4/core/core.d.cts",
     ])
     expect(skipped).toEqual([])
+  })
+
+  it("includes the project's own shared sources, but not nodes, workflows, tests or build output", async () => {
+    await putSources()
+    const { files } = await collectWorkspaceTypes(root)
+    const own = files.map((f) => f.path).filter((p) => !p.startsWith("node_modules/"))
+    expect(own.sort()).toEqual([".lorien/types/services.d.ts", "lorien.config.ts", "src/db.ts"])
   })
 
   it("drops packages that don't fit the size budget instead of failing", async () => {

@@ -6,6 +6,7 @@ import {
   type SavedRequest,
 } from "@darrylondil/lorien-runtime/requests"
 import { restBase } from "@/lib/api"
+import { useDebugSessionStore } from "@/store/debug-session"
 import { useRequestHistoryStore } from "@/store/request-history"
 
 function envelopeFor(r: RequestRunResult): RequestEnvelope {
@@ -61,6 +62,7 @@ export async function sendRequest(
   ctx: { workflowPath: string; vars: Record<string, string> },
 ): Promise<RequestRunResult> {
   const startedAt = Date.now()
+  useDebugSessionStore.getState().followNextRuns()
   const result = await runSavedRequest(req, { baseUrl: restBase(), vars: ctx.vars })
   record(ctx.workflowPath, req.trigger ?? "", result, startedAt)
   return result
@@ -76,6 +78,7 @@ export async function sendAll(
   },
 ): Promise<RequestRunResult[]> {
   let startedAt = Date.now()
+  useDebugSessionStore.getState().followNextRuns()
   return runRequests(requests, {
     baseUrl: restBase(),
     vars: ctx.vars,
@@ -83,6 +86,7 @@ export async function sendAll(
       const req = requests.find((q) => q.id === r.requestId)
       record(ctx.workflowPath, req?.trigger ?? "", r, startedAt)
       startedAt = Date.now()
+      useDebugSessionStore.getState().followNextRuns()
       ctx.onResult(r)
     },
   })

@@ -1,7 +1,11 @@
+import { CircleX, Sparkles } from "lucide-react"
 import { askAi } from "@/ai/ask"
 import { fixFailedRun } from "@/ai/prompts"
+import { cn } from "@/lib/utils"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
+
+type Variant = "info" | "warning" | "success" | "error"
 
 export function StatusBanner({ runId }: { runId: string | null }) {
   const run = useDebugSessionStore((s) =>
@@ -16,64 +20,128 @@ export function StatusBanner({ runId }: { runId: string | null }) {
   const out = run.outcome
   if (out.kind === "running") {
     return (
-      <BannerShell label="▶ Running…">
-        <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>
-          Stop
-        </ControlButton>
+      <BannerShell variant="info" icon={<span className="size-2 rounded-full bg-info" />}>
+        <span>Running…</span>
+        <Actions>
+          <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>
+            Stop
+          </ControlButton>
+        </Actions>
       </BannerShell>
     )
   }
   if (out.kind === "paused" && run.pausedFrame) {
     return (
-      <BannerShell label={`⏸ Paused at ${run.pausedFrame.nodeId}.${run.pausedFrame.phase}`}>
-        <ControlButton onClick={() => sendContinue(run.runId)}>Continue</ControlButton>
-        <ControlButton onClick={() => sendStep(run.runId)}>Step</ControlButton>
-        {run.pausedFrame.phase === "before" && (
-          <ControlButton onClick={() => sendStepOver(run.runId)}>Step Over</ControlButton>
-        )}
-        <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>
-          Stop
-        </ControlButton>
+      <BannerShell variant="warning" icon={<PauseGlyph />}>
+        <span>
+          <span className="font-semibold text-warning">Paused</span> at{" "}
+          <span className="font-mono">
+            {run.pausedFrame.nodeId}.{run.pausedFrame.phase}
+          </span>
+        </span>
+        <Actions>
+          <ControlButton variant="primary" onClick={() => sendContinue(run.runId)}>
+            Continue
+          </ControlButton>
+          <ControlButton onClick={() => sendStep(run.runId)}>Step</ControlButton>
+          {run.pausedFrame.phase === "before" && (
+            <ControlButton onClick={() => sendStepOver(run.runId)}>Step Over</ControlButton>
+          )}
+          <ControlButton variant="danger" onClick={() => sendStop(run.runId)}>
+            Stop
+          </ControlButton>
+        </Actions>
       </BannerShell>
     )
   }
   if (out.kind === "ok") {
-    return <BannerShell label={`✓ Completed (${out.status}, ${out.totalMs}ms)`} />
+    return (
+      <BannerShell variant="success" icon={<span className="text-success">✓</span>}>
+        <span>Completed</span>
+        <span className="font-mono text-[11.5px] text-muted-foreground">
+          {out.status} · {out.totalMs}ms
+        </span>
+      </BannerShell>
+    )
   }
   if (out.kind === "errored") {
     return (
-      <BannerShell label={`✕ Errored: ${out.message}`} variant="error">
-        <ControlButton
-          onClick={() => {
-            const req = fixFailedRun({ run, workflow: useLiveWorkflowStore.getState().workflow })
-            if (req) askAi(req)
-          }}
-        >
-          Ask AI to fix
-        </ControlButton>
+      <BannerShell
+        variant="error"
+        icon={<CircleX aria-hidden className="size-3.5 shrink-0 text-destructive" />}
+      >
+        <span className="min-w-0 truncate" title={out.message}>
+          <span className="font-semibold text-destructive">Errored</span>
+          {out.nodeId && (
+            <>
+              {" in "}
+              <span className="font-mono">{out.nodeId}</span>
+            </>
+          )}
+          : {out.message}
+        </span>
+        <Actions>
+          <button
+            type="button"
+            className="flex h-7 items-center gap-1.5 rounded-md bg-ai/15 px-2.5 text-xs font-medium text-ai hover:bg-ai/25"
+            onClick={() => {
+              const req = fixFailedRun({ run, workflow: useLiveWorkflowStore.getState().workflow })
+              if (req) askAi(req)
+            }}
+          >
+            <Sparkles aria-hidden className="size-3" />
+            Ask AI to fix
+          </button>
+        </Actions>
       </BannerShell>
     )
   }
   return null
 }
 
+const bannerTone: Record<Variant, string> = {
+  info: "bg-info/10",
+  warning: "bg-warning/10",
+  success: "bg-success/10",
+  error: "bg-destructive/10",
+}
+
 function BannerShell({
-  label,
   children,
+  icon,
   variant,
 }: {
-  label: string
-  children?: React.ReactNode
-  variant?: "error"
+  children: React.ReactNode
+  icon: React.ReactNode
+  variant: Variant
 }) {
   return (
     <div
-      className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs"
+      className={cn(
+        "flex min-h-11 shrink-0 items-center gap-2.5 border-b border-border px-3.5 py-1.5",
+        bannerTone[variant],
+      )}
       data-testid="status-banner"
+      data-variant={variant}
     >
-      <div className={variant === "error" ? "text-destructive" : ""}>{label}</div>
-      {children && <div className="flex gap-1">{children}</div>}
+      <span aria-hidden className="flex shrink-0 items-center">
+        {icon}
+      </span>
+      {children}
     </div>
+  )
+}
+
+function Actions({ children }: { children: React.ReactNode }) {
+  return <div className="ml-auto flex shrink-0 items-center gap-1.5">{children}</div>
+}
+
+function PauseGlyph() {
+  return (
+    <span className="flex gap-0.5">
+      <span className="h-2.5 w-[3px] rounded-sm bg-warning" />
+      <span className="h-2.5 w-[3px] rounded-sm bg-warning" />
+    </span>
   )
 }
 
@@ -84,16 +152,18 @@ function ControlButton({
 }: {
   onClick: () => void
   children: React.ReactNode
-  variant?: "danger"
+  variant?: "danger" | "primary"
 }) {
   return (
     <button
       type="button"
-      className={
-        variant === "danger"
-          ? "rounded-md border bg-background px-2 py-1 text-destructive hover:bg-accent"
-          : "rounded-md border bg-background px-2 py-1 hover:bg-accent"
-      }
+      className={cn(
+        "h-[26px] rounded-md px-2.5 text-xs font-medium",
+        variant === "primary"
+          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+          : "border border-border bg-background hover:bg-accent",
+        variant === "danger" && "text-destructive",
+      )}
       onClick={onClick}
     >
       {children}

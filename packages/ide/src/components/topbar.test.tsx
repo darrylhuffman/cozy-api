@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { useSettingsDialog } from "@/store/settings"
 import { useThemeStore } from "@/store/theme"
 import { Topbar } from "./topbar.js"
 
@@ -15,23 +16,11 @@ afterEach(() => {
   document.documentElement.classList.remove("dark")
 })
 
-describe("Topbar theme toggle", () => {
-  it("renders the toggle button", () => {
+describe("Topbar settings", () => {
+  it("the gear button opens Settings", () => {
+    useSettingsDialog.setState({ open: false })
     render(<Topbar />)
-    expect(screen.getByRole("button", { name: /toggle theme/i })).toBeInTheDocument()
-  })
-
-  it("toggle button flips theme from light to dark", () => {
-    useThemeStore.setState({ theme: "light" })
-    render(<Topbar />)
-    fireEvent.click(screen.getByRole("button", { name: /toggle theme/i }))
-    expect(useThemeStore.getState().theme).toBe("dark")
-  })
-
-  it("toggle button flips theme from dark to light", () => {
-    useThemeStore.setState({ theme: "dark" })
-    render(<Topbar />)
-    fireEvent.click(screen.getByRole("button", { name: /toggle theme/i }))
-    expect(useThemeStore.getState().theme).toBe("light")
+    fireEvent.click(screen.getByRole("button", { name: /^settings$/i }))
+    expect(useSettingsDialog.getState().open).toBe(true)
   })
 })

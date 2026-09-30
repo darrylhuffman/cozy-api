@@ -66,8 +66,15 @@ export interface DebugSessionState {
     headers: Array<[string, string]>
   }
   wsSender: ((msg: ClientMessage) => void) | null
+  /**
+   * Until this time (ms), a run that starts is selected even if another run is:
+   * the IDE just sent a request and the user wants to watch it.
+   */
+  followRunsUntil: number
 
   // intents
+  /** The IDE is about to send a request: select the run it starts. */
+  followNextRuns: () => void
   setConnected: (v: boolean) => void
   setWsSender: (send: (msg: ClientMessage) => void) => void
   applyMessage: (msg: ServerMessage) => void
@@ -112,7 +119,11 @@ const initialData = {
   breakpoints: [] as Breakpoint[],
   requestForm: initialRequestForm,
   wsSender: null as DebugSessionState["wsSender"],
+  followRunsUntil: 0,
 }
+
+/** How long after sending a request its run is still auto-selected. */
+const FOLLOW_WINDOW_MS = 10_000
 
 export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
   ...initialData,
@@ -143,7 +154,8 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
             outcome: { kind: "running" },
           }
           const runs = [record, ...s.runs].slice(0, 20)
-          return { runs, selectedRunId: s.selectedRunId ?? runId }
+          const follow = Date.now() <= s.followRunsUntil
+          return { runs, selectedRunId: follow ? runId : (s.selectedRunId ?? runId) }
         })
         return
       }
@@ -251,6 +263,7 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
   },
 
   selectRun: (runId) => set({ selectedRunId: runId }),
+  followNextRuns: () => set({ followRunsUntil: Date.now() + FOLLOW_WINDOW_MS }),
 
   // Breakpoint changes go to the dev server right away. It only otherwise
   // learns them from the hello on (re)connect, and the debugger socket stays

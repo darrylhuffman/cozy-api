@@ -1,5 +1,5 @@
 import type { Assertion, RequestRunResult } from "@darrylondil/lorien-runtime/requests"
-import { CheckCircle2, Sparkles, XCircle } from "lucide-react"
+import { Check, Sparkles, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
@@ -48,99 +48,107 @@ export function RequestResult({
         ? res.body
         : JSON.stringify(res.body, null, 2)
   return (
-    <div className="flex flex-col gap-2 text-xs" data-testid="request-result">
-      <div className="flex items-center gap-2">
+    <div
+      className="flex flex-col overflow-hidden rounded-lg border border-border bg-card text-xs"
+      data-testid="request-result"
+    >
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-2.5 py-2">
         <span
           className={cn(
-            "rounded px-1.5 py-0.5 font-medium",
+            "shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 font-semibold",
             result.passed ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
           )}
         >
           {result.passed ? "Passed" : "Failed"}
         </span>
         {res && (
-          <span className="font-mono text-muted-foreground">
+          <span className="shrink-0 whitespace-nowrap font-mono font-medium">
             {res.status} · {res.durationMs}ms
           </span>
         )}
-        <span className="truncate font-mono text-muted-foreground" title={result.request.url}>
+        <span
+          className="min-w-0 flex-1 truncate font-mono text-muted-foreground"
+          title={result.request.url}
+        >
           {result.request.method} {result.request.url}
         </span>
         {!result.passed && onAskAi && (
           <button
             type="button"
             onClick={onAskAi}
-            className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ai hover:bg-accent"
+            className="flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-ai/15 px-2 text-ai hover:bg-ai/25"
           >
-            <Sparkles className="h-3 w-3" /> Ask AI why it failed
+            <Sparkles className="size-3" /> Ask AI why it failed
           </button>
         )}
       </div>
-      {result.error && <div className="text-destructive">Request failed: {result.error}</div>}
-      {result.missingVariables.length > 0 && (
-        <div className="text-warning">
-          Undefined variables: {result.missingVariables.map((v) => `{{${v}}}`).join(", ")}. Add them
-          to the environment, or capture them from an earlier request.
-        </div>
-      )}
-      {result.assertions.length > 0 && (
-        <ul className="flex flex-col gap-0.5" aria-label="Check results">
-          {result.assertions.map((a, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: results mirror the assertion order
-            <li key={i} className="flex items-start gap-1.5">
-              {a.pass ? (
-                <CheckCircle2
-                  className="mt-px h-3.5 w-3.5 shrink-0 text-success"
-                  aria-label="passed"
-                />
-              ) : (
-                <XCircle
-                  className="mt-px h-3.5 w-3.5 shrink-0 text-destructive"
-                  aria-label="failed"
-                />
-              )}
-              <span className={a.pass ? "text-muted-foreground" : ""}>{a.message}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {Object.keys(result.captured).length > 0 && (
-        <div className="text-muted-foreground">
-          Captured:{" "}
-          {Object.entries(result.captured).map(([k, v]) => (
-            <span key={k} className="mr-2 font-mono">
-              {k}={v.length > 40 ? `${v.slice(0, 37)}...` : v}
-            </span>
-          ))}
-        </div>
-      )}
-      {res && onAddChecks && result.assertions.length === 0 && (
-        <button
-          type="button"
-          className="self-start rounded-md border px-2 py-0.5 text-[11px] hover:bg-accent"
-          onClick={() => onAddChecks(assertionsFromResponse(result))}
-        >
-          Add checks from this response
-        </button>
-      )}
-      {res && (
-        <>
-          <pre
-            className="max-h-64 overflow-auto rounded-md bg-muted/40 p-2 text-[11px]"
-            data-testid="response-body"
+      <div className="flex flex-col gap-2 p-2.5">
+        {result.error && (
+          <div className="rounded-md bg-destructive/10 px-2 py-1 text-destructive">
+            Request failed: {result.error}
+          </div>
+        )}
+        {result.missingVariables.length > 0 && (
+          <div className="rounded-md bg-warning/15 px-2 py-1 text-warning">
+            Undefined variables: {result.missingVariables.map((v) => `{{${v}}}`).join(", ")}. Add
+            them to the environment, or capture them from an earlier request.
+          </div>
+        )}
+        {result.assertions.length > 0 && (
+          <ul className="flex flex-col gap-0.5" aria-label="Check results">
+            {result.assertions.map((a, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: results mirror the assertion order
+              <li key={i} className="flex items-start gap-1.5">
+                {a.pass ? (
+                  <Check className="mt-px size-3.5 shrink-0 text-success" aria-label="passed" />
+                ) : (
+                  <X className="mt-px size-3.5 shrink-0 text-destructive" aria-label="failed" />
+                )}
+                <span className={a.pass ? "text-success" : "text-destructive"}>{a.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {Object.keys(result.captured).length > 0 && (
+          <div className="font-mono text-[11px] text-muted-foreground">
+            Captured:{" "}
+            {Object.entries(result.captured).map(([k, v]) => (
+              <span key={k} className="mr-2">
+                {k}={v.length > 40 ? `${v.slice(0, 37)}...` : v}
+              </span>
+            ))}
+          </div>
+        )}
+        {res && onAddChecks && result.assertions.length === 0 && (
+          <button
+            type="button"
+            className="self-start whitespace-nowrap rounded-md px-1 py-0.5 text-primary hover:bg-accent"
+            onClick={() => onAddChecks(assertionsFromResponse(result))}
           >
-            {bodyText || "(empty body)"}
-          </pre>
-          <details className="text-muted-foreground">
-            <summary>Response headers</summary>
-            <pre className="max-h-24 overflow-auto rounded-md bg-muted/40 p-2 text-[10px]">
-              {Object.entries(res.headers)
-                .map(([k, v]) => `${k}: ${v}`)
-                .join("\n")}
+            Add checks from this response
+          </button>
+        )}
+        {res && (
+          <>
+            <pre
+              className="max-h-64 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-[11px]"
+              data-testid="response-body"
+            >
+              {bodyText || "(empty body)"}
             </pre>
-          </details>
-        </>
-      )}
+            <details className="text-muted-foreground">
+              <summary className="cursor-pointer select-none font-mono text-[11px]">
+                Response headers ({Object.keys(res.headers).length})
+              </summary>
+              <pre className="mt-1 max-h-24 overflow-auto rounded-md bg-muted/40 p-2 font-mono text-[10px]">
+                {Object.entries(res.headers)
+                  .map(([k, v]) => `${k}: ${v}`)
+                  .join("\n")}
+              </pre>
+            </details>
+          </>
+        )}
+      </div>
     </div>
   )
 }
