@@ -3,29 +3,43 @@ export interface TemplateContext {
 }
 
 /**
- * Canonical authoring guide for AI agents working in a lorien-api project.
+ * Canonical authoring guide for AI agents working in a lorien project.
  * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
  * (with frontmatter wrapper). Single source of truth — both renderers must use this.
  */
-export const SKILL_BODY = `<!-- lorien-skill-version: 4 -->
+export const SKILL_BODY = `<!-- lorien-skill-version: 5 -->
 
-# lorien-api project guide
+# lorien project guide
 
-This is a lorien-api project. HTTP endpoints are defined as \`.workflow\` files: named-input JSON dependency graphs of typed nodes. Workflows compile to plain TypeScript via \`lorien build\`; the deployed code has zero runtime dependency on lorien-api.
+This is a lorien project. Each HTTP route is a \`.workflow\` file: a small JSON graph of typed nodes, where each node says where its inputs come from. \`lorien build\` compiles the workflows to plain TypeScript and Hono in \`dist/\`.
 
 ## Layout
 
 \`\`\`
-workflows/**/*.workflow   ← HTTP routes (you author these)
-workflows/**/_middleware.ts ← middleware for every route in that folder and below
-nodes/**/*.ts             ← typed compute units, one defineNode per file; ALL business logic
-providers/<name>.ts       ← injected dependencies (db, logger, cache, clients), one defineProvider per file
-providers/<name>/         ← code private to one provider (migrations, SQL, client setup)
-lib/                      ← plain shared code: zod schemas, helpers
-lorien.config.ts          ← build target only
-.lorien/                  ← IDE cache and generated types, do not edit
-.lorien/chats/            ← agent chat transcripts, do not edit
+workflows/**/*.workflow          ← HTTP routes (you author these)
+workflows/**/*.requests.json     ← saved requests for that route (tests)
+workflows/**/_middleware.ts      ← middleware for every route in that folder and below
+nodes/**/*.ts                    ← typed compute units, one defineNode per file; ALL business logic
+nodes/**/*.cases.json            ← test cases for the node next to it
+providers/<name>.ts              ← injected dependencies (db, logger, cache, clients), one defineProvider per file
+providers/<name>/                ← code private to one provider (migrations, SQL, client setup)
+lib/                             ← plain shared code: zod schemas, helpers
+src/server.ts                    ← dev server entry (lorien dev runs it); not part of the build
+lorien.config.ts                 ← build target only
+.lorien/                         ← IDE cache and generated types, do not edit
 \`\`\`
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| \`npm run dev\` | API on :3000 and the IDE on :8188. Restarts when a node, provider, middleware or workflow changes. Loads \`.env\` if present. |
+| \`npm run dev:server\` | The API only, no IDE. |
+| \`npm run build\` | Checks every workflow and writes \`dist/\`; \`npm start\` runs \`dist/index.js\`. |
+| \`npm run test\` | \`lorien test\` (every node case and saved request), then Vitest. |
+| \`npm run typecheck\` | \`lorien types\` (writes \`.lorien/types/providers.d.ts\`, git-ignored), then \`tsc\`. |
+
+Any package manager works (\`pnpm\`, \`yarn\`, \`bun\`). \`npx lorien --help\` lists every command.
 
 ## The node contract
 
@@ -36,95 +50,153 @@ import { defineNode } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
 
 export default defineNode({
-  name: "Save User",
-  inputs: z.object({
-    email: z.string().email(),
-    passwordHash: z.string(),
-  }),
+  name: "Find Room",
+  inputs: z.object({ id: z.coerce.number().int() }),
   outputs: z.object({
-    id: z.string(),
+    found: z.boolean(),
+    room: z.object({ id: z.number(), name: z.string() }).optional(),
   }),
-  async run({ email, passwordHash }, { db }) {
-    const row = await db.users.insert({ email, passwordHash })
-    return { id: row.id }
+  async run({ id }, { db }) {
+    const room = await db.findRoom(id)
+    return room ? { found: true, room } : { found: false }
   },
 })
 \`\`\`
 
 Rules:
-- \`inputs\` and \`outputs\` are Zod object schemas.
-- \`run\` is \`async\`; receives the typed input and the providers (destructure the ones you need; each is typed from its \`providers/<name>.ts\`).
-- Don't throw. Return shaped errors via the output schema if needed.
+- \`inputs\` and \`outputs\` are Zod object schemas. \`run\` receives the parsed input and the providers (destructure the ones you need; each is typed from \`providers/<name>.ts\`).
+- Path params, query values and headers are always strings: use \`z.coerce.number()\` / \`z.coerce.boolean()\` for them.
+- \`await\` provider calls, even synchronous ones: test mocks may stand in for them.
+- Expected failures (not found, conflict, forbidden) are outputs, not throws: return a flag like \`found\` or a \`status\`, and branch on it in the workflow (see "Status codes and branching"). A throw is a bug and answers 500.
 - One node per file. Filename kebab-case. Export default.
 
 ## The .workflow file format
 
-Named-input JSON. Each node lists where its inputs come from inline. No separate edges list:
+Named-input JSON. Each node lists where its inputs come from. No separate edges list:
 
-\`\`\`jsonc
+\`\`\`json
 {
   "lorien": 1,
   "nodes": {
-    "request": {
+    "Request": {
       "uses": "@core/http-request",
-      "values": { "path": "/users", "method": "POST" }
+      "values": { "path": "/rooms/:id", "method": "GET" }
     },
-    "parseBody": {
-      "uses": "./nodes/parse-body",
-      "in": { "raw": "request.body" }
+    "FindRoom": {
+      "uses": "./nodes/rooms/find-room",
+      "in": { "id": "Request.params.id" }
     },
-    "saveUser": {
-      "uses": "./nodes/save-user",
-      "in": {
-        "email": "parseBody.email",
-        "passwordHash": "parseBody.passwordHash"
-      }
-    },
-    "response": {
+    "Response": {
       "uses": "@core/response",
-      "in": { "body": "saveUser" }
+      "in": { "body": "FindRoom.room" }
     }
   }
 }
 \`\`\`
 
+A node instance has only these keys; any other key is an error:
+
+| Key | Meaning |
+| --- | --- |
+| \`uses\` | \`@core/...\` or \`./nodes/<path>\` without \`.ts\`. |
+| \`in\` | \`{ "<input>": "<NodeId>.<output>.<path>" }\` references, or one reference string that becomes the whole input (\`"in": "Request.body"\`). References only, never literals. |
+| \`values\` | Literal inputs (\`{ "status": 201 }\`). A field in both \`in\` and \`values\` takes the \`in\` reference. With the whole-object form of \`in\`, \`values\` is ignored. |
+| \`when\` | Run this node only when a reference is truthy (\`"FindRoom.found"\`), or falsy with a leading \`!\` (\`"!FindRoom.found"\`). |
+| \`after\` | Node ids this node waits for without reading their outputs. |
+| \`label\` | Display name on the canvas. |
+
 Rules:
-- Keys in \`in\` must match the target node's \`inputs\` schema.
-- Values in \`in\` are \`<nodeId>.<outputField>\` references (or just \`<nodeId>\` to pass the whole output object).
-- No cycles.
-- Fixed inputs go under \`values\` (e.g. \`"values": { "status": 201 }\`). To share one value between several inputs, add a variable: \`"role": { "uses": "@core/variable", "values": { "value": "admin" } }\`, read as \`role.value\`.
-- A \`view\` block (when present) is IDE-only layout metadata. After hand-editing, you may set it to \`null\` and the IDE will re-lay-out.
+- Reference segments are identifiers: letters, digits, \`_\` and \`$\`. A header like \`x-api-key\` can't be referenced directly: take \`Request.headers\` whole into a node, or check it in middleware.
+- No cycles. Nodes whose inputs are ready run in parallel.
+- To share one value between several inputs, add a variable: \`"role": { "uses": "@core/variable", "values": { "value": "admin" } }\`, read as \`role.value\`.
+- A \`view\` block (when present) is IDE-only layout. After hand-editing, you may delete it and the IDE will lay the graph out again.
 
-## Authoring recipes
+## Core nodes
 
-**Add a new node**
-1. Create \`nodes/<name>.ts\` following the node contract.
-2. Reference it from a workflow via \`"uses": "./nodes/<name>"\`.
+**\`@core/http-request\`** (the trigger): \`values.method\` (\`GET\` by default; \`POST\`, \`PUT\`, \`PATCH\`, \`DELETE\`, \`OPTIONS\`) and \`values.path\` (Hono syntax, \`/rooms/:id\`; defaults to the workflow's folder: \`workflows/rooms/list.workflow\` serves \`/rooms\`). Outputs:
+- \`body\`: the parsed JSON body; raw text for other content types; \`null\` when there is none or the JSON is malformed.
+- \`params\`: path params, as strings.
+- \`query\`: query values, as strings (a repeated key keeps the last value; a missing one is \`undefined\`).
+- \`headers\`: request headers, names lowercased.
+- \`context.requestId\`, \`context.timestamp\`.
 
-**Wire a new node into a workflow**
-1. Add an entry under \`nodes\` with \`uses\` pointing to the node file.
-2. In its \`in\` block, reference upstream outputs as \`<id>.<field>\`.
+The route comes from \`values.path\`, not from where the file sits. Two workflows serving the same method and path fail the build.
 
-**Add a provider (db, logger, cache, API client)**
-1. Create \`providers/<name>.ts\` exporting \`defineProvider({ lifetime, env, uses, create, dispose })\`. The file name is the name nodes read it by (\`http-client.ts\` → \`httpClient\`).
-2. Pick a lifetime: \`singleton\` (default, once at boot: pools, clients), \`scoped\` (once per request: a logger tagged with the request id), or \`transient\` (every read). A singleton may only \`uses\` other singletons.
-3. Declare env vars in \`env\` (a zod object); boot fails with a clear message when one is missing. Don't read \`process.env\` in nodes.
-4. Destructure it from the second argument of \`run()\` in any node that needs it.
+**\`@core/response\`**: inputs \`body\`, \`status\` (default 200) and \`headers\`. The first Response that runs answers the request.
+
+**\`@core/variable\`**: a constant, \`values.value\`, read as \`<id>.value\`.
+
+## Status codes and branching
+
+Every node runs unless its \`when\` says otherwise. A node that doesn't run is skipped along with every node that reads its outputs. Give each outcome its own Response with a \`when\`:
+
+\`\`\`json
+{
+  "lorien": 1,
+  "nodes": {
+    "Request": { "uses": "@core/http-request", "values": { "path": "/bookings", "method": "POST" } },
+    "FindRoom": { "uses": "./nodes/rooms/find-room", "in": { "id": "Request.body.roomId" } },
+    "NoRoom": {
+      "uses": "@core/response",
+      "when": "!FindRoom.found",
+      "values": { "status": 404, "body": { "error": "room not found" } }
+    },
+    "CheckOverlap": {
+      "uses": "./nodes/bookings/check-overlap",
+      "when": "FindRoom.found",
+      "in": { "roomId": "FindRoom.room.id", "from": "Request.body.from", "to": "Request.body.to" }
+    },
+    "Taken": {
+      "uses": "@core/response",
+      "when": "CheckOverlap.overlaps",
+      "values": { "status": 409, "body": { "error": "room already booked" } }
+    },
+    "Insert": {
+      "uses": "./nodes/bookings/insert-booking",
+      "when": "!CheckOverlap.overlaps",
+      "in": { "roomId": "FindRoom.room.id", "from": "Request.body.from", "to": "Request.body.to" }
+    },
+    "Created": {
+      "uses": "@core/response",
+      "in": { "body": "Insert.booking", "headers": "Insert.headers" },
+      "values": { "status": 201 }
+    }
+  }
+}
+\`\`\`
+
+A node can also compute its own status and pass it on: wire \`"status": "Node.status"\` and \`"body": "Node.body"\` into a Response.
+
+What lorien answers for you:
+- **400** when a value that came straight from the request fails a node's input schema: \`{ "error": "Invalid request", "issues": [{ "path": "query.minCapacity", "message": "..." }] }\`.
+- **500** when a node throws: \`{ "error": "Internal Server Error" }\`, with the error logged. \`lorien dev\` adds the message as \`detail\`.
+
+## Providers (db, logger, cache, API client)
+
+1. Create \`providers/<name>.ts\` exporting \`defineProvider({ name, color, lifetime, env, uses, create, dispose })\`. The file name is the name nodes read it by (\`http-client.ts\` → \`httpClient\`).
+2. \`lifetime\`: \`singleton\` (default, created once at boot: pools, clients), \`scoped\` (once per request: a logger tagged with the request id), or \`transient\` (every read). A singleton may only \`uses\` other singletons.
+3. \`env\` is a zod object of env vars, checked at boot with a clear error. Set them in \`.env\` (loaded by \`lorien dev\`) or the shell. Don't read \`process.env\` in nodes.
+4. \`create({ env, providers, request })\` returns the value nodes receive. \`providers\` holds the ones listed in \`uses\`; \`request\` (\`requestId\`, \`timestamp\`) is set for scoped and transient providers. \`dispose(value)\` runs at shutdown (or at the end of the request, for scoped).
+5. Nodes destructure it from \`run\`'s second argument. Its type comes from \`.lorien/types/providers.d.ts\`, which \`npm run typecheck\`, \`npm run dev\` and \`npm run build\` regenerate.
 
 \`\`\`ts
 // providers/db.ts
 import { defineProvider } from "@darrylondil/lorien-runtime"
 import { z } from "zod"
-import { Pool } from "pg"
+import { openBookingsDb } from "./db/open.js"
 
 export default defineProvider({
-  env: z.object({ DATABASE_URL: z.string() }),
-  create: ({ env }) => new Pool({ connectionString: env.DATABASE_URL }),
-  dispose: (pool) => pool.end(),
+  name: "Bookings database",
+  env: z.object({ BOOKINGS_DB: z.string().default("data/bookings.db") }),
+  create: ({ env }) => openBookingsDb(env.BOOKINGS_DB),
+  dispose: (db) => db.close(),
 })
 \`\`\`
 
-**Add middleware (auth, CORS, rate limits, request logging)**
+A provider can expose a client or small data-access methods (\`findRoom\`, \`insertBooking\`). Decisions (can this booking go ahead?) belong in nodes. Methods keep nodes easy to test: a node case mocks them by name.
+
+## Middleware (auth, CORS, rate limits, request logging)
+
 1. Create \`_middleware.ts\` in the \`workflows/\` folder whose routes it guards: \`workflows/_middleware.ts\` runs before every route, \`workflows/admin/_middleware.ts\` before \`workflows/admin/**\` only. Outer folders run first.
 2. Export \`defineMiddleware({ name, run(c, next, providers) })\`, or an array of them to run several in order. \`c\` is Hono's context: return a response to stop, or \`await next()\` to continue. It reads providers like a node does.
 
@@ -134,14 +206,16 @@ import { defineMiddleware } from "@darrylondil/lorien-runtime"
 
 export default defineMiddleware({
   name: "Require admin key",
-  async run(c, next) {
-    if (c.req.header("x-admin-key") !== process.env.ADMIN_KEY) {
-      return c.json({ error: "forbidden" }, 403)
+  async run(c, next, { authConfig }) {
+    if (!authConfig.keys.includes(c.req.header("x-api-key") ?? "")) {
+      return c.json({ error: "unauthorized" }, 401)
     }
     await next()
   },
 })
 \`\`\`
+
+Use middleware for checks that stop a request before any node runs; use \`when\` for outcomes that depend on what nodes found.
 
 ## Where things go
 
@@ -153,62 +227,76 @@ export default defineMiddleware({
 | A new HTTP route | \`workflows/<path>.workflow\` |
 | Auth, CORS, rate limits or request logging for a group of routes | \`workflows/<folder>/_middleware.ts\` |
 
-Providers export only \`create\`/\`dispose\`: never a \`users.ts\` provider with \`createUser()\` — that is a node. Don't create new top-level folders.
+Don't create new top-level folders.
 
-**Add an OpenAPI-typed HTTP client**
-1. Run \`lorien openapi add <url-or-path>\`.
-2. Generated client nodes appear under \`nodes/<api>/\` — use them like any other node.
+**Add an OpenAPI-typed HTTP client**: \`npx lorien import-openapi <spec.json>\` (a local OpenAPI 3.x JSON file; \`--out\`, \`--api-slug\`, \`--base-url\`). Generated client nodes appear under \`nodes/<api>/\`; use them like any other node.
 
-## Verification
+## Tests
 
-After edits, run (any package manager works — \`npm\`, \`pnpm\`, \`yarn\`, \`bun\`):
+Two JSON test files, both run by \`lorien test\` and shown in the IDE's Tests and Run tabs.
 
-\`\`\`
-npm run typecheck && npm run test
-\`\`\`
-
-Tests live next to nodes in \`*.test.ts\` files and use \`testWorkflow\` / \`traceWorkflow\` from \`@darrylondil/lorien-runtime/testing\`.
-
-## Node test cases and saved requests
-
-The IDE's Tests and Run tabs read two JSON files. Write them by hand or from the IDE; both are checked by \`lorien test\`.
-
-**Node cases**: \`nodes/<path>/<node>.cases.json\` next to \`<node>.ts\`:
+**Node cases**: \`nodes/<path>/<node>.cases.json\`, next to \`<node>.ts\`:
 
 \`\`\`json
 { "lorien": 1, "cases": [
-  { "id": "saves-user", "name": "saves a user", "input": { "email": "a@b.co" },
-    "mocks": { "db": { "insert": { "returns": { "id": "u1" } } } },
-    "expect": { "output": { "id": "u1" } } },
-  { "id": "rejects-bad-email", "name": "rejects a bad email", "input": { "email": "x" },
-    "expect": { "error": "email" } }
+  { "id": "finds-room", "name": "finds a room", "input": { "id": 1 },
+    "mocks": { "db": { "findRoom": { "returns": { "id": 1, "name": "Oak" } } } },
+    "expect": { "output": { "found": true } } },
+  { "id": "db-down", "name": "db down", "input": { "id": 1 },
+    "mocks": { "db": { "findRoom": { "throws": "database is locked" } } },
+    "expect": { "error": "locked" } }
 ] }
 \`\`\`
 
-\`expect.output\` matches as a subset unless \`"match": "equals"\`. \`expect.error\` passes when the message contains the text. \`mocks\` replace a provider's methods with \`{ "returns": value }\` or \`{ "throws": "message" }\`.
+\`expect.output\` matches as a subset unless \`"match": "equals"\`. \`expect.error\` passes when the thrown message contains the text. \`mocks\` replace a provider with just the listed methods (\`{ "returns": value }\` or \`{ "throws": "message" }\`); any method not listed is missing.
 
-**Saved requests**: \`workflows/<path>/<workflow>.requests.json\` next to the \`.workflow\` file:
+**Saved requests**: \`workflows/<path>/<workflow>.requests.json\`, next to the \`.workflow\` file:
 
 \`\`\`json
 { "lorien": 1, "requests": [
-  { "id": "create-user", "name": "create a user", "method": "POST", "path": "/users",
-    "body": { "kind": "json", "json": { "email": "{{userPrefix}}-{{$uuid}}@b.co" } },
+  { "id": "create-booking", "name": "books a free slot", "method": "POST", "path": "/bookings",
+    "body": { "kind": "json", "json": { "roomId": 1, "from": "2030-01-01T10:00:00Z", "to": "2030-01-01T11:00:00Z" } },
     "expect": [ { "target": "status", "op": "equals", "value": 201 },
-                { "target": "body", "path": "id", "op": "exists" } ],
-    "capture": { "userId": "body.id" } }
+                { "target": "body", "path": "id", "op": "exists" },
+                { "target": "node", "node": "Insert", "op": "exists" } ],
+    "capture": { "bookingId": "body.id" } },
+  { "id": "db-locked", "name": "answers 500 when the insert fails", "method": "POST", "path": "/bookings",
+    "body": { "kind": "json", "json": { "roomId": 1, "from": "2030-01-02T10:00:00Z", "to": "2030-01-02T11:00:00Z" } },
+    "mocks": { "Insert": { "error": "database is locked" } },
+    "expect": [ { "target": "status", "op": "equals", "value": 500 } ] }
 ] }
 \`\`\`
 
-Checks: \`target\` is \`status\`, \`header\`, \`body\` or \`duration\`; \`op\` is \`equals\`, \`notEquals\`, \`contains\`, \`exists\`, \`notExists\`, \`matches\`, \`lessThan\`, \`greaterThan\` or \`type\`. \`{{name}}\` reads variables from \`lorien.environments.json\` (\`lorien.environments.local.json\` overrides it and stays out of git), from earlier captures, or the built-ins \`$uuid\`, \`$timestamp\`, \`$isoTimestamp\`, \`$randomInt\`.
+Checks: \`target\` is \`status\`, \`header\`, \`body\`, \`duration\` or \`node\` (a node's \`input\`, \`output\` or \`error\` by \`path\`; \`exists\`/\`notExists\` for whether it ran); \`op\` is \`equals\`, \`notEquals\`, \`contains\`, \`exists\`, \`notExists\`, \`matches\`, \`lessThan\`, \`greaterThan\` or \`type\`. \`path\` reads \`a.b\`, \`items[0].id\` or \`headers["x-id"]\`. \`mocks\` replace a node's output (\`{ "output": {...} }\`) or make it throw (\`{ "error": "..." }\`); naming a node the workflow doesn't have is an error. \`{{name}}\` in the request reads variables from \`lorien.environments.json\` (\`lorien.environments.local.json\` overrides it and stays out of git), from earlier captures, or the built-ins \`$uuid\`, \`$timestamp\`, \`$isoTimestamp\`, \`$randomInt\`. Requests run in order against the dev database, so a request that changes data should create what it changes.
 
-Run everything with \`npx lorien test\` (\`--env <name>\`, \`--base-url <url>\` to hit a running server, \`--no-nodes\`, \`--no-requests\`, \`--json\`, and an optional name filter).
+\`npx lorien test\` flags: \`--env <name>\`, \`--base-url <url>\` to hit a running server (e.g. the built one), \`--no-nodes\`, \`--no-requests\`, \`--json\`, and an optional name filter.
+
+**Vitest**, for checks JSON can't express: \`testWorkflow(workflow, { request, nodes, services })\` returns \`{ status, body, headers }\`; \`traceWorkflow\` also records each node (\`trace.at("FindRoom").output\`). Load the pieces with \`parseWorkflowFromString(await readFile(".../x.workflow", "utf-8"))\` and \`(await importNodes(root)).nodes\` from \`@darrylondil/lorien-runtime\`; the helpers come from \`@darrylondil/lorien-runtime/testing\`. Put these tests in \`workflows/**/*.test.ts\`. The scaffolded \`vitest.config.ts\` inlines the runtime so node files load; keep it.
+
+## Renaming and moving
+
+The IDE's rename updates everything. By hand:
+- **A node file**: update every \`"uses"\` that points at it, and move its \`.cases.json\` with it.
+- **A node id in a workflow**: update the \`in\` and \`when\` references and \`after\` lists that name it, plus \`mocks\` and \`node\` checks in the workflow's \`.requests.json\`.
+- **A workflow file**: the route stays \`values.path\`; move its \`.requests.json\` with it.
+
+## Verification
+
+After edits, run:
+
+\`\`\`
+npm run typecheck && npm run test && npm run build
+\`\`\`
+
+\`lorien build\` checks workflow structure (references to unknown nodes, cycles, unknown keys, duplicate routes). It doesn't check that a referenced output field exists or that an \`in\` key matches the node's inputs: the tests do. Give every route at least one saved request.
 
 ## What you should NOT do
 
-- Don't add \`@darrylondil/lorien-runtime\` as a *runtime* dep in user code — it's build-time only. The compiled output has no runtime dep on lorien.
-- Don't hand-edit anything under \`.lorien/\` (IDE cache + chat transcripts).
-- Don't introduce an edges-array workflow format. lorien-api is named-input style: each node declares its own inputs.
-- Don't use middleware for error handling or business logic. Handle errors at the node level by returning shaped output; middleware is for auth, CORS, rate limits and request logging.
+- Don't hand-edit anything under \`.lorien/\` (IDE cache, generated types and chat transcripts).
+- Don't introduce an edges-array workflow format. lorien is named-input style: each node declares its own inputs.
+- Don't put business logic or error handling in middleware; that's nodes and \`when\`.
+- Don't read \`process.env\` in nodes; declare env vars on a provider.
+- \`@darrylondil/lorien-runtime\` and \`@darrylondil/lorien-build\` stay devDependencies: \`src/server.ts\` and \`defineNode\` use the runtime while developing, and the built \`dist/index.js\` bundles what it needs.
 `
 
 export function renderPackageJson(ctx: TemplateContext): string {
@@ -439,7 +527,7 @@ export function renderClaudeSkill(): string {
   const frontmatter = [
     "---",
     "name: lorien-api",
-    "description: Use when authoring or editing files in a lorien-api project — workflows (.workflow JSON dependency graphs), nodes (typed defineNode modules), providers (defineProvider dependencies like a db or logger), or middleware (workflows/**/_middleware.ts). Triggers on edits in workflows/, nodes/, providers/, or any file ending in .workflow.",
+    "description: Use when authoring or editing files in a lorien project — workflows (.workflow JSON dependency graphs), nodes (typed defineNode modules), providers (defineProvider dependencies like a db or logger), middleware (workflows/**/_middleware.ts), or their tests (*.cases.json, *.requests.json). Triggers on edits in workflows/, nodes/, providers/, or any file ending in .workflow.",
     "---",
     "",
   ].join("\n")

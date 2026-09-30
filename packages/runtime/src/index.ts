@@ -95,14 +95,14 @@ export type {
   WorkflowConfig,
   ZodObjectAny,
 } from "./types.js"
+export type { ParsedWhen } from "./workflow/dependencies.js"
+export { dataDependencies, nodeDependencies, parseWhen } from "./workflow/dependencies.js"
 // Workflow file primitives
 export {
   parseWorkflow,
   parseWorkflowFromString,
   WorkflowParseError,
 } from "./workflow/parse.js"
-export type { ParsedWhen } from "./workflow/dependencies.js"
-export { dataDependencies, nodeDependencies, parseWhen } from "./workflow/dependencies.js"
 export { isReferenceString, parseReference } from "./workflow/reference.js"
 export type { RouteConflict, WorkflowRoute } from "./workflow/routes.js"
 export { defaultRoutePath, findRouteConflicts, workflowRoutes } from "./workflow/routes.js"

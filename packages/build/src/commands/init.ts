@@ -1,6 +1,7 @@
-import { stat, writeFile } from "node:fs/promises"
-import { basename, join, resolve } from "node:path"
+import { mkdir, stat, writeFile } from "node:fs/promises"
+import { dirname, join, resolve } from "node:path"
 import type { Command } from "commander"
+import { renderAgentsMd, renderClaudeSkill } from "create-lorien/templates"
 
 export interface InitOptions {
   root: string
@@ -10,7 +11,7 @@ export interface InitOptions {
 export function registerInit(program: Command): void {
   program
     .command("init")
-    .description("Add AGENTS.md to the current project")
+    .description("Add AGENTS.md and the Claude Code skill to the current project")
     .option("--root <path>", "project root", process.cwd())
     .option("--force", "overwrite if AGENTS.md exists")
     .action(async (opts: InitOptions) => {
@@ -34,70 +35,25 @@ export interface RunInitResult {
   error?: string
 }
 
+/**
+ * Writes AGENTS.md and the Claude Code skill, the same guide `create-lorien`
+ * scaffolds. An existing skill file is left alone unless `force` is set.
+ */
 export async function runInit(opts: RunInitOptions): Promise<RunInitResult> {
   const path = join(opts.root, "AGENTS.md")
   if (!opts.force && (await fileExists(path))) {
     console.error(`AGENTS.md already exists at ${path}. Use --force to overwrite.`)
     return { ok: false, error: "exists" }
   }
-  const name = basename(opts.root)
-  await writeFile(path, renderAgentsMd(name), "utf-8")
+  await writeFile(path, renderAgentsMd(), "utf-8")
   console.log(`Wrote ${path}`)
+  const skill = join(opts.root, ".claude", "skills", "lorien-api", "SKILL.md")
+  if (opts.force || !(await fileExists(skill))) {
+    await mkdir(dirname(skill), { recursive: true })
+    await writeFile(skill, renderClaudeSkill(), "utf-8")
+    console.log(`Wrote ${skill}`)
+  }
   return { ok: true, path }
-}
-
-function renderAgentsMd(name: string): string {
-  return `# AI agent guide for ${name}
-
-This project uses **lorien**: a file-based API framework where \`.workflow\`
-files define HTTP endpoints as dependency graphs of typed nodes.
-
-## Layout
-
-- \`workflows/**/*.workflow\` — HTTP routes as JSON dependency graphs
-- \`nodes/**/*.ts\` — typed compute units (via \`defineNode\` from \`@darrylondil/lorien-runtime\`)
-- \`providers/<name>.ts\` — injected dependencies (db, logger, clients), one \`defineProvider\` each; business logic stays in nodes
-- \`lib/\` — plain shared code (zod schemas, helpers)
-- \`lorien.config.ts\` — build target
-
-## Adding a new endpoint
-
-1. Create a node in \`nodes/\` (e.g., \`nodes/calculate.ts\`):
-
-   \`\`\`ts
-   import { defineNode } from "@darrylondil/lorien-runtime"
-   import { z } from "zod"
-
-   export default defineNode({
-     name: "Calculate",
-     inputs: z.object({ x: z.number() }),
-     outputs: z.object({ result: z.number() }),
-     async run({ x }) {
-       return { result: x * 2 }
-     },
-   })
-   \`\`\`
-
-2. Create a workflow in \`workflows/\` (e.g., \`workflows/calc.workflow\`):
-
-   \`\`\`json
-   {
-     "lorien": 1,
-     "nodes": {
-       "req": { "uses": "@core/http-request", "config": { "path": "/calc", "method": "POST" } },
-       "calc": { "uses": "./nodes/calculate", "in": { "x": "req.body.x" } },
-       "res": { "uses": "@core/response", "in": { "body": "calc.result" } }
-     }
-   }
-   \`\`\`
-
-3. Restart the dev server. \`POST /calc {"x": 5}\` returns \`10\`.
-
-## References
-
-- Documentation: https://lorien.dev (placeholder)
-- @darrylondil/lorien-runtime API: \`testWorkflow\`, \`traceWorkflow\`, \`defineNode\`, \`defineConfig\`
-`
 }
 
 async function fileExists(p: string): Promise<boolean> {

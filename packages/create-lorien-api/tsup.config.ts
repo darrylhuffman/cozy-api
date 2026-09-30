@@ -1,9 +1,10 @@
 import { defineConfig } from "tsup"
 
 export default defineConfig({
-  entry: { cli: "src/cli.ts" },
+  // templates is also imported by `lorien init` (@darrylondil/lorien-build).
+  entry: { cli: "src/cli.ts", templates: "src/templates.ts" },
   format: ["esm"],
-  dts: false,
+  dts: { entry: { templates: "src/templates.ts" } },
   clean: true,
   sourcemap: false,
   splitting: false,

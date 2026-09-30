@@ -177,6 +177,10 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
         if (opts.testHooks && testHeader !== undefined) {
           try {
             test = parseTestHeader(testHeader)
+            // A mock for a renamed or deleted node would silently let the real node run.
+            const unknown = Object.keys(test.mocks).filter((id) => !wf.file.nodes[id])
+            if (unknown.length > 0)
+              throw new Error(`mocks name nodes this workflow doesn't have: ${unknown.join(", ")}`)
           } catch (e) {
             return new Response(
               JSON.stringify({ error: `Bad ${TEST_HEADER} header: ${(e as Error).message}` }),

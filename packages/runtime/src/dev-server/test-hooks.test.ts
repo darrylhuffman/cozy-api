@@ -113,6 +113,21 @@ describe("workflow tests with test hooks", () => {
     expect(r.assertions[3]?.message).toBe("Response did not run")
   })
 
+  it("rejects a mock for a node the workflow doesn't have", async () => {
+    const { fetch } = petApp(true)
+    const r = await runSavedRequest(
+      addPet({
+        mocks: { InsertPet: { error: "database is locked" } },
+        expect: [
+          { target: "status", op: "equals", value: 400 },
+          { target: "body", path: "error", op: "contains", value: "InsertPet" },
+        ],
+      }),
+      opts(fetch),
+    )
+    expect(r.assertions.filter((a) => !a.pass)).toEqual([])
+  })
+
   it("says why a ran check failed", async () => {
     const { fetch } = petApp(true)
     const r = await runSavedRequest(

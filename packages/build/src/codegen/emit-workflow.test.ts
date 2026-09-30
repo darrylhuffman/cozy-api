@@ -315,8 +315,12 @@ describe("emitWorkflow — parallel waves", () => {
       relativePath: "x",
     })
     // inputs.parse() is called for each parallel node before allSettled
-    expect(source).toMatch(/const _aInput = parseInput\(foo\.inputs, \{ x: req_outputs\.body \}, \{"x":"body"\}\)/)
-    expect(source).toMatch(/const _bInput = parseInput\(bar\.inputs, \{ x: req_outputs\.body \}, \{"x":"body"\}\)/)
+    expect(source).toMatch(
+      /const _aInput = parseInput\(foo\.inputs, \{ x: req_outputs\.body \}, \{"x":"body"\}\)/,
+    )
+    expect(source).toMatch(
+      /const _bInput = parseInput\(bar\.inputs, \{ x: req_outputs\.body \}, \{"x":"body"\}\)/,
+    )
     expect(source).toMatch(/Promise\.allSettled\(\[/)
     expect(source).toMatch(/a_settled/)
     expect(source).toMatch(/b_settled/)
@@ -443,7 +447,9 @@ describe("emitWorkflow — whole-object `in` (string form)", () => {
     // The raw value is captured from request_outputs.body
     expect(source).toMatch(/const _saveInputRaw = request_outputs\.body/)
     // Then validated through the node's Zod schema
-    expect(source).toMatch(/const _saveInput = parseInput\(saveUser\.inputs, _saveInputRaw, "body"\)/)
+    expect(source).toMatch(
+      /const _saveInput = parseInput\(saveUser\.inputs, _saveInputRaw, "body"\)/,
+    )
     // run() still gets the validated input
     expect(source).toMatch(/const save_outputs = \(await saveUser\.run\(/)
     expect(source).toMatch(/_saveInput as never/)

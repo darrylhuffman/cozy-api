@@ -822,9 +822,7 @@ export function resolveTsxEsmApi(root: string): string {
   const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as {
     exports?: Record<string, unknown>
   }
-  const entry = pkg.exports?.["./esm/api"] as
-    | { import?: string | { default?: string } }
-    | undefined
+  const entry = pkg.exports?.["./esm/api"] as { import?: string | { default?: string } } | undefined
   const target = typeof entry?.import === "string" ? entry.import : entry?.import?.default
   if (!target) throw new Error("tsx has no ESM api export")
   return join(dirname(pkgPath), target)

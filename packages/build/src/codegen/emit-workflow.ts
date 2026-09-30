@@ -268,7 +268,9 @@ function renderRun(
     // The first response in the wave that runs answers (sorted for determinism).
     for (const responseId of responseIds) {
       body.push("")
-      body.push(ctx.conditional.has(responseId) ? `// Response ${responseId}, when it runs` : `// Response`)
+      body.push(
+        ctx.conditional.has(responseId) ? `// Response ${responseId}, when it runs` : `// Response`,
+      )
       body.push(...renderResponseReturn(ctx, responseId))
       if (!ctx.conditional.has(responseId)) {
         returned = true
@@ -563,9 +565,7 @@ function renderRanExpr(ctx: RunContext, nodeId: string): string {
     .map(ranVar)
   const when = inst.when !== undefined ? parseWhen(inst.when) : null
   if (when) {
-    const chain =
-      outputsVar(when.ref.nodeId) +
-      when.ref.path.map((seg) => `?.${seg}`).join("")
+    const chain = outputsVar(when.ref.nodeId) + when.ref.path.map((seg) => `?.${seg}`).join("")
     parts.push(when.negate ? `!${chain}` : `Boolean(${chain})`)
   }
   return parts.length > 0 ? parts.join(" && ") : "true"
