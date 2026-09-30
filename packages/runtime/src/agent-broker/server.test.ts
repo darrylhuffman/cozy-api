@@ -83,7 +83,10 @@ interface RunningServer {
   close(): Promise<void>
 }
 
-async function startTestServer(root: string): Promise<RunningServer> {
+async function startTestServer(
+  root: string,
+  extra: Partial<Parameters<typeof attachAgentBroker>[0]> = {},
+): Promise<RunningServer> {
   const app = new Hono()
   mountAgentBroker(app, { projectRoot: root })
   const server = serve({ fetch: app.fetch, port: 0 }) as ReturnType<typeof createServer>
@@ -95,6 +98,7 @@ async function startTestServer(root: string): Promise<RunningServer> {
       command: process.execPath,
       argsOverride: ["--import", TSX_IMPORT, MOCK_CLI],
     }),
+    ...extra,
   })
   await new Promise<void>((r) => server.on("listening", () => r()))
   const addr = server.address()
@@ -181,6 +185,33 @@ describe("attachAgentBroker — WebSocket", () => {
       if (m.type === "event") kinds.push(m.event.kind)
     }
     expect(kinds).toEqual(["assistant_text", "tool_use", "tool_result", "turn_done"])
+    ws.close()
+  })
+
+  it("sends the project context ahead of a new session's first message only", async () => {
+    await server.close()
+    server = await startTestServer(root, {
+      projectContext: async () => "<lorien-project>db (singleton)</lorien-project>",
+      spawnOverride: () => ({
+        command: process.execPath,
+        argsOverride: ["--import", TSX_IMPORT, MOCK_CLI, "--echo"],
+      }),
+    })
+    const ws = await openWs(server.port)
+    send(ws, { type: "new_chat", agent: "claude" })
+    const created = (await nextServerMsg(ws)) as Extract<ServerMsg, { type: "chat_created" }>
+    const replies: string[] = []
+    for (const text of ["hi", "again"]) {
+      send(ws, { type: "user", chatId: created.chatId, text })
+      for (let i = 0; i < 4; i++) {
+        const m = await nextServerMsg(ws)
+        if (m.type === "event" && m.event.kind === "assistant_text") replies.push(m.event.text)
+      }
+    }
+    expect(replies).toEqual([
+      "echo: <lorien-project>db (singleton)</lorien-project>\n\nhi",
+      "echo: again",
+    ])
     ws.close()
   })
 

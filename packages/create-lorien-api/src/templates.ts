@@ -230,6 +230,8 @@ Use middleware for checks that stop a request before any node runs; use \`when\`
 
 Don't create new top-level folders.
 
+After changing providers, nodes or middleware, run \`npx lorien check\` (\`lorien test\` and \`lorien build\` run it too). It flags a node importing a database driver or reading \`process.env\`, a provider exporting business functions, and bad selectors or lifetimes, and each finding says where the code should live. Fix every finding before you finish.
+
 **Add an OpenAPI-typed HTTP client**: \`npx lorien import-openapi <spec.json>\` (a local OpenAPI 3.x JSON file; \`--out\`, \`--api-slug\`, \`--base-url\`). Generated client nodes appear under \`nodes/<api>/\`; use them like any other node.
 
 ## Tests

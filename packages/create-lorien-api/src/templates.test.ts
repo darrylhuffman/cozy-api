@@ -112,6 +112,7 @@ describe("template renderers", () => {
     expect(SKILL_BODY).toMatch(/## What you should NOT do/)
     expect(SKILL_BODY).toMatch(/defineMiddleware/)
     expect(SKILL_BODY).toMatch(/selector: "db"/)
+    expect(SKILL_BODY).toMatch(/npx lorien check/)
     expect(SKILL_BODY).toMatch(/providers\["http-client"\]/)
     // node contract example uses the real defineNode shape
     expect(SKILL_BODY).toMatch(/inputs: z\.object/)

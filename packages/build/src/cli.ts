@@ -3,6 +3,7 @@ import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 import { Command } from "commander"
 import { registerBuild } from "./commands/build.js"
+import { registerCheck } from "./commands/check.js"
 import { registerDev } from "./commands/dev.js"
 import { registerIde } from "./commands/ide.js"
 import { registerImportOpenapi } from "./commands/import-openapi.js"
@@ -21,6 +22,7 @@ function createProgram(): Command {
     .version(VERSION)
 
   registerBuild(program)
+  registerCheck(program)
   registerDev(program)
   registerIde(program)
   registerInit(program)

@@ -9,6 +9,8 @@ import {
   runRequestCollections,
 } from "@darrylondil/lorien-runtime/testing"
 import type { Command } from "commander"
+import { formatFinding, runCheck } from "../check/run-check.js"
+import { checkSummary } from "./check.js"
 import { registerTsxFromWorkspace } from "./ide.js"
 
 export interface TestCommandOptions {
@@ -78,6 +80,16 @@ export async function runTest(
   const log = deps.log ?? ((line: string) => console.log(line))
   let runs: CollectionRunResult[] = []
   let nodeCases: NodeCaseFileResult[] = []
+
+  // lorien check first: an error (a duplicate selector, a singleton using a
+  // scoped provider) fails the run; warnings are printed and don't.
+  const check = await runCheck(root)
+  if (!opts.json && check.findings.length > 0) {
+    for (const f of check.findings) log(formatFinding(f))
+    log(checkSummary(check))
+    log("")
+  }
+
   try {
     if (opts.nodes !== false) {
       nodeCases = await (deps.runCases ?? defaultRunCases)(root, opts.filter)
@@ -105,7 +117,7 @@ export async function runTest(
   }
 
   if (opts.json) {
-    log(JSON.stringify({ passed, failed, nodeCases, runs }, null, 2))
+    log(JSON.stringify({ passed, failed, check: check.findings, nodeCases, runs }, null, 2))
   } else if (runs.length === 0 && nodeCases.length === 0) {
     log(
       "No tests found. Add node cases from the IDE's Tests tab (nodes/**/*.cases.json) or save requests from the Run tab (workflows/**/*.requests.json).",
@@ -131,5 +143,5 @@ export async function runTest(
     log("")
     log(`${passed} passed, ${failed} failed`)
   }
-  return { exitCode: failed > 0 ? 1 : 0, passed, failed, runs, nodeCases }
+  return { exitCode: failed > 0 || check.errors > 0 ? 1 : 0, passed, failed, runs, nodeCases }
 }
