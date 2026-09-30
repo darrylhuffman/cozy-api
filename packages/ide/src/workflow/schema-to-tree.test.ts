@@ -130,4 +130,14 @@ describe("schemaToTree", () => {
     expect(tree[0]!.children[0]!.id).toBe("a.b")
     expect(tree[0]!.children[0]!.children[0]!.id).toBe("a.b.c")
   })
+
+  it("marks fields listed in the parent's `required`", () => {
+    const tree = schemaToTree({
+      type: "object",
+      required: ["code"],
+      properties: { code: { type: "string" }, note: { type: "string" } },
+    })
+    expect(tree.find((p) => p.id === "code")?.required).toBe(true)
+    expect(tree.find((p) => p.id === "note")?.required).toBeUndefined()
+  })
 })

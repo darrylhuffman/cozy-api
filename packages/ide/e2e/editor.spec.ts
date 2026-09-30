@@ -26,6 +26,23 @@ test("keeps unsaved edits when switching tabs, and undo restores the graph", asy
   await expect(nodes).toHaveCount(before)
 })
 
+test("edits input values on the node card, one undo step per edit", async ({ ide }) => {
+  await openCreateUser(ide)
+  const pathChip = ide.getByRole("button", { name: "Edit path" })
+  await pathChip.click()
+  await ide.keyboard.type("/people")
+  await ide.keyboard.press("Enter")
+  await expect(ide.getByTestId("input-chip-path")).toHaveText("/people")
+
+  await ide.getByRole("button", { name: "Choose method" }).click()
+  await ide.getByRole("option", { name: "PUT" }).click()
+  await expect(ide.getByTestId("input-chip-method")).toContainText("PUT")
+
+  await ide.getByRole("button", { name: "Undo" }).click()
+  await expect(ide.getByTestId("input-chip-method")).toContainText("POST")
+  await expect(ide.getByTestId("input-chip-path")).toHaveText("/people")
+})
+
 test("shows the keyboard shortcuts dialog", async ({ ide }) => {
   await openCreateUser(ide)
   await ide.getByRole("button", { name: "Keyboard shortcuts" }).click()

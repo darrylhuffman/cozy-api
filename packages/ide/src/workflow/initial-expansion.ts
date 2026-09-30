@@ -9,15 +9,11 @@ import type { NodePorts, PortNode } from "./derive-ports"
  * path is "" (empty string).
  *
  * Defaults:
- *  - INPUTS root: collapsed when fully satisfied (every required field has a
- *    binding in `in:`) or when `in:` is the whole-object string form; expanded
- *    otherwise (partial / empty). Nested input branches default collapsed.
+ *  - INPUTS root: expanded, unless `in:` is the whole-object string form.
+ *    Nested input branches default collapsed.
  *  - OUTPUTS: every branch is expanded by default. The user can collapse
  *    manually; that override persists for the session.
  *
- * "Required fields" are inferred from the synthetic root's children — every
- * top-level child of the input root counts as a required slot. (Future: read
- * `required` from the schema for finer granularity.)
  */
 export function computeInitialExpansion(
   ports: NodePorts,
@@ -27,7 +23,7 @@ export function computeInitialExpansion(
   outputs: Set<string>
 } {
   return {
-    inputs: computeInitialInputExpansion(ports.inputs, instance.in, instance.values),
+    inputs: computeInitialInputExpansion(ports.inputs, instance.in),
     outputs: computeInitialOutputExpansion(ports.outputs),
   }
 }
@@ -35,38 +31,19 @@ export function computeInitialExpansion(
 /**
  * Returns the initial expanded set for the inputs side.
  *
- * - When `in:` is a string (whole-object form), the per-field tree is moot — keep
- *   the root collapsed.
- * - When every top-level child is bound in `in:` OR in `values:`, the root
- *   collapses (it's "satisfied").
- * - Otherwise the root expands so the user can see what's missing.
- *
- * Nested branches under the root default to COLLAPSED — we don't preemptively
- * unfurl deeply nested schemas; the user opens what they need.
+ * Inputs show their values on the card, so the root starts expanded. The one
+ * exception is whole-object `in:` (string form): the node takes one upstream
+ * value and the per-field rows add nothing. Nested branches start collapsed;
+ * the user opens what they need.
  */
 export function computeInitialInputExpansion(
   inputRoot: PortNode,
   nodeIn: NodeInstance["in"],
-  nodeValues: NodeInstance["values"],
 ): Set<string> {
   // Empty leaf root (e.g. trigger nodes) — nothing to expand.
   if (inputRoot.children.length === 0) return new Set()
-
-  // Whole-object `in:` (string form) — no per-field bindings to inspect.
   if (typeof nodeIn === "string") return new Set()
-
-  const filled = new Set<string>()
-  if (nodeIn && typeof nodeIn !== "string") {
-    for (const k of Object.keys(nodeIn)) filled.add(k)
-  }
-  if (nodeValues) {
-    for (const k of Object.keys(nodeValues)) filled.add(k)
-  }
-  const requiredFields = inputRoot.children.map((c) => c.label)
-  const allSatisfied = requiredFields.length > 0 && requiredFields.every((r) => filled.has(r))
-
-  // Fully satisfied → collapsed; partial/empty → expanded.
-  return allSatisfied ? new Set() : new Set([""])
+  return new Set([""])
 }
 
 /**

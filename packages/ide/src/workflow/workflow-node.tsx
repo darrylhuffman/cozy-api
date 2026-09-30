@@ -9,6 +9,7 @@ import type { NodePorts, PortNode } from "./derive-ports"
 import type { Diagnostic } from "./diagnose"
 import { resolveAccentColor } from "./tailwind-colors"
 import { expandTemplate } from "./template"
+import { type ChipState, ValueChip } from "./value-chip"
 
 export interface WorkflowNodeData {
   id: string
@@ -66,7 +67,7 @@ interface WorkflowNodeProps {
   data: Record<string, unknown>
 }
 
-const ROW_HEIGHT = 22
+const ROW_HEIGHT = 26
 const INDENT_PX = 12
 /** When a branch has more than this many children, show a "+N more" button. */
 const VISIBLE_COUNT = 6
@@ -147,27 +148,26 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
             : ""
 
   const accent = color ? resolveAccentColor(color) : null
-  // Faint wash across the whole card. Mix the accent into both the card and
-  // muted layers so the header stays a touch darker than the body.
-  //
-  // We mix in sRGB rather than OKLCH so that low-chroma destinations (the dark
-  // theme's `--card`, which has a blue-purple hue) don't drag the result's hue
-  // around the color wheel — yellow stays yellow instead of resolving into the
-  // magenta arc on its way to the card's 286° hue.
-  const cardBg = accent ? `color-mix(in srgb, ${accent} 15%, var(--card))` : undefined
-  const headerBg = accent ? `color-mix(in srgb, ${accent} 15%, var(--muted))` : undefined
+  // The header carries the node's colour: its accent when it declares one,
+  // otherwise the colour of its kind. Mixed in sRGB so low-chroma card colours
+  // don't drag the hue around the wheel.
+  const tint = accent ?? KIND_TINT[kindLabel]
+  const headerBg = `color-mix(in srgb, ${tint} 10%, var(--popover))`
+  const cardBg = accent ? `color-mix(in srgb, ${accent} 6%, var(--popover))` : undefined
+
+  const hasOutputs = safePorts.outputs.length > 0
 
   return (
     <div
       data-testid="node-card"
       className={cn(
-        "rounded-md border border-border bg-card text-card-foreground shadow-sm hover:brightness-98 dark:hover:brightness-115",
+        "rounded-[10px] border border-input bg-popover text-[12px] text-card-foreground shadow-[0_10px_24px_rgba(0,0,0,.18)]",
         errorCount > 0 ? "border-destructive/70" : warningCount > 0 && "border-warning/70",
         isSelected && "ring-2 ring-primary",
         statusClass,
       )}
       style={{
-        width: 240,
+        width: NODE_WIDTH,
         position: "relative",
         ...(cardBg ? { background: cardBg } : {}),
       }}
@@ -175,8 +175,8 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
       {/* Header — also the drag handle for React Flow's dragHandle prop */}
       <div
         data-testid="node-header"
-        className="node-drag-handle relative border-b border-border bg-muted px-3 py-1.5 text-xs"
-        style={headerBg ? { background: headerBg } : undefined}
+        className="node-drag-handle relative flex h-[34px] items-center gap-[7px] rounded-t-[10px] border-b border-border px-3"
+        style={{ background: headerBg }}
       >
         {nodeBreakpoint?.before && (
           <span
@@ -194,54 +194,81 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
             aria-label="Breakpoint after this node"
           />
         )}
-        <div className="flex items-center justify-between gap-2">
-          <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-            {kindLabel}
-          </div>
-          <div className="flex items-center gap-1">
-            {tests && tests.run > 0 && <TestsBadge tests={tests} />}
-            {issues && issues.length > 0 && <IssueBadge issues={issues} errorCount={errorCount} />}
-          </div>
-        </div>
-        <div className="truncate font-medium">{displayName}</div>
+        <span
+          className="shrink-0 rounded px-[5px] py-[2px] font-semibold text-[9.5px] uppercase tracking-[0.06em]"
+          style={{ color: tint, background: `color-mix(in srgb, ${tint} 15%, transparent)` }}
+        >
+          {kindLabel}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-semibold text-[13px]">{displayName}</span>
+        {tests && tests.run > 0 && <TestsBadge tests={tests} />}
+        {issues && issues.length > 0 && <IssueBadge issues={issues} errorCount={errorCount} />}
       </div>
 
-      {/* Body — port trees side by side */}
-      <div className="flex">
-        <div className="flex-1 border-r border-border py-1">
-          {showInputRoot && (
-            <PortRow
-              port={safePorts.inputs}
-              depth={0}
-              side="input"
-              expandedSet={expandedInputs}
-              onToggle={onTogglePort}
-              instanceIn={instance.in}
-              instanceValues={instance.values}
-              workflowPath={workflowPath}
-              onInputValueChange={onInputValueChange}
-            />
-          )}
-        </div>
-        <div className="flex-1 py-1">
-          <PortTree
-            ports={safePorts.outputs}
-            side="output"
-            expandedSet={expandedOutputs}
+      <div className="flex flex-col pt-1.5 pb-1">
+        {showInputRoot && (
+          <PortRow
+            port={safePorts.inputs}
+            depth={0}
+            side="input"
+            expandedSet={expandedInputs}
             onToggle={onTogglePort}
-            {...(portBreakpoints !== undefined ? { portBreakpoints } : {})}
+            instanceIn={instance.in}
+            instanceValues={instance.values}
+            workflowPath={workflowPath}
+            onInputValueChange={onInputValueChange}
           />
-        </div>
+        )}
+        {showInputRoot && hasOutputs && <span className="mx-0 my-1.5 h-px bg-border" />}
+        {hasOutputs && (
+          <>
+            <SectionLabel align="right">output</SectionLabel>
+            <PortTree
+              ports={safePorts.outputs}
+              side="output"
+              expandedSet={expandedOutputs}
+              onToggle={onTogglePort}
+              {...(portBreakpoints !== undefined ? { portBreakpoints } : {})}
+            />
+          </>
+        )}
       </div>
 
       {/* Footer — uses */}
       <div
         data-testid="node-footer"
-        className="truncate border-t border-border px-3 py-1 font-mono text-[10px] text-muted-foreground"
+        className="truncate border-t border-border px-3 py-1.5 font-mono text-[10px] text-muted-foreground"
       >
         {instance.uses}
       </div>
     </div>
+  )
+}
+
+const NODE_WIDTH = 270
+
+const KIND_TINT: Record<string, string> = {
+  node: "var(--ai)",
+  core: "var(--info)",
+  external: "var(--muted-foreground)",
+}
+
+function SectionLabel({
+  children,
+  align = "left",
+}: {
+  children: React.ReactNode
+  align?: "left" | "right"
+}) {
+  return (
+    <span
+      className={cn(
+        "px-3 pt-0.5 pb-1 font-semibold text-[9.5px] uppercase tracking-[0.08em] text-muted-foreground",
+        align === "right" && "text-right",
+      )}
+    >
+      {children}
+    </span>
   )
 }
 
@@ -309,6 +336,7 @@ function PortRow({
   // children of a long branch. Always per-instance (no need to lift).
   const [showAllChildren, setShowAllChildren] = useState(false)
 
+  const isRoot = side === "input" && port.id === "" && depth === 0
   const isBranch = port.children.length > 0
   const isOutput = side === "output"
   const handleType = isOutput ? "source" : "target"
@@ -322,87 +350,150 @@ function PortRow({
     }
   }
 
+  const visibleChildren = showAllChildren ? port.children : port.children.slice(0, VISIBLE_COUNT)
+  const hiddenCount = port.children.length - visibleChildren.length
+
+  // What the input row shows on the right, in priority order:
+  //   1. in[portId]      — a reference; shown as "← source"
+  //   2. values[portId]  — a literal the user set
+  //   3. schema.default  — template-expanded, shown as a default
+  //   4. otherwise       — "required" when the schema requires it, else empty
+  const inObj =
+    typeof instanceIn === "object" && instanceIn !== null && !Array.isArray(instanceIn)
+      ? (instanceIn as Record<string, string>)
+      : null
+  const reference = isOutput
+    ? undefined
+    : isRoot
+      ? typeof instanceIn === "string"
+        ? instanceIn
+        : undefined
+      : inObj?.[port.id]
+  const literal = instanceValues ? instanceValues[port.id] : undefined
+  const portSchema: JsonSchema | undefined = port.schema
+  const schemaDefault =
+    portSchema?.default !== undefined
+      ? expandTemplate(portSchema.default, { workflowPath: workflowPath ?? "" })
+      : undefined
+  const chipState: ChipState =
+    reference !== undefined
+      ? "connected"
+      : literal !== undefined
+        ? "set"
+        : schemaDefault !== undefined
+          ? "default"
+          : port.required
+            ? "missing"
+            : "empty"
+
+  const handleColor =
+    chipState === "connected"
+      ? "var(--primary)"
+      : chipState === "missing" && !isBranch
+        ? "var(--popover)"
+        : "var(--muted-foreground)"
+
   const chevron = isBranch ? (
     <button
       type="button"
       aria-label={expanded ? `Collapse ${port.label}` : `Expand ${port.label}`}
+      aria-expanded={expanded}
       data-testid={`chevron-${port.id}`}
       onClick={(e) => {
         e.stopPropagation()
         toggle()
       }}
-      className="inline-flex h-3 w-3 items-center justify-center text-muted-foreground hover:text-foreground"
+      className={cn(
+        "nodrag inline-flex shrink-0 items-center text-muted-foreground hover:text-foreground",
+        // Input objects show their size as a chip that expands the row.
+        !isOutput && !isRoot
+          ? "h-5 gap-1 rounded-[5px] bg-accent px-[7px] font-mono text-[10.5px]"
+          : "h-4 w-4 justify-center",
+      )}
     >
-      {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      {!isOutput && !isRoot ? (
+        <>
+          {"{…}"} {port.children.length} {port.children.length === 1 ? "field" : "fields"}
+        </>
+      ) : expanded ? (
+        <ChevronDown className="h-3 w-3" />
+      ) : (
+        <ChevronRight className="h-3 w-3" />
+      )}
     </button>
   ) : null
 
-  const label = (
+  const labelEl = (
     <span
-      className={
-        isBranch
-          ? "truncate text-xs font-medium text-foreground"
-          : "truncate text-xs text-muted-foreground"
-      }
+      className={cn(
+        "min-w-0 truncate",
+        isRoot
+          ? "font-semibold text-[9.5px] uppercase tracking-[0.08em] text-muted-foreground"
+          : chipState === "default" || chipState === "empty"
+            ? "text-muted-foreground"
+            : "text-foreground",
+        !isRoot && !isOutput && "flex-1",
+      )}
     >
       {port.label}
     </span>
   )
 
-  const visibleChildren = showAllChildren ? port.children : port.children.slice(0, VISIBLE_COUNT)
-  const hiddenCount = port.children.length - visibleChildren.length
+  let right: React.ReactNode = null
+  if (!isOutput) {
+    if (isRoot) {
+      right =
+        reference !== undefined ? (
+          <ValueChip
+            portId=""
+            label="input"
+            state="connected"
+            value={undefined}
+            reference={reference}
+          />
+        ) : !expanded && isBranch ? (
+          <span className="font-mono text-[10.5px] text-muted-foreground">
+            {port.children.length} {port.children.length === 1 ? "input" : "inputs"}
+          </span>
+        ) : null
+    } else if (isBranch) {
+      right =
+        reference !== undefined ? (
+          <ValueChip
+            portId={port.id}
+            label={port.label}
+            state="connected"
+            value={undefined}
+            reference={reference}
+          />
+        ) : (
+          chevron
+        )
+    } else {
+      right = (
+        <ValueChip
+          portId={port.id}
+          label={port.label}
+          state={chipState}
+          value={literal !== undefined ? literal : schemaDefault}
+          reference={reference}
+          schema={portSchema}
+          defaultValue={schemaDefault}
+          onCommit={onInputValueChange}
+        />
+      )
+    }
+  }
 
-  // Inline value editor priority chain (input-side leaf ports only):
-  //   1. instance.in[portId]      — reference; HIDE the widget (connection shown)
-  //   2. instance.values[portId]  — user-typed literal; show in widget
-  //   3. schema.default           — declarative default; show in widget (template-expanded)
-  //   4. otherwise                — empty
-  const inObj =
-    !isOutput &&
-    port.isLeaf &&
-    typeof instanceIn === "object" &&
-    instanceIn !== null &&
-    !Array.isArray(instanceIn)
-      ? (instanceIn as Record<string, unknown>)
-      : null
-  const portHasReference = inObj ? port.id in inObj : false
-  const portLiteralValue = instanceValues ? instanceValues[port.id] : undefined
-  const portSchema: JsonSchema | undefined = port.schema
-  const portSchemaDefault =
-    portSchema?.default !== undefined
-      ? expandTemplate(portSchema.default, { workflowPath: workflowPath ?? "" })
-      : undefined
-  // What the widget should display: literal first, then expanded schema default.
-  const widgetCurrentValue = portLiteralValue !== undefined ? portLiteralValue : portSchemaDefault
-
-  const isScalar =
-    portSchema !== undefined &&
-    (portSchema.type === "string" ||
-      portSchema.type === "number" ||
-      portSchema.type === "integer" ||
-      portSchema.type === "boolean" ||
-      Array.isArray(portSchema.enum))
-
-  const showInlineWidget =
-    !isOutput && port.isLeaf && isScalar && !portHasReference && !!onInputValueChange
-
-  const inlineWidget = showInlineWidget ? (
-    <InlineInputWidget
-      portId={port.id}
-      schema={portSchema!}
-      currentValue={widgetCurrentValue}
-      onChange={onInputValueChange!}
-    />
-  ) : null
-
+  const indent = depth * INDENT_PX
   return (
     <>
       <div
-        className="relative flex items-center gap-1"
+        className="relative flex items-center gap-2"
         style={{
           height: ROW_HEIGHT,
-          paddingLeft: isOutput ? 8 + depth * INDENT_PX : 12,
-          paddingRight: isOutput ? 16 + depth * INDENT_PX : 8,
+          paddingLeft: isOutput ? 12 : 12 + (isRoot ? 0 : Math.max(0, depth - 1) * INDENT_PX),
+          paddingRight: isOutput ? 12 + indent : 8,
           justifyContent: isOutput ? "flex-end" : "flex-start",
         }}
       >
@@ -415,7 +506,10 @@ function PortRow({
             transform: "translateY(-50%)",
             width: 10,
             height: 10,
-            background: isBranch ? "var(--primary, oklch(0.6 0.2 270))" : "var(--muted-foreground)",
+            background: handleColor,
+            border: `2px solid ${
+              chipState === "missing" && !isBranch ? "var(--destructive)" : "var(--popover)"
+            }`,
           }}
         />
         {isOutput && portBreakpoints?.has(port.id) && (
@@ -427,31 +521,23 @@ function PortRow({
         )}
         {isOutput ? (
           <>
-            {label}
+            {labelEl}
             {chevron}
+          </>
+        ) : isRoot ? (
+          <>
+            {labelEl}
+            {chevron}
+            <span className="flex-1" />
+            {right}
           </>
         ) : (
           <>
-            {chevron}
-            {label}
+            {labelEl}
+            {right}
           </>
         )}
       </div>
-      {/* Inline widget sits in its own row BELOW the port label so it
-          doesn't compete for horizontal space with the label text.
-          Aligned flush under the port label — no extra left indent. */}
-      {inlineWidget && !isOutput && (
-        <div
-          className="w-full"
-          style={{
-            paddingLeft: 8,
-            paddingRight: 8,
-            paddingBottom: 4,
-          }}
-        >
-          {inlineWidget}
-        </div>
-      )}
       {expanded && (
         <>
           {visibleChildren.map((child) => (
@@ -477,10 +563,10 @@ function PortRow({
                 e.stopPropagation()
                 setShowAllChildren(true)
               }}
-              className="ml-6 text-[11px] text-muted-foreground hover:text-foreground"
+              className="nodrag text-[11px] text-muted-foreground hover:text-foreground"
               style={{
-                paddingLeft: isOutput ? 0 : 8 + (depth + 1) * INDENT_PX,
-                paddingRight: isOutput ? 8 + (depth + 1) * INDENT_PX : 0,
+                paddingLeft: isOutput ? 0 : 12 + depth * INDENT_PX,
+                paddingRight: isOutput ? 12 + (depth + 1) * INDENT_PX : 0,
                 width: "100%",
                 textAlign: isOutput ? "right" : "left",
                 height: ROW_HEIGHT,
@@ -492,103 +578,6 @@ function PortRow({
         </>
       )}
     </>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Inline input widget — renders the right control for the port's schema type
-// ---------------------------------------------------------------------------
-
-function InlineInputWidget({
-  portId,
-  schema,
-  currentValue,
-  onChange,
-}: {
-  portId: string
-  schema: JsonSchema
-  currentValue: unknown
-  onChange: (portId: string, value: unknown) => void
-}) {
-  const baseClass =
-    "h-4 w-full rounded border border-border bg-background px-1 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-
-  // Enum → select
-  if (Array.isArray(schema.enum)) {
-    return (
-      <select
-        data-testid={`input-widget-${portId}`}
-        className={`${baseClass}`}
-        value={typeof currentValue === "string" ? currentValue : ""}
-        onChange={(e) => {
-          e.stopPropagation()
-          onChange(portId, e.target.value)
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <option value="" disabled>
-          —
-        </option>
-        {(schema.enum as string[]).map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
-    )
-  }
-
-  // Boolean → checkbox (doesn't expand full-width — checkboxes are fixed size)
-  if (schema.type === "boolean") {
-    return (
-      <input
-        type="checkbox"
-        data-testid={`input-widget-${portId}`}
-        className="h-3 w-3 cursor-pointer"
-        checked={typeof currentValue === "boolean" ? currentValue : false}
-        onChange={(e) => {
-          e.stopPropagation()
-          onChange(portId, e.target.checked)
-        }}
-        onClick={(e) => e.stopPropagation()}
-      />
-    )
-  }
-
-  // Number / integer → number input
-  if (schema.type === "number" || schema.type === "integer") {
-    return (
-      <input
-        type="number"
-        data-testid={`input-widget-${portId}`}
-        className={`${baseClass}`}
-        value={typeof currentValue === "number" ? currentValue : ""}
-        onChange={(e) => {
-          e.stopPropagation()
-          const n =
-            schema.type === "integer" ? parseInt(e.target.value, 10) : parseFloat(e.target.value)
-          if (!Number.isNaN(n)) onChange(portId, n)
-          else if (e.target.value === "") onChange(portId, undefined)
-        }}
-        onClick={(e) => e.stopPropagation()}
-      />
-    )
-  }
-
-  // String → text input
-  return (
-    <input
-      type="text"
-      data-testid={`input-widget-${portId}`}
-      className={`${baseClass}`}
-      value={typeof currentValue === "string" ? currentValue : ""}
-      placeholder="value…"
-      onChange={(e) => {
-        e.stopPropagation()
-        onChange(portId, e.target.value)
-      }}
-      onClick={(e) => e.stopPropagation()}
-    />
   )
 }
 
