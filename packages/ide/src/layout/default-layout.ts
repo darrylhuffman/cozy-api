@@ -3,14 +3,15 @@ import type { AddPanelOptions, DockviewApi } from "dockview-react"
 const STORAGE_KEY = "lorien-ide-layout"
 
 /** Bumped when the set of panes changes; older saved layouts reset to default. */
-const LAYOUT_VERSION = 2
+const LAYOUT_VERSION = 3
 
-export type PaneId = "files" | "editor" | "inspector" | "debug" | "agents"
+export type PaneId = "files" | "git" | "editor" | "inspector" | "debug" | "agents"
 
-export const PANE_IDS = ["files", "editor", "inspector", "debug", "agents"] as const
+export const PANE_IDS = ["files", "git", "editor", "inspector", "debug", "agents"] as const
 
 export const PANE_TITLES: Record<PaneId, string> = {
   files: "Explorer",
+  git: "Source Control",
   editor: "Editor",
   inspector: "Inspector",
   debug: "Debug",
@@ -54,7 +55,7 @@ export function saveLayout(api: DockviewApi): void {
 /**
  * Builds the default layout.
  *
- * Explorer: left column
+ * Explorer: left column, with Source Control as a second tab
  * Editor:   centre (workflows and code share one tab strip)
  * Debug:    under the editor
  * Inspector: right column (Inspect · Tests · Run)
@@ -74,6 +75,13 @@ export function buildDefaultLayout(api: DockviewApi): void {
     component: "editor",
     title: PANE_TITLES.editor,
     position: { referencePanel: "files", direction: "right" },
+  })
+  api.addPanel({
+    id: "git",
+    component: "git",
+    title: PANE_TITLES.git,
+    position: { referencePanel: "files", direction: "within" },
+    inactive: true,
   })
   api.addPanel({
     id: "inspector",
@@ -118,8 +126,17 @@ export function reopenPanel(api: DockviewApi, id: PaneId): void {
   }
 
   if (id === "files") {
+    const git = api.getPanel("git")
     const ref = api.getPanel("editor") ?? api.getPanel("debug") ?? api.getPanel("inspector")
-    if (ref) options.position = { referencePanel: ref.id, direction: "left" }
+    if (git) options.position = { referencePanel: git.id, direction: "within" }
+    else if (ref) options.position = { referencePanel: ref.id, direction: "left" }
+    options.initialWidth = FILES_WIDTH
+  } else if (id === "git") {
+    // A tab beside the Explorer, else its own column on the left.
+    const files = api.getPanel("files")
+    const ref = api.getPanel("editor") ?? api.getPanel("debug") ?? api.getPanel("inspector")
+    if (files) options.position = { referencePanel: files.id, direction: "within" }
+    else if (ref) options.position = { referencePanel: ref.id, direction: "left" }
     options.initialWidth = FILES_WIDTH
   } else if (id === "inspector") {
     const ref = api.getPanel("editor") ?? api.getPanel("debug") ?? api.getPanel("files")

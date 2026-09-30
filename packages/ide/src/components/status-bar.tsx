@@ -1,10 +1,13 @@
 import { nodeFileForUses } from "@darrylondil/lorien-runtime/cases"
-import { AlertTriangle, CircleX, FlaskConical } from "lucide-react"
+import { AlertTriangle, CircleX, FlaskConical, GitBranch } from "lucide-react"
 import { useMemo } from "react"
+import { showPanel } from "@/layout/default-layout"
 import { cn } from "@/lib/utils"
 import { runCommand, useCommandEnabled } from "@/store/commands"
 import { useDebugSessionStore } from "@/store/debug-session"
+import { useDockviewApi } from "@/store/dockview-api"
 import { activeEnvironment, useEnvironments } from "@/store/environments"
+import { useGitStore, useGitWatcher } from "@/store/git"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
 import { useRequestCollections, workflowTestSummary } from "@/store/request-collections"
@@ -61,6 +64,8 @@ export function StatusBar() {
   }, [workflow, byNode, results, byWorkflow, requestResults, workflowPath])
 
   const activeTab = useTabsStore((s) => s.tabs.find((t) => t.id === s.activeId))
+  useGitWatcher()
+  const git = useGitStore((s) => s.status)
   const canShowShortcuts = useCommandEnabled("help.shortcuts")
 
   return (
@@ -74,6 +79,31 @@ export function StatusBar() {
         />
         {connected ? "Debugger connected" : "Debugger disconnected"}
       </span>
+      {git?.repo && (
+        <button
+          type="button"
+          data-testid="status-git"
+          onClick={() => {
+            const api = useDockviewApi.getState().api
+            if (api) showPanel(api, "git")
+          }}
+          title="Open Source Control"
+          className="flex items-center gap-1.5 hover:text-foreground"
+        >
+          <GitBranch className="h-3 w-3" />
+          <span className="text-foreground">{git.branch ?? "detached"}</span>
+          {git.upstream && (
+            <span>
+              ↑{git.ahead} ↓{git.behind}
+            </span>
+          )}
+          {(git.staged.length > 0 || git.changes.length > 0) && (
+            <span>
+              {git.staged.length} staged · {git.changes.length} unstaged
+            </span>
+          )}
+        </button>
+      )}
       <span>
         Env <span className="text-foreground">{env ?? "none"}</span>
       </span>

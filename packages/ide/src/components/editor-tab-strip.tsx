@@ -1,4 +1,12 @@
-import { ChevronDown, ChevronLeft, ChevronRight, FileCode, Workflow, X } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  FileCode,
+  GitCompare,
+  Workflow,
+  X,
+} from "lucide-react"
 import { ContextMenu } from "radix-ui"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -12,7 +20,7 @@ export interface StripTab {
   /** Small muted text after the title, e.g. the folder when two tabs share a name. */
   detail?: string | undefined
   /** Picks the tab's icon. */
-  kind?: "workflow" | "node" | undefined
+  kind?: "workflow" | "node" | "diff" | undefined
   dirty?: boolean | undefined
 }
 
@@ -397,6 +405,8 @@ function TabIcon({ kind }: { kind: StripTab["kind"] }) {
   if (kind === "workflow")
     return <Workflow aria-hidden className="h-3.5 w-3.5 shrink-0 text-primary" />
   if (kind === "node") return <FileCode aria-hidden className="h-3.5 w-3.5 shrink-0 text-info" />
+  if (kind === "diff")
+    return <GitCompare aria-hidden className="h-3.5 w-3.5 shrink-0 text-warning" />
   return null
 }
 

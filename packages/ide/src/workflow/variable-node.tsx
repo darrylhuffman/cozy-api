@@ -14,6 +14,7 @@ import {
   type VariableTarget,
   variableKind,
 } from "./variables"
+import { GitChangeMark } from "./workflow-node"
 
 export interface VariableNodeData {
   id: string
@@ -24,6 +25,7 @@ export interface VariableNodeData {
   onValueChange?: (value: unknown) => void
   issues?: Diagnostic[]
   nodeStatus?: "running" | "completed" | "errored" | "paused"
+  gitChange?: "added" | "changed" | undefined
 }
 
 const TINT = "var(--info)"
@@ -46,7 +48,7 @@ const FORMAT_PLACEHOLDER: Record<string, string> = {
  * JSON for objects and lists), and one output handle other inputs read.
  */
 export function VariableNode({ data }: { data: Record<string, unknown> }) {
-  const { id, instance, schema, targets, onValueChange, issues, nodeStatus } =
+  const { id, instance, schema, targets, onValueChange, issues, nodeStatus, gitChange } =
     data as unknown as VariableNodeData
   const isSelected = useSelectionStore((s) => s.selectedNodeId === id)
   const value = instance.values?.[VARIABLE_PORT]
@@ -83,6 +85,7 @@ export function VariableNode({ data }: { data: Record<string, unknown> }) {
         <span className="min-w-0 flex-1 truncate font-mono font-semibold text-[12.5px]">
           {instance.label ?? id}
         </span>
+        {gitChange && <GitChangeMark change={gitChange} />}
         <span className="shrink-0 text-[10.5px] text-muted-foreground">
           {typeLabel(schema, value)}
         </span>

@@ -5,6 +5,7 @@ import { confirmAction } from "@/store/confirm"
 import { type OpenTab, useTabsStore } from "@/store/tabs"
 import { useWorkflowDrafts } from "@/store/workflow-drafts"
 import { WorkflowEditor } from "@/workflow/workflow-editor"
+import { DiffView } from "./diff-view/diff-view"
 
 /** Folder name to tell apart tabs whose file names collide. */
 function stripTabs(tabs: OpenTab[]): StripTab[] {
@@ -17,7 +18,7 @@ function stripTabs(tabs: OpenTab[]): StripTab[] {
       id: t.id,
       title: t.title,
       hint: t.path,
-      kind: t.kind === "workflow" ? "workflow" : "node",
+      kind: t.kind,
       dirty: t.dirty,
       detail: (counts.get(t.title) ?? 0) > 1 ? folder : undefined,
     }
@@ -69,7 +70,7 @@ export function EditorPanel() {
     const tab = tabs.find((t) => t.id === tabId)
     closeTab(tabId)
     if (tab?.kind === "workflow") useWorkflowDrafts.getState().drop(tabId)
-    else useCodeDrafts.getState().drop(tabId)
+    else if (tab?.kind === "node") useCodeDrafts.getState().drop(tabId)
   }
 
   /** Close several tabs, asking once if any of them has unsaved changes. */
@@ -123,8 +124,16 @@ export function EditorPanel() {
             </p>
           </div>
         )}
-        {active?.path && active.kind !== "workflow" && (
+        {active?.path && active.kind === "node" && (
           <CodeEditor key={active.id} path={active.path} tabId={active.id} />
+        )}
+        {active?.path && active.kind === "diff" && active.diff && (
+          <DiffView
+            key={active.id}
+            path={active.path}
+            base={active.diff.base}
+            head={active.diff.head}
+          />
         )}
       </div>
     </div>

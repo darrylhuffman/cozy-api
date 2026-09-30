@@ -32,6 +32,7 @@ import { streamSSE } from "hono/streaming"
 import { generateServicesTypes } from "../generate-services-types.js"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
 import { makeDebugIntegration } from "./debug-integration.js"
+import { mountGitRoutes } from "./git.js"
 import { introspectProviders } from "./introspect-providers.js"
 import { introspectWorkspace, invalidateSchemaCache } from "./introspect-workspace.js"
 import { type NodeCasesRequest, type NodeCasesRun, runNodeCasesInWorker } from "./run-node-cases.js"
@@ -332,6 +333,8 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
   })
 
   // ── Schemas (Zod -> JSON Schema for each node) ─────────────────────────────
+
+  mountGitRoutes(app, workspaceRoot)
 
   app.get("/api/workspace/schemas", async (c) => {
     try {
