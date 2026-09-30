@@ -1,0 +1,248 @@
+{
+  "lorien": 1,
+  "cases": [
+    {
+      "id": "mapsRowsToCatalogItems",
+      "name": "Maps database rows to catalog items",
+      "input": {
+        "pets": [
+          {
+            "id": 1,
+            "name": "Biscuit",
+            "species": "dog",
+            "status": "available"
+          }
+        ],
+        "inventory": {
+          "available": 2,
+          "pending": 1,
+          "sold": 0
+        }
+      },
+      "expect": {
+        "output": {
+          "page": {
+            "items": [
+              {
+                "id": 1,
+                "name": "Biscuit",
+                "species": "Dog",
+                "status": "available",
+                "canOrder": true
+              }
+            ]
+          }
+        },
+        "match": "contains"
+      }
+    },
+    {
+      "id": "onlyAvailablePetsCanBeOrdered",
+      "name": "Marks only available pets as orderable",
+      "input": {
+        "pets": [
+          {
+            "id": 1,
+            "name": "Biscuit",
+            "species": "dog",
+            "status": "available"
+          },
+          {
+            "id": 2,
+            "name": "Miso",
+            "species": "cat",
+            "status": "available"
+          },
+          {
+            "id": 3,
+            "name": "Pickles",
+            "species": "rabbit",
+            "status": "pending"
+          }
+        ],
+        "inventory": {
+          "available": 2,
+          "pending": 1,
+          "sold": 0
+        }
+      },
+      "expect": {
+        "output": {
+          "page": {
+            "items": [
+              {
+                "canOrder": true
+              },
+              {
+                "canOrder": true
+              },
+              {
+                "canOrder": false
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "returnsTheRequestedPage",
+      "name": "Returns the requested page with paging info",
+      "input": {
+        "pets": [
+          {
+            "id": 1,
+            "name": "Biscuit",
+            "species": "dog",
+            "status": "available"
+          },
+          {
+            "id": 2,
+            "name": "Miso",
+            "species": "cat",
+            "status": "available"
+          },
+          {
+            "id": 3,
+            "name": "Pickles",
+            "species": "rabbit",
+            "status": "pending"
+          }
+        ],
+        "inventory": {
+          "available": 2,
+          "pending": 1,
+          "sold": 0
+        },
+        "page": 2,
+        "pageSize": 2
+      },
+      "expect": {
+        "output": {
+          "page": {
+            "items": [
+              {
+                "id": 3,
+                "name": "Pickles",
+                "species": "Rabbit",
+                "status": "pending",
+                "canOrder": false
+              }
+            ],
+            "page": 2,
+            "pageSize": 2,
+            "totalItems": 3,
+            "totalPages": 2,
+            "hasNextPage": false,
+            "storeCounts": {
+              "available": 2,
+              "pending": 1,
+              "sold": 0
+            }
+          }
+        },
+        "match": "equals"
+      }
+    },
+    {
+      "id": "acceptsPagingFromTheQueryString",
+      "name": "Accepts page and pageSize as strings, the way query params arrive",
+      "input": {
+        "pets": [
+          {
+            "id": 1,
+            "name": "Biscuit",
+            "species": "dog",
+            "status": "available"
+          },
+          {
+            "id": 2,
+            "name": "Miso",
+            "species": "cat",
+            "status": "available"
+          },
+          {
+            "id": 3,
+            "name": "Pickles",
+            "species": "rabbit",
+            "status": "pending"
+          }
+        ],
+        "inventory": {
+          "available": 2,
+          "pending": 1,
+          "sold": 0
+        },
+        "page": "1",
+        "pageSize": "2"
+      },
+      "expect": {
+        "output": {
+          "page": {
+            "page": 1,
+            "pageSize": 2,
+            "totalPages": 2,
+            "hasNextPage": true
+          }
+        }
+      }
+    },
+    {
+      "id": "handlesNoMatches",
+      "name": "Returns an empty first page when nothing matches",
+      "input": {
+        "pets": [],
+        "inventory": {
+          "available": 2,
+          "pending": 1,
+          "sold": 0
+        }
+      },
+      "expect": {
+        "output": {
+          "page": {
+            "items": [],
+            "page": 1,
+            "totalItems": 0,
+            "totalPages": 1,
+            "hasNextPage": false
+          }
+        }
+      }
+    },
+    {
+      "id": "rejectsAPageSizeOver50",
+      "name": "Rejects a page size over 50",
+      "input": {
+        "pets": [
+          {
+            "id": 1,
+            "name": "Biscuit",
+            "species": "dog",
+            "status": "available"
+          },
+          {
+            "id": 2,
+            "name": "Miso",
+            "species": "cat",
+            "status": "available"
+          },
+          {
+            "id": 3,
+            "name": "Pickles",
+            "species": "rabbit",
+            "status": "pending"
+          }
+        ],
+        "inventory": {
+          "available": 2,
+          "pending": 1,
+          "sold": 0
+        },
+        "pageSize": 500
+      },
+      "expect": {
+        "error": "pageSize"
+      }
+    }
+  ]
+}
