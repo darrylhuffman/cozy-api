@@ -13,6 +13,7 @@ export const SHORTCUTS: Array<[keys: string, action: string]> = [
   ["Shift+1", "Fit the graph to the screen"],
   ["Right-click canvas", "Add a node here"],
   ["Right-click node", "Node actions (source, breakpoints, reset…)"],
+  [`${MOD}+,`, "Settings (theme, editor, canvas)"],
   ["?", "Show this list"],
 ]
 

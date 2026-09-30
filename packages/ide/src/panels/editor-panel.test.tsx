@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { useConfirmStore } from "@/store/confirm"
 import { useTabsStore } from "@/store/tabs"
 import { EditorPanel } from "./editor-panel.js"
 
@@ -82,5 +83,68 @@ describe("EditorPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /close y.ts/i }))
     expect(useTabsStore.getState().tabs.map((t) => t.id)).toEqual(["w"])
     expect(useTabsStore.getState().activeId).toBe("w")
+  })
+
+  describe("tab context menu", () => {
+    const openThree = () => {
+      open({ id: "a", title: "a.ts", kind: "node", path: "nodes/a.ts" })
+      open({ id: "b", title: "b.ts", kind: "node", path: "nodes/b.ts" })
+      open({ id: "c", title: "c.ts", kind: "node", path: "nodes/c.ts" })
+    }
+    const menuFor = (title: string) => {
+      const tab = screen.getByRole("button", { name: title }).parentElement as HTMLElement
+      fireEvent.contextMenu(tab)
+    }
+    const ids = () => useTabsStore.getState().tabs.map((t) => t.id)
+
+    it("closes the other tabs and keeps the right-clicked one", () => {
+      openThree()
+      render(<EditorPanel />)
+      menuFor("b.ts")
+      fireEvent.click(screen.getByRole("menuitem", { name: "Close others" }))
+      expect(ids()).toEqual(["b"])
+      expect(useTabsStore.getState().activeId).toBe("b")
+    })
+
+    it("closes tabs to the right", () => {
+      openThree()
+      render(<EditorPanel />)
+      menuFor("a.ts")
+      fireEvent.click(screen.getByRole("menuitem", { name: "Close to the right" }))
+      expect(ids()).toEqual(["a"])
+    })
+
+    it("asks once before closing tabs with unsaved changes", async () => {
+      openThree()
+      // Two inactive tabs (the active one's editor resets its flag on load).
+      useTabsStore.getState().setDirty("a", true)
+      useTabsStore.getState().setDirty("b", true)
+      render(<EditorPanel />)
+      menuFor("c.ts")
+      fireEvent.click(screen.getByRole("menuitem", { name: "Close all" }))
+      await waitFor(() => expect(useConfirmStore.getState().pending).not.toBeNull())
+      expect(useConfirmStore.getState().pending?.title).toBe("Close 2 tabs without saving?")
+      useConfirmStore.getState().answer(true)
+      await waitFor(() => expect(ids()).toEqual([]))
+    })
+
+    it("Close saved leaves dirty tabs open", () => {
+      openThree()
+      useTabsStore.getState().setDirty("b", true)
+      render(<EditorPanel />)
+      menuFor("a.ts")
+      fireEvent.click(screen.getByRole("menuitem", { name: "Close saved" }))
+      expect(ids()).toEqual(["b"])
+    })
+  })
+
+  it("moveTab reorders tabs", () => {
+    open({ id: "a", title: "a.ts", kind: "node", path: "nodes/a.ts" })
+    open({ id: "b", title: "b.ts", kind: "node", path: "nodes/b.ts" })
+    open({ id: "c", title: "c.ts", kind: "node", path: "nodes/c.ts" })
+    useTabsStore.getState().moveTab("c", 0)
+    expect(useTabsStore.getState().tabs.map((t) => t.id)).toEqual(["c", "a", "b"])
+    useTabsStore.getState().moveTab("c", 99)
+    expect(useTabsStore.getState().tabs.map((t) => t.id)).toEqual(["a", "b", "c"])
   })
 })

@@ -25,17 +25,15 @@ const DEFAULT_BUDGET = 24 * 1024 * 1024
 
 const DECLARATION = /\.d\.(ts|mts|cts)$/
 
-/** The project's own code that nodes import: providers, shared lib, and src. */
-const SOURCE_DIRS = ["providers", "lib", "src"]
 const SOURCE = /\.(ts|mts|cts)$/
-const TEST_SOURCE = /\.(test|spec|test-d)\.[mc]?ts$/
+
+/** Top-level folders whose sources are not shared code for node files. */
+const SKIPPED_SOURCE_DIRS = new Set(["nodes", "workflows", "dist", "build", "coverage"])
 
 /**
  * Collects the declaration files the code editor needs to type-check node
  * sources the way `tsc` would: every package the workspace depends on (and
- * the packages those depend on), generated types under `.lorien/types`, and
- * the project's own `providers/`, `lib/` and `src/` sources, so relative
- * imports from a node (and the provider types) resolve.
+ * the packages those depend on), plus generated types under `.lorien/types`.
  *
  * Packages are flattened to `node_modules/<name>/…` so the editor can resolve
  * them from any file, and are visited breadth-first so the workspace's own
@@ -54,13 +52,18 @@ export async function collectWorkspaceTypes(
     used += content.length
     files.push({ path: toPosix(relative(root, abs)), content })
   }
-  for (const dir of SOURCE_DIRS) {
-    for (const abs of await walk(join(root, dir), SOURCE)) {
-      if (TEST_SOURCE.test(abs)) continue
-      const content = await readFile(abs, "utf-8")
-      used += content.length
-      files.push({ path: toPosix(relative(root, abs)), content })
-    }
+
+  // The project's own shared sources (src/db.ts, src/schemas.ts, …) so node
+  // files can import them. Nodes and workflows are left out: the editor opens
+  // those as models, and a second copy under the same path would clash.
+  for (const abs of await walk(root, SOURCE)) {
+    const path = toPosix(relative(root, abs))
+    const top = path.split("/")[0] ?? ""
+    if (path.split("/").length > 1 && SKIPPED_SOURCE_DIRS.has(top)) continue
+    if (/\.(test|spec)\.[cm]?ts$/.test(path)) continue
+    const content = await readFile(abs, "utf-8")
+    used += content.length
+    files.push({ path, content })
   }
 
   const rootPkg = await readJson(join(root, "package.json"))

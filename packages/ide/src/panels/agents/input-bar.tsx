@@ -1,4 +1,4 @@
-import { Send } from "lucide-react"
+import { Send, Square } from "lucide-react"
 import { useState } from "react"
 import { type ContextChip, useContextChips } from "@/ai/context-chips"
 import { renderPrompt } from "@/ai/prompts"
@@ -7,9 +7,11 @@ import { cn } from "@/lib/utils"
 interface InputBarProps {
   disabled: boolean
   onSend(text: string): void
+  /** Shown as a Stop button while the agent is working (`disabled`). */
+  onStop?: () => void
 }
 
-export function InputBar({ disabled, onSend }: InputBarProps): React.ReactElement {
+export function InputBar({ disabled, onSend, onStop }: InputBarProps): React.ReactElement {
   const [text, setText] = useState("")
   const chips = useContextChips()
   // Chips the user toggled away from their default.
@@ -25,7 +27,7 @@ export function InputBar({ disabled, onSend }: InputBarProps): React.ReactElemen
   }
 
   return (
-    <div className="flex shrink-0 flex-col gap-1 border-t bg-background p-2">
+    <div className="flex shrink-0 flex-col gap-1.5 border-t border-border bg-card p-2">
       {chips.length > 0 && (
         <fieldset
           className="m-0 flex min-w-0 flex-wrap items-center gap-1 border-0 p-0"
@@ -81,18 +83,31 @@ export function InputBar({ disabled, onSend }: InputBarProps): React.ReactElemen
             disabled && "opacity-50",
           )}
         />
-        <button
-          type="button"
-          aria-label="Send"
-          onClick={submit}
-          disabled={disabled || text.trim().length === 0}
-          className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-background",
-            (disabled || text.trim().length === 0) && "cursor-not-allowed opacity-50",
-          )}
-        >
-          <Send className="h-3.5 w-3.5" />
-        </button>
+        {disabled && onStop ? (
+          <button
+            type="button"
+            aria-label="Stop"
+            title="Stop the agent"
+            onClick={onStop}
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs hover:bg-accent"
+          >
+            <Square className="h-3 w-3 fill-current" />
+            Stop
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label="Send"
+            onClick={submit}
+            disabled={disabled || text.trim().length === 0}
+            className={cn(
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90",
+              (disabled || text.trim().length === 0) && "cursor-not-allowed opacity-50",
+            )}
+          >
+            <Send className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </div>
   )

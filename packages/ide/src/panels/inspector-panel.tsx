@@ -1,9 +1,15 @@
-import { Sparkles } from "lucide-react"
+import { nodeFileForUses } from "@darrylondil/lorien-runtime/cases"
+import { Code, Sparkles } from "lucide-react"
 import { useState } from "react"
+import { askAi } from "@/ai/ask"
+import { explainNode } from "@/ai/prompts"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { JsonSchema, NodeInstance } from "@/lib/api"
+import { openCodeFile } from "@/lib/open-code-file"
+import { cn } from "@/lib/utils"
 import { type InspectorTab, useInspectorTab } from "@/store/inspector-tab"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
+import { caseSummary, useNodeCases } from "@/store/node-cases"
 import { useSchemas } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
@@ -27,7 +33,10 @@ export function InspectorPanel() {
       <div className="border-b border-border p-2">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="inspect">Inspect</TabsTrigger>
-          <TabsTrigger value="tests">Tests</TabsTrigger>
+          <TabsTrigger value="tests" className="gap-1">
+            Tests
+            <TestsCount />
+          </TabsTrigger>
           <TabsTrigger value="run">Run</TabsTrigger>
           <TabsTrigger value="agents" className="gap-1">
             <Sparkles aria-hidden className="h-3 w-3 text-ai" />
@@ -51,6 +60,47 @@ export function InspectorPanel() {
   )
 }
 
+/** "passed/run" for the active workflow's node tests, once any have run. */
+function TestsCount() {
+  const files = useLiveWorkflowStore((s) => {
+    const seen = new Set<string>()
+    for (const inst of Object.values(s.workflow?.nodes ?? {})) {
+      const file = nodeFileForUses(inst.uses)
+      if (file) seen.add(file)
+    }
+    return [...seen].sort().join("\n")
+  })
+  const key = useNodeCases((s) => {
+    let passed = 0
+    let failed = 0
+    for (const file of files ? files.split("\n") : []) {
+      const sum = caseSummary(s, file)
+      if (sum) {
+        passed += sum.passed
+        failed += sum.failed
+      }
+    }
+    return passed + failed === 0 ? "" : `${passed}/${passed + failed}`
+  })
+  if (!key) return null
+  const [passed, run] = key.split("/")
+  const failing = passed !== run
+  return (
+    <span
+      aria-hidden
+      title={`${key} passing`}
+      className={cn(
+        "rounded-full px-1.5 font-mono text-[10px]",
+        failing ? "bg-destructive/15 text-destructive" : "bg-success/15 text-success",
+      )}
+    >
+      {key}
+    </span>
+  )
+}
+
+const EMPTY_STATE = "rounded-md bg-muted/40 px-3 py-2.5 text-[13px] text-muted-foreground"
+
 function InspectContent() {
   const selectedId = useSelectionStore((s) => s.selectedNodeId)
   const workflow = useLiveWorkflowStore((s) => s.workflow)
@@ -60,64 +110,105 @@ function InspectContent() {
   const schemas = useSchemas()
 
   if (!selectedId) {
-    return (
-      <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
-        No node selected.
-      </div>
-    )
+    return <div className={EMPTY_STATE}>No node selected.</div>
   }
 
   const instance = workflow?.nodes[selectedId]
   if (!instance) {
     return (
-      <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+      <div className={EMPTY_STATE}>
         Node &quot;{selectedId}&quot; not found in the active workflow.
       </div>
     )
   }
 
   const schema = schemas[instance.uses]
+  const color = schema?.color ?? null
+  const sourcePath = instance.uses.startsWith("./") ? `${instance.uses.slice(2)}.ts` : null
 
   return (
-    <div className="flex flex-col gap-4">
-      <Section label="Node">
+    <div className="flex flex-col gap-5 text-[13px]">
+      <Section label="Node" color={color}>
         <NodeIdField
           key={selectedId}
           id={selectedId}
           tabId={liveTabId}
           existing={Object.keys(workflow?.nodes ?? {})}
         />
-        <Row k="uses" v={instance.uses} />
-        {schema?.color && (
-          <Row
-            k="color"
-            v={
-              <span className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-sm" style={{ background: schema.color }} />
-                <span>{schema.color}</span>
-              </span>
+        <dl className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1.5">
+          <dt className="text-muted-foreground">Uses</dt>
+          <dd className="truncate font-mono text-xs" title={instance.uses}>
+            {instance.uses}
+          </dd>
+          {color && (
+            <>
+              <dt className="text-muted-foreground">Color</dt>
+              <dd className="flex min-w-0 items-center gap-1.5">
+                <span className="h-3 w-3 shrink-0 rounded-[3px]" style={{ background: color }} />
+                <span className="truncate">{color}</span>
+              </dd>
+            </>
+          )}
+        </dl>
+        <div className="flex flex-wrap gap-1.5">
+          {sourcePath && (
+            <button
+              type="button"
+              onClick={() => openCodeFile(sourcePath)}
+              className={ACTION_BUTTON}
+            >
+              <Code aria-hidden className="h-3 w-3" />
+              View source
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() =>
+              askAi(
+                explainNode({
+                  workflowPath,
+                  workflow,
+                  nodeId: selectedId,
+                  uses: instance.uses,
+                  schema,
+                }),
+              )
             }
-          />
-        )}
+            className={`${ACTION_BUTTON} border-ai/30 bg-ai/10 text-ai hover:bg-ai/20`}
+          >
+            <Sparkles aria-hidden className="h-3 w-3" />
+            Explain
+          </button>
+        </div>
       </Section>
       {schema?.description && (
         <Section label="Description">
-          <div className="whitespace-pre-wrap text-xs">{schema.description}</div>
+          <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/85">
+            {schema.description}
+          </p>
         </Section>
       )}
-      <Section label="Inputs">
+      <Section label="Inputs" gap="tight">
         <SchemaTree
           {...(schema?.inputs ? { schema: schema.inputs } : {})}
           instance={instance}
           workflowPath={workflowPath}
         />
       </Section>
-      <Section label="Outputs">
+      <Section label="Outputs" gap="tight">
         <SchemaTree {...(schema?.outputs ? { schema: schema.outputs } : {})} />
       </Section>
     </div>
   )
 }
+
+const ACTION_BUTTON =
+  "flex h-[26px] items-center gap-1.5 rounded-md border border-input px-2.5 text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+
+type EffectiveValue =
+  | { kind: "reference"; value: string }
+  | { kind: "literal"; value: unknown }
+  | { kind: "default"; value: unknown }
 
 /**
  * Compute the effective value the runtime will pass to a top-level input port.
@@ -132,7 +223,7 @@ function effectiveInputValue(
   schema: JsonSchema,
   instance: NodeInstance,
   workflowPath: string,
-): { kind: "reference"; value: string } | { kind: "literal"; value: unknown } | null {
+): EffectiveValue | null {
   if (typeof instance.in === "object" && instance.in !== null && portId in instance.in) {
     return { kind: "reference", value: instance.in[portId] as string }
   }
@@ -140,7 +231,7 @@ function effectiveInputValue(
     return { kind: "literal", value: instance.values[portId] }
   }
   if (schema.default !== undefined) {
-    return { kind: "literal", value: expandTemplate(schema.default, { workflowPath }) }
+    return { kind: "default", value: expandTemplate(schema.default, { workflowPath }) }
   }
   return null
 }
@@ -182,9 +273,9 @@ function NodeIdField({
   }
 
   return (
-    <div className="flex flex-col gap-0.5 text-xs">
-      <label className="flex items-center gap-2">
-        <span className="text-muted-foreground">id:</span>
+    <div className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+        Id
         <input
           aria-label="Node id"
           aria-invalid={error ? true : undefined}
@@ -199,11 +290,11 @@ function NodeIdField({
               e.currentTarget.blur()
             }
           }}
-          className="h-6 flex-1 rounded border border-border bg-background px-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary aria-[invalid]:border-destructive"
+          className="h-8 w-full rounded-md border border-input bg-background px-2.5 font-mono text-[13px] text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60 aria-[invalid]:border-destructive"
         />
       </label>
       {error && (
-        <span role="alert" className="pl-6 text-[11px] text-destructive">
+        <span role="alert" className="text-xs text-destructive">
           {error}
         </span>
       )}
@@ -211,52 +302,69 @@ function NodeIdField({
   )
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({
+  label,
+  color,
+  gap = "normal",
+  children,
+}: {
+  label: string
+  /** Node accent colour, drawn as a small square before the label. */
+  color?: string | null
+  gap?: "normal" | "tight"
+  children: React.ReactNode
+}) {
   return (
-    <div>
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+    <section className={`flex flex-col ${gap === "tight" ? "gap-1" : "gap-2.5"}`}>
+      <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {color && (
+          <span
+            aria-hidden
+            className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
+            style={{ background: color }}
+          />
+        )}
+        {label}
+      </h3>
       {children}
-    </div>
-  )
-}
-
-function Row({ k, v }: { k: string; v: React.ReactNode }) {
-  return (
-    <div className="flex gap-2 text-xs">
-      <span className="text-muted-foreground">{k}:</span>
-      <span className="font-mono">{v}</span>
-    </div>
+    </section>
   )
 }
 
 function SchemaTree({
   schema,
-  depth = 0,
   instance,
   workflowPath,
 }: {
   schema?: JsonSchema
-  depth?: number
   /** When set, the top-level rows show the effective value alongside the type. */
   instance?: NodeInstance
   workflowPath?: string
 }) {
   if (!schema || schema.type !== "object" || !schema.properties) {
-    return <div className="text-xs italic text-muted-foreground">(empty)</div>
+    return <div className="px-2 text-xs italic text-muted-foreground">(empty)</div>
   }
   return (
-    <ul className="font-mono text-xs">
-      {Object.entries(schema.properties).map(([key, sub]) => {
-        const value =
-          instance && depth === 0
-            ? effectiveInputValue(key, sub, instance, workflowPath ?? "")
-            : null
-        return (
-          <SchemaTreeRow key={key} name={key} schema={sub} depth={depth} effectiveValue={value} />
-        )
-      })}
+    <ul className="flex flex-col gap-1">
+      {Object.entries(schema.properties).map(([key, sub]) => (
+        <SchemaTreeRow
+          key={key}
+          name={key}
+          schema={sub}
+          depth={0}
+          effectiveValue={
+            instance ? effectiveInputValue(key, sub, instance, workflowPath ?? "") : null
+          }
+        />
+      ))}
     </ul>
   )
+}
+
+const VALUE_TONE: Record<EffectiveValue["kind"], string> = {
+  reference: "text-primary",
+  literal: "text-foreground",
+  default: "italic text-muted-foreground",
 }
 
 function SchemaTreeRow({
@@ -268,49 +376,59 @@ function SchemaTreeRow({
   name: string
   schema: JsonSchema
   depth: number
-  effectiveValue?: { kind: "reference"; value: string } | { kind: "literal"; value: unknown } | null
+  effectiveValue?: EffectiveValue | null
 }) {
   const isObject = schema.type === "object" && schema.properties
   const isArray = schema.type === "array" && schema.items
   const isExpandable = Boolean(isObject ?? isArray)
   const [expanded, setExpanded] = useState(depth === 0)
 
-  const indent = { paddingLeft: `${depth * 12}px` }
+  // Top-level rows are compact tinted pills; nested rows sit indented under
+  // their parent without a background.
+  const rowClass = `flex h-[26px] min-w-0 items-center gap-2 rounded-md px-2 ${
+    depth === 0 ? "bg-muted/40" : "text-foreground/85"
+  }`
+  const indent = depth > 0 ? { paddingLeft: `${8 + depth * 18}px` } : undefined
+
+  const label = (
+    <>
+      <span className="shrink-0 font-mono">{name}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{describeType(schema)}</span>
+      {effectiveValue && (
+        <span
+          className={`ml-auto truncate pl-2 font-mono text-[11px] ${VALUE_TONE[effectiveValue.kind]}`}
+          title={formatEffectiveValue(effectiveValue)}
+        >
+          {formatEffectiveValue(effectiveValue)}
+        </span>
+      )}
+    </>
+  )
 
   if (!isExpandable) {
     return (
-      <li style={indent} className="py-0.5">
-        <span>{name}</span>
-        <span className="ml-2 text-muted-foreground">({describeType(schema)})</span>
-        {effectiveValue && (
-          <span
-            className={
-              effectiveValue.kind === "reference"
-                ? "ml-2 text-primary"
-                : "ml-2 text-muted-foreground"
-            }
-          >
-            = {formatEffectiveValue(effectiveValue)}
-          </span>
-        )}
+      <li style={indent} className={rowClass}>
+        {label}
       </li>
     )
   }
 
   return (
-    <li>
+    <li className="flex flex-col gap-1">
       <button
         type="button"
+        aria-expanded={expanded}
         onClick={() => setExpanded((x) => !x)}
         style={indent}
-        className="flex w-full items-center gap-1 py-0.5 text-left hover:bg-accent/40"
+        className={`${rowClass} w-full text-left hover:bg-accent/60`}
       >
-        <span className="text-muted-foreground">{expanded ? "▾" : "▸"}</span>
-        <span>{name}</span>
-        <span className="ml-2 text-muted-foreground">({describeType(schema)})</span>
+        <span aria-hidden className="w-2.5 shrink-0 text-[10px] text-muted-foreground">
+          {expanded ? "▾" : "▸"}
+        </span>
+        {label}
       </button>
       {expanded && (
-        <ul>
+        <ul className="flex flex-col">
           {isObject &&
             Object.entries(schema.properties!).map(([k, s]) => (
               <SchemaTreeRow key={k} name={k} schema={s} depth={depth + 1} />
@@ -324,9 +442,7 @@ function SchemaTreeRow({
   )
 }
 
-function formatEffectiveValue(
-  v: { kind: "reference"; value: string } | { kind: "literal"; value: unknown },
-): string {
+function formatEffectiveValue(v: EffectiveValue): string {
   if (v.kind === "reference") return v.value
   const lit = v.value
   if (typeof lit === "string") return JSON.stringify(lit)
@@ -338,7 +454,7 @@ function formatEffectiveValue(
 function describeType(s: JsonSchema): string {
   if (s.type === "object") return "object"
   if (s.type === "array") return "array"
-  if (Array.isArray(s.enum)) return `enum(${s.enum.length})`
+  if (Array.isArray(s.enum)) return "enum"
   if (s.format) return `${s.type}:${s.format}`
   if (typeof s.type === "string") return s.type
   return "any"

@@ -56,4 +56,18 @@ describe("RunsList", () => {
     fireEvent.click(rows[0]!)
     expect(useDebugSessionStore.getState().selectedRunId).not.toBe(initialSelected)
   })
+
+  it("labels each row with a status pill and marks the selected row", () => {
+    const s = useDebugSessionStore.getState()
+    s.applyMessage({
+      type: "event",
+      runId: "rA",
+      event: { type: "before-node", nodeId: "x", input: {} },
+      offsetMs: 0,
+    } as ServerMessage)
+    render(<RunsList />)
+    const [row] = screen.getAllByTestId("runs-row")
+    expect(row).toHaveTextContent(/running/i)
+    expect(row).toHaveAttribute("aria-current", "true")
+  })
 })

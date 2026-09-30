@@ -31,11 +31,11 @@ export function EnvironmentPicker() {
   }
 
   return (
-    <div className="flex items-center gap-1.5 text-xs">
-      <span className="text-muted-foreground">Env</span>
+    <div className="flex min-w-0 items-center gap-1.5 text-xs">
+      <span className="shrink-0 text-muted-foreground">Env</span>
       <select
         aria-label="Environment"
-        className="h-6 rounded border border-border bg-background px-1 text-xs"
+        className="h-6 min-w-0 max-w-[120px] rounded-md border border-border bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
         value={name ?? ""}
         disabled={names.length === 0}
         onChange={(e) => useEnvironments.getState().select(e.target.value || null)}
@@ -49,14 +49,14 @@ export function EnvironmentPicker() {
       </select>
       <button
         type="button"
-        className="rounded px-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+        className="h-6 shrink-0 whitespace-nowrap rounded-md border border-border px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
         title={`Edit ${ENVIRONMENTS_FILE} (variables like {{token}} and an optional baseUrl)`}
         onClick={() => void edit()}
       >
         {names.length === 0 ? "Add" : "Edit"}
       </button>
       {error && (
-        <span className="truncate text-destructive" title={error}>
+        <span className="min-w-0 truncate text-destructive" title={error}>
           {error}
         </span>
       )}

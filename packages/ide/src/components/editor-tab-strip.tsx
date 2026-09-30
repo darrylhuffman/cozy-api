@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronLeft, ChevronRight, FileCode, Workflow, X } from "lucide-react"
+import { ContextMenu } from "radix-ui"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
@@ -20,7 +21,20 @@ interface Props {
   activeId: string | null
   onSelect: (id: string) => void
   onClose: (id: string) => void
+  /** Rendered after the tabs, e.g. a "new tab" button. */
+  trailing?: React.ReactNode
+  /** Accessible name for a tab's close button; defaults to "Close <title>". */
+  closeLabel?: (tab: StripTab) => string
+  /**
+   * Closes several tabs at once. When set, right-clicking a tab offers
+   * Close, Close others, Close to the right, Close saved and Close all.
+   */
+  onCloseMany?: (ids: string[]) => void
+  /** When set, tabs can be dragged to a new position (`toIndex` after the move). */
+  onReorder?: (id: string, toIndex: number) => void
 }
+
+const DRAG_TYPE = "application/lorien-tab"
 
 const SCROLL_STEP = 200
 
@@ -30,7 +44,23 @@ const SCROLL_STEP = 200
  * the edges fade, the mouse wheel scrolls sideways, the active tab is kept
  * in view, and a count button lists every open tab.
  */
-export function EditorTabStrip({ tabs, activeId, onSelect, onClose }: Props) {
+export function EditorTabStrip({
+  tabs,
+  activeId,
+  onSelect,
+  onClose,
+  trailing,
+  closeLabel,
+  onCloseMany,
+  onReorder,
+}: Props) {
+  const [dragId, setDragId] = useState<string | null>(null)
+  // Insertion point while dragging: before tab `index` (tabs.length = at the end).
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const endDrag = () => {
+    setDragId(null)
+    setDropIndex(null)
+  }
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canLeft, setCanLeft] = useState(false)
   const [canRight, setCanRight] = useState(false)
@@ -100,13 +130,37 @@ export function EditorTabStrip({ tabs, activeId, onSelect, onClose }: Props) {
           data-testid="editor-tab-strip"
           className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          {tabs.map((tab) => {
+          {tabs.map((tab, index) => {
             const active = tab.id === activeId
-            return (
-              // biome-ignore lint/a11y/noStaticElementInteractions: middle-click to close; the tab's own controls are buttons
+            const tabEl = (
+              // biome-ignore lint/a11y/noStaticElementInteractions: middle-click to close and drag to reorder; the tab's own controls are buttons
               <div
                 key={tab.id}
                 data-tab-id={tab.id}
+                draggable={onReorder !== undefined}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(DRAG_TYPE, tab.id)
+                  e.dataTransfer.effectAllowed = "move"
+                  setDragId(tab.id)
+                }}
+                onDragOver={(e) => {
+                  if (!dragId) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = "move"
+                  const r = e.currentTarget.getBoundingClientRect()
+                  setDropIndex(e.clientX < r.left + r.width / 2 ? index : index + 1)
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  if (dragId && dropIndex !== null && onReorder) {
+                    const from = tabs.findIndex((t) => t.id === dragId)
+                    // Removing the dragged tab shifts later positions left by one.
+                    const to = dropIndex > from ? dropIndex - 1 : dropIndex
+                    if (to !== from) onReorder(dragId, to)
+                  }
+                  endDrag()
+                }}
+                onDragEnd={endDrag}
                 onMouseDown={(e) => {
                   if (e.button === 1) {
                     e.preventDefault()
@@ -114,12 +168,17 @@ export function EditorTabStrip({ tabs, activeId, onSelect, onClose }: Props) {
                   }
                 }}
                 className={cn(
-                  "group flex shrink-0 items-center gap-1 border-r border-border pr-1.5 pl-3 text-[13px]",
+                  "group relative flex shrink-0 items-center gap-1 border-r border-border pr-1.5 pl-3 text-[13px]",
                   active
                     ? "bg-background font-medium text-foreground shadow-[inset_0_2px_0_var(--primary)]"
                     : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                  dragId === tab.id && "opacity-50",
                 )}
               >
+                {dropIndex === index && dragId && <DropMarker side="left" />}
+                {dropIndex === index + 1 && index === tabs.length - 1 && dragId && (
+                  <DropMarker side="right" />
+                )}
                 <button
                   type="button"
                   aria-current={active ? "page" : undefined}
@@ -140,7 +199,7 @@ export function EditorTabStrip({ tabs, activeId, onSelect, onClose }: Props) {
                   type="button"
                   onClick={() => onClose(tab.id)}
                   className="relative flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-                  aria-label={`Close ${tab.title}`}
+                  aria-label={closeLabel ? closeLabel(tab) : `Close ${tab.title}`}
                 >
                   {tab.dirty && (
                     <span
@@ -160,6 +219,20 @@ export function EditorTabStrip({ tabs, activeId, onSelect, onClose }: Props) {
                   />
                 </button>
               </div>
+            )
+            if (!onCloseMany) return tabEl
+            return (
+              <TabMenu
+                key={tab.id}
+                tab={tab}
+                index={index}
+                tabs={tabs}
+                onClose={onClose}
+                onCloseMany={onCloseMany}
+                onSelect={onSelect}
+              >
+                {tabEl}
+              </TabMenu>
             )
           })}
         </div>
@@ -220,7 +293,103 @@ export function EditorTabStrip({ tabs, activeId, onSelect, onClose }: Props) {
           </PopoverContent>
         </Popover>
       )}
+      {trailing}
     </div>
+  )
+}
+
+/** Where a dragged tab will land. */
+function DropMarker({ side }: { side: "left" | "right" }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute inset-y-1 w-0.5 rounded-full bg-primary",
+        side === "left" ? "-left-px" : "-right-px",
+      )}
+    />
+  )
+}
+
+const MENU_ITEM =
+  "flex cursor-default items-center rounded-sm px-2 py-1.5 text-[13px] outline-none select-none data-[disabled]:pointer-events-none data-[highlighted]:bg-accent data-[disabled]:opacity-50"
+
+function TabMenu({
+  tab,
+  index,
+  tabs,
+  onClose,
+  onCloseMany,
+  onSelect,
+  children,
+}: {
+  tab: StripTab
+  index: number
+  tabs: StripTab[]
+  onClose: (id: string) => void
+  onCloseMany: (ids: string[]) => void
+  onSelect: (id: string) => void
+  children: React.ReactNode
+}) {
+  const others = tabs.filter((t) => t.id !== tab.id).map((t) => t.id)
+  const toRight = tabs.slice(index + 1).map((t) => t.id)
+  const saved = tabs.filter((t) => !t.dirty).map((t) => t.id)
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content
+          aria-label={`${tab.title} tab`}
+          className="z-50 min-w-48 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+        >
+          <ContextMenu.Item className={MENU_ITEM} onSelect={() => onClose(tab.id)}>
+            Close
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className={MENU_ITEM}
+            disabled={others.length === 0}
+            onSelect={() => {
+              onSelect(tab.id)
+              onCloseMany(others)
+            }}
+          >
+            Close others
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className={MENU_ITEM}
+            disabled={toRight.length === 0}
+            onSelect={() => onCloseMany(toRight)}
+          >
+            Close to the right
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className={MENU_ITEM}
+            disabled={saved.length === 0}
+            onSelect={() => onCloseMany(saved)}
+          >
+            Close saved
+          </ContextMenu.Item>
+          <ContextMenu.Separator className="my-1 h-px bg-border" />
+          <ContextMenu.Item
+            className={MENU_ITEM}
+            onSelect={() => onCloseMany(tabs.map((t) => t.id))}
+          >
+            Close all
+          </ContextMenu.Item>
+          {tab.hint && (
+            <>
+              <ContextMenu.Separator className="my-1 h-px bg-border" />
+              <ContextMenu.Item
+                className={MENU_ITEM}
+                onSelect={() => void navigator.clipboard?.writeText(tab.hint ?? "")}
+              >
+                Copy path
+              </ContextMenu.Item>
+            </>
+          )}
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   )
 }
 

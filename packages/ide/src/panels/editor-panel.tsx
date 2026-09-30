@@ -34,6 +34,7 @@ export function EditorPanel() {
   const activeWorkflowId = useTabsStore((s) => s.activeWorkflowId)
   const selectTab = useTabsStore((s) => s.selectTab)
   const closeTab = useTabsStore((s) => s.closeTab)
+  const moveTab = useTabsStore((s) => s.moveTab)
 
   if (tabs.length === 0) {
     return (
@@ -61,9 +62,32 @@ export function EditorPanel() {
       })
       if (!confirmed) return
     }
+    discard(tabId)
+  }
+
+  function discard(tabId: string) {
+    const tab = tabs.find((t) => t.id === tabId)
     closeTab(tabId)
     if (tab?.kind === "workflow") useWorkflowDrafts.getState().drop(tabId)
     else useCodeDrafts.getState().drop(tabId)
+  }
+
+  /** Close several tabs, asking once if any of them has unsaved changes. */
+  async function handleCloseMany(ids: string[]) {
+    const dirty = tabs.filter((t) => ids.includes(t.id) && t.dirty)
+    if (dirty.length > 0) {
+      const confirmed = await confirmAction({
+        title:
+          dirty.length === 1
+            ? `Close ${dirty[0]?.title} without saving?`
+            : `Close ${dirty.length} tabs without saving?`,
+        description: `Unsaved changes will be lost: ${dirty.map((t) => t.title).join(", ")}.`,
+        confirmLabel: "Close without saving",
+        destructive: true,
+      })
+      if (!confirmed) return
+    }
+    for (const id of ids) discard(id)
   }
 
   return (
@@ -73,6 +97,8 @@ export function EditorPanel() {
         activeId={active?.id ?? null}
         onSelect={selectTab}
         onClose={(id) => void handleClose(id)}
+        onCloseMany={(ids) => void handleCloseMany(ids)}
+        onReorder={moveTab}
       />
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {/* The last workflow stays mounted under a code tab, so the Inspector,
