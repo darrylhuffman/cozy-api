@@ -605,6 +605,7 @@ export async function openScope(ctx) { return { values: { tag: "scoped:" + ctx.r
           relativePath: "admin/ping",
           perRequestProviders: perRequest,
           middleware: ["workflows/_middleware.ts", "workflows/admin/_middleware.ts"],
+          preflight: [{ path: "/admin/ping", methods: ["GET"], depth: 1 }],
         })
         const genPath = join(dir, "dist", "workflows", "admin", "ping.gen.ts")
         writeFileSync(genPath, source)
@@ -624,6 +625,13 @@ export async function openScope(ctx) { return { values: { tag: "scoped:" + ctx.r
         const denied = await app.request("/admin/ping?deny=1")
         expect(denied.status).toBe(403)
         expect(await denied.json()).toEqual({ denied: true })
+
+        // OPTIONS runs only the shared (root) middleware, then answers 405.
+        const preflight = await app.request("/admin/ping", { method: "OPTIONS" })
+        expect(preflight.status).toBe(405)
+        expect(preflight.headers.get("allow")).toBe("GET")
+        expect(preflight.headers.get("x-root")).toMatch(perRequest ? /^scoped:/ : /^single$/)
+        expect(preflight.headers.get("x-admin")).toBeNull()
       } finally {
         rmSync(dir, { recursive: true, force: true })
       }

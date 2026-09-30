@@ -43,6 +43,12 @@ export interface EmitWorkflowOptions {
    * Hono middleware before the workflow.
    */
   middleware?: string[]
+  /**
+   * OPTIONS routes this file registers so middleware can answer a CORS
+   * preflight (see `preflightRoutes`). `depth` is how many of `middleware`,
+   * from the outermost, every workflow on the path shares.
+   */
+  preflight?: Array<{ path: string; methods: string[]; depth: number }>
 }
 
 /**
@@ -140,6 +146,12 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
     const trigger = triggers[i]!
     if (i > 0) lines.push("")
     lines.push(...renderRoute(trigger, perRequest, guarded))
+  }
+  if (guarded) {
+    for (const pre of opts.preflight ?? []) {
+      lines.push("")
+      lines.push(...renderPreflight(pre, perRequest))
+    }
   }
 
   lines.push(`}`)
@@ -397,6 +409,25 @@ function renderRoute(trigger: TriggerInfo, perRequest: boolean, guarded: boolean
   lines.push(`    )`)
   lines.push(`  })`)
   return lines
+}
+
+/**
+ * OPTIONS on a path no workflow serves under OPTIONS: run the middleware every
+ * workflow on the path shares (so a CORS middleware can answer the preflight),
+ * then answer 405 like an unmatched method would.
+ */
+function renderPreflight(
+  pre: { path: string; methods: string[]; depth: number },
+  perRequest: boolean,
+): string[] {
+  const shared = Array.from({ length: pre.depth }, (_, i) => `mw${i}`).join(", ")
+  const count = `${perRequest ? "1 + " : ""}[${shared}].flat().length`
+  return [
+    `  // OPTIONS ${pre.path}: shared middleware (a CORS preflight), then 405`,
+    `  app.on("OPTIONS", "${pre.path}", ...guards.slice(0, ${count}), (c: Context) =>`,
+    `    c.json({ error: "Method Not Allowed" }, 405, { Allow: "${pre.methods.join(", ")}" }),`,
+    `  )`,
+  ]
 }
 
 /**

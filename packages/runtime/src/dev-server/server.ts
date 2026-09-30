@@ -6,6 +6,7 @@ import { runWorkflow, type WorkflowRunResult } from "../exec/run.js"
 import { computeExecutionPlan } from "../exec/topology.js"
 import type { Middleware } from "../middleware/define-middleware.js"
 import { middlewareChain } from "../middleware/load.js"
+import { preflightRoutes } from "../middleware/preflight.js"
 import type { ProviderContainer } from "../providers/container.js"
 import {
   type NodeMock,
@@ -129,6 +130,42 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
     for (const source of conflict.sources) clashing.add(source)
   }
 
+  // One provider scope for the whole request: middleware and nodes share
+  // scoped providers (the same request logger), disposed at the end.
+  const openScope: MiddlewareHandler = async (c, next) => {
+    const runId = opts.debug?.newRunId() ?? crypto.randomUUID()
+    c.set(RUN_ID_KEY as never, runId as never)
+    const scope = opts.providers
+      ? await opts.providers.open({ requestId: runId, timestamp: Date.now() })
+      : null
+    c.set(SCOPE_KEY as never, (scope ?? { values: opts.services ?? {} }) as never)
+    try {
+      await next()
+    } finally {
+      void scope?.dispose()
+    }
+    // Middleware answered before the workflow ran: no node ran, and a test
+    // checking that ("CreateBook did not run") still gets a trace to read.
+    if (opts.testHooks && c.req.header(TEST_HEADER) !== undefined && !c.get(HANDLED_KEY as never)) {
+      keepTrace(runId, { nodes: {} })
+      c.res.headers.set(TRACE_HEADER, runId)
+    }
+  }
+  const wrap = (chain: Middleware[]): MiddlewareHandler[] =>
+    chain.map(
+      (m): MiddlewareHandler =>
+        async (c, next) => {
+          const scope = c.get(SCOPE_KEY as never) as Scope
+          const res = await m.run(c, next, scope.values as Services)
+          return res instanceof Response ? res : undefined
+        },
+    )
+  const middlewareFiles = Object.entries(opts.middleware ?? {}).map(([dir, list]) => ({
+    dir,
+    list,
+  }))
+  const mounted: LoadedWorkflow[] = []
+
   for (const wf of workflows) {
     const { errors: shapeErrors, depsByNode } = validateWorkflow(wf.file)
     // Wiring needs the shape to be valid first (references to real nodes).
@@ -141,6 +178,7 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
       for (const e of errors) console.error(`  - ${e.nodeId}.${e.field}: ${e.message}`)
       continue
     }
+    mounted.push(wf)
 
     for (const { nodeId, method, path } of workflowRoutes(wf.file, wf.relativePath)) {
       if (clashing.has(`${wf.relativePath}#${nodeId}`)) continue
@@ -284,48 +322,22 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
         }
       }
 
-      const chain = middlewareChain(
-        wf.relativePath,
-        Object.entries(opts.middleware ?? {}).map(([dir, list]) => ({ dir, list })),
-      ).flatMap((m) => m.list)
+      const chain = middlewareChain(wf.relativePath, middlewareFiles).flatMap((m) => m.list)
       if (chain.length === 0) {
         app.on(method, path, handler)
         continue
       }
-      // One provider scope for the whole request: middleware and nodes share
-      // scoped providers (the same request logger), disposed at the end.
-      const openScope: MiddlewareHandler = async (c, next) => {
-        const runId = opts.debug?.newRunId() ?? crypto.randomUUID()
-        c.set(RUN_ID_KEY as never, runId as never)
-        const scope = opts.providers
-          ? await opts.providers.open({ requestId: runId, timestamp: Date.now() })
-          : null
-        c.set(SCOPE_KEY as never, (scope ?? { values: opts.services ?? {} }) as never)
-        try {
-          await next()
-        } finally {
-          void scope?.dispose()
-        }
-        // Middleware answered before the workflow ran: no node ran, and a test
-        // checking that ("CreateBook did not run") still gets a trace to read.
-        if (
-          opts.testHooks &&
-          c.req.header(TEST_HEADER) !== undefined &&
-          !c.get(HANDLED_KEY as never)
-        ) {
-          keepTrace(runId, { nodes: {} })
-          c.res.headers.set(TRACE_HEADER, runId)
-        }
-      }
-      const run = chain.map(
-        (m): MiddlewareHandler =>
-          async (c, next) => {
-            const scope = c.get(SCOPE_KEY as never) as Scope
-            const res = await m.run(c, next, scope.values as Services)
-            return res instanceof Response ? res : undefined
-          },
-      )
-      app.on(method, path, openScope, ...run, handler)
+      app.on(method, path, openScope, ...wrap(chain), handler)
     }
+  }
+
+  // OPTIONS on a path no workflow serves under OPTIONS would be a 405 before
+  // any middleware ran, so a CORS middleware could never answer a preflight.
+  // Run the middleware every workflow on the path shares, then answer 405.
+  for (const pre of preflightRoutes(mounted, Object.keys(opts.middleware ?? {}))) {
+    const chain = pre.dirs.flatMap((dir) => opts.middleware?.[dir] ?? [])
+    app.on("OPTIONS", pre.path, openScope, ...wrap(chain), (c) =>
+      c.json({ error: "Method Not Allowed" }, 405, { Allow: pre.methods.join(", ") }),
+    )
   }
 }

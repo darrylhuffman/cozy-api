@@ -56,6 +56,8 @@ export {
   MIDDLEWARE_FILE,
   middlewareChain,
 } from "./middleware/load.js"
+export type { PreflightRoute } from "./middleware/preflight.js"
+export { preflightRoutes } from "./middleware/preflight.js"
 // Providers
 export type {
   CreateProviderContainerOptions,
