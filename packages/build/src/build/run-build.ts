@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process"
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import {
@@ -18,6 +19,7 @@ import {
 import { formatFinding, runCheck } from "../check/run-check.js"
 import { type EmitProviderInfo, emitIndex, emitProviders, emitWorkflow } from "../codegen/index.js"
 import { generateServicesTypes } from "../generate-services-types.js"
+import { withProjectBin } from "../project-bin.js"
 import { bundleServer } from "./bundle-server.js"
 
 export interface RunBuildOptions {
@@ -26,6 +28,8 @@ export interface RunBuildOptions {
   skipTypes?: boolean
   /** Compile dist/index.ts into a runnable dist/index.js (default true). */
   bundle?: boolean
+  /** Run the project's `tsc --noEmit` after generating types; type errors fail the build. */
+  typecheck?: boolean
 }
 
 export interface RunBuildResult {
@@ -50,6 +54,20 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
     if (typesResult.path) {
       console.log(`✓ Generated ${typesResult.path}`)
     }
+  }
+
+  if (opts.typecheck) {
+    const tsc = typecheckProject(root)
+    if (!tsc.ok) {
+      console.error(`✗ Type errors (tsc --noEmit); fix them or build without --typecheck`)
+      return {
+        ok: false,
+        outDir,
+        workflowsBuilt: 0,
+        errors: [{ workflow: "tsc", message: tsc.message }],
+      }
+    }
+    console.log(`✓ Typechecked`)
   }
 
   // Providers: import each (without creating it) to learn its lifetime and deps.
@@ -223,4 +241,16 @@ function slugifyPath(p: string): string {
     .split("/")
     .map((seg) => seg.replace(/\[([^\]]+)\]/g, "_$1_"))
     .join("/")
+}
+
+/** Runs the project's own TypeScript (node_modules/.bin/tsc) with its tsconfig, printing errors. */
+function typecheckProject(root: string): { ok: boolean; message: string } {
+  const r = spawnSync("tsc", ["--noEmit", "-p", root], {
+    cwd: root,
+    env: withProjectBin(root, process.env),
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  })
+  if (r.error) return { ok: false, message: `couldn't run tsc: ${r.error.message}` }
+  return { ok: r.status === 0, message: `tsc --noEmit exited with ${r.status}` }
 }

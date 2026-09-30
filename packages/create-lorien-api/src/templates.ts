@@ -328,7 +328,7 @@ export function renderPackageJson(ctx: TemplateContext): string {
     scripts: {
       dev: "lorien dev",
       "dev:server": "lorien dev --no-ide",
-      build: "lorien build",
+      build: "lorien build --typecheck",
       start: "node dist/index.js",
       test: "lorien test && vitest run --passWithNoTests",
       typecheck: "lorien types && tsc --noEmit",

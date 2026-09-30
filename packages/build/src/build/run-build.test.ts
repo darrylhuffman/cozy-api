@@ -86,4 +86,27 @@ describe("runBuild (integration)", () => {
       rmSync(out, { recursive: true, force: true })
     }
   })
+
+  it("with typecheck, stops at a type error before generating anything", async () => {
+    const project = mkdtempSync(join(tmpdir(), "lorien-tsc-"))
+    const out = join(project, "dist")
+    try {
+      writeFileSync(
+        join(project, "tsconfig.json"),
+        JSON.stringify({ compilerOptions: { strict: true, noEmit: true }, include: ["x.ts"] }),
+      )
+      writeFileSync(join(project, "x.ts"), 'export const n: number = "x"\n')
+      const result = await runBuild({
+        root: project,
+        outDir: out,
+        skipTypes: true,
+        typecheck: true,
+      })
+      expect(result.ok).toBe(false)
+      expect(result.errors).toEqual([{ workflow: "tsc", message: "tsc --noEmit exited with 2" }])
+      expect(existsSync(join(out, "index.ts"))).toBe(false)
+    } finally {
+      rmSync(project, { recursive: true, force: true })
+    }
+  })
 })

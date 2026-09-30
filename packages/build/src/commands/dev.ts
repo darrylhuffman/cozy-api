@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process"
 import { stat } from "node:fs/promises"
-import { delimiter, join, resolve } from "node:path"
+import { join, resolve } from "node:path"
 import type { Command } from "commander"
 import { generateServicesTypes } from "../generate-services-types.js"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
+import { withProjectBin } from "../project-bin.js"
 import { DEFAULT_IDE_PORT, registerTsxFromWorkspace, runIde } from "./ide.js"
 
 export const DEFAULT_API_PORT = 3000
@@ -148,17 +149,6 @@ export async function runDevWithIde(opts: {
 }
 
 /**
- * `env` with the project's node_modules/.bin first on the path, so its own
- * tsx is found even when lorien runs outside a package script. Keeps the
- * variable's existing name (`Path` on Windows).
- */
-export function withProjectBin(root: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const key = Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH"
-  const bin = join(root, "node_modules", ".bin")
-  return { ...env, [key]: env[key] ? `${bin}${delimiter}${env[key]}` : bin }
-}
-
-/**
  * `tsx watch` restarts the server when a node, provider, middleware or
  * workflow file changes (workflows are read from disk, so they're included by
  * glob), and when `.env` changes. `.env` is loaded into the server's
@@ -177,6 +167,8 @@ export async function devServerArgs(
   args.push(entry)
   return args
 }
+
+export { withProjectBin }
 
 /** Keep the old export name as an alias so any external callers aren't broken. */
 export const runDev = runDevServer

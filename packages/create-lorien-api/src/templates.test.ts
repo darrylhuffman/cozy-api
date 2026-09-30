@@ -25,7 +25,7 @@ describe("template renderers", () => {
     expect(pkg.type).toBe("module")
     expect(pkg.scripts.dev).toBe("lorien dev")
     expect(pkg.scripts["dev:server"]).toBe("lorien dev --no-ide")
-    expect(pkg.scripts.build).toBe("lorien build")
+    expect(pkg.scripts.build).toBe("lorien build --typecheck")
     expect(pkg.scripts.start).toBe("node dist/index.js")
     // The release line this scaffolder belongs to, never "latest".
     expect(pkg.devDependencies["@darrylondil/lorien-build"]).toMatch(/^\^\d+\.\d+\.0$/)

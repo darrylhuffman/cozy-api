@@ -7,6 +7,7 @@ export interface BuildOptions {
   outDir: string
   skipTypes?: boolean
   bundle?: boolean
+  typecheck?: boolean
 }
 
 export function registerBuild(program: Command): void {
@@ -17,6 +18,7 @@ export function registerBuild(program: Command): void {
     .option("--outDir <path>", "output directory", "./dist")
     .option("--skip-types", "skip services type generation")
     .option("--no-bundle", "only generate TypeScript; don't compile dist/index.js")
+    .option("--typecheck", "run tsc --noEmit first; type errors fail the build")
     .action(async (opts: BuildOptions) => {
       // lorien.config.ts and nodes are TypeScript; Node < 22.18 can't import them without a loader.
       await registerTsxFromWorkspace(opts.root)
