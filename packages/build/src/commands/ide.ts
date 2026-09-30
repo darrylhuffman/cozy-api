@@ -29,8 +29,8 @@ import { streamSSE } from "hono/streaming"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
 import { makeDebugIntegration } from "./debug-integration.js"
 import { introspectWorkspace, invalidateSchemaCache } from "./introspect-workspace.js"
-import { collectWorkspaceTypes } from "./workspace-types.js"
 import { type NodeCasesRequest, type NodeCasesRun, runNodeCasesInWorker } from "./run-node-cases.js"
+import { collectWorkspaceTypes } from "./workspace-types.js"
 
 // ── FileNode types (mirrors packages/ide/src/data/mock-files.ts) ─────────────
 export type FileKind = "workflow" | "node"
