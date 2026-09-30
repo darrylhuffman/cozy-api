@@ -292,7 +292,7 @@ describe("runWorkflow", () => {
           ({ "./strict": strict } as Record<string, ReturnType<typeof defineNode>>)[u] ??
           null,
       }),
-    ).rejects.toThrow(/input validation failed.*email/i)
+    ).rejects.toThrow(/invalid request: body\.email/)
   })
 
   it("passes the parsed (and coerced) input to run()", async () => {
@@ -464,7 +464,7 @@ describe("runWorkflow", () => {
             ({ "./strict": strict } as Record<string, ReturnType<typeof defineNode>>)[u] ??
             null,
         }),
-      ).rejects.toThrow(/input validation failed.*email/i)
+      ).rejects.toThrow(/invalid request: body\.email/)
     })
   })
 
@@ -809,7 +809,7 @@ describe("runWorkflow async pause hooks", () => {
           calls.push(`before:${nodeId}`)
         },
       }),
-    ).rejects.toThrow(/input validation failed/)
+    ).rejects.toThrow(/invalid request: body\.msg/)
     expect(calls).not.toContain("before:failing")
   })
 

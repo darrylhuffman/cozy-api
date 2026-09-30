@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path"
 import {
   findMiddlewareFiles,
   findProviderFiles,
+  findRouteConflicts,
   importLegacyServices,
   importMiddleware,
   importProviders,
@@ -120,6 +121,14 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
       console.error(`✗ ${e.path}: ${e.message}`)
       errors.push({ workflow: e.path, message: e.message })
     }
+  }
+
+  // Two workflows serving one route: the built server would silently answer
+  // with one of them.
+  for (const conflict of findRouteConflicts(ws.workflows)) {
+    const message = `${conflict.method} ${conflict.path} is served by more than one workflow: ${conflict.sources.join(", ")}`
+    console.error(`✗ ${message}`)
+    errors.push({ workflow: conflict.sources[0]!.split("#")[0]!, message })
   }
 
   // Codegen each workflow

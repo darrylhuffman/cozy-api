@@ -57,7 +57,7 @@ export async function traceWorkflow(
     plan,
     triggerNodeId,
     triggerOutputs: {
-      body: opts.request.body,
+      body: opts.request.body ?? null,
       params: opts.request.params ?? {},
       query: opts.request.query ?? {},
       headers: opts.request.headers ?? {},

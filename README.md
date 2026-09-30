@@ -31,11 +31,12 @@ It ships as plain TypeScript with **zero lorien runtime dependency**.
 ## Quickstart
 
 ```bash
-npx create-lorien my-app
+pnpm create lorien my-app     # or: npm create lorien@latest my-app
 cd my-app
-pnpm install
-pnpm dev          # dev server + IDE in your browser
+pnpm dev                      # dev server + IDE in your browser
 ```
+
+The scaffolder installs dependencies with the package manager you ran it from. The new project's `AGENTS.md` (and Claude Code skill) is the guide for agents working in it.
 
 When you're ready to ship:
 
@@ -53,8 +54,9 @@ pnpm start
 | `lorien ide` | Open only the IDE |
 | `lorien build` | Generate `dist/` from `workflows/`, `nodes/` and `providers/` |
 | `lorien test` | Run every node case and saved request |
+| `lorien types` | Write `.lorien/types/providers.d.ts` so nodes see each provider's type |
 | `lorien import-openapi` | Generate typed client nodes from an OpenAPI 3.x spec |
-| `lorien init` | Add `AGENTS.md` to an existing project |
+| `lorien init` | Add `AGENTS.md` and the Claude Code skill to an existing project |
 
 </details>
 

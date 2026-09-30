@@ -39,11 +39,12 @@ describe("runInit", () => {
     expect(readFileSync(join(dir, "AGENTS.md"), "utf-8")).toMatch(/lorien/)
   })
 
-  it("uses the directory basename as the project name", async () => {
-    // dir is /tmp/lorien-init-xxxxxx — basename starts with lorien-init-
+  it("writes the same guide create-lorien scaffolds, plus the Claude Code skill", async () => {
+    const { renderAgentsMd } = await import("create-lorien/templates")
     await runInit({ root: dir, force: false })
-    const content = readFileSync(join(dir, "AGENTS.md"), "utf-8")
-    const basename = dir.split(/[\\/]/).pop()!
-    expect(content).toMatch(new RegExp(`# AI agent guide for ${basename}`))
+    expect(readFileSync(join(dir, "AGENTS.md"), "utf-8")).toBe(renderAgentsMd())
+    expect(readFileSync(join(dir, ".claude/skills/lorien-api/SKILL.md"), "utf-8")).toMatch(
+      /^---\nname: lorien-api/,
+    )
   })
 })

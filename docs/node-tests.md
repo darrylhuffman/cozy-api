@@ -49,8 +49,9 @@ that the workflow uses gets a group; the selected node's group opens first.
   exact match). The output must also fit the node's `outputs` schema.
 - `expect.error` passes when the node throws and the message contains the text (`""`
   accepts any error).
-- Services come from `lorien.config.ts`. `mocks` replaces a whole service for that case;
-  each method is `{ "returns": value }` or `{ "throws": "message" }`.
+- Providers come from `providers/`. `mocks` replaces a whole provider for that case with
+  just the listed methods; each is `{ "returns": value }` or `{ "throws": "message" }`,
+  returned (or thrown) synchronously, so it stands in for sync and async clients alike.
 
 ## In CI
 

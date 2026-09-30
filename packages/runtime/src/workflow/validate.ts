@@ -1,3 +1,4 @@
+import { parseWhen } from "./dependencies.js"
 import { parseReference } from "./reference.js"
 import type { WorkflowFile } from "./types.js"
 
@@ -9,7 +10,7 @@ export interface ValidationError {
 
 export interface ValidationResult {
   errors: ValidationError[]
-  /** Adjacency: dependencies of each node (referenced nodes + after listings). */
+  /** Adjacency: dependencies of each node (referenced nodes, `when`, and `after`). */
   depsByNode: Map<string, Set<string>>
 }
 
@@ -73,6 +74,25 @@ export function validateWorkflow(wf: WorkflowFile): ValidationResult {
             deps.add(ref.nodeId)
           }
         }
+      }
+    }
+
+    if (instance.when !== undefined) {
+      const when = parseWhen(instance.when)
+      if (!when) {
+        errors.push({
+          nodeId,
+          field: "when",
+          message: `\`when\` must be a node reference, optionally starting with "!", got: ${JSON.stringify(instance.when)}`,
+        })
+      } else if (!wf.nodes[when.ref.nodeId]) {
+        errors.push({
+          nodeId,
+          field: "when",
+          message: `references unknown node \`${when.ref.nodeId}\``,
+        })
+      } else {
+        deps.add(when.ref.nodeId)
       }
     }
 

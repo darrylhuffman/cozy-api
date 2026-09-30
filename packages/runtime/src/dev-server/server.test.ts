@@ -179,7 +179,10 @@ describe("mountWorkflows with debug integration", () => {
 
     expect(res.status).toBe(500)
     const body = await res.json()
-    expect(body).toMatchObject({ error: expect.stringContaining("boom: kaboom") })
+    expect(body).toMatchObject({
+      error: "Internal Server Error",
+      detail: expect.stringContaining("boom: kaboom"),
+    })
 
     expect(onError).toHaveBeenCalledOnce()
     expect(onError.mock.calls[0][0]).toBe("run-error-99")

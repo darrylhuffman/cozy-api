@@ -1,4 +1,4 @@
-import type { Server as HttpServer, IncomingMessage } from "node:http"
+import type { IncomingMessage } from "node:http"
 import type { Duplex } from "node:stream"
 import type { Hono } from "hono"
 import { cors } from "hono/cors"
@@ -52,8 +52,12 @@ export function mountAgentBroker(app: Hono, opts: MountAgentBrokerOptions): void
 export interface AttachAgentBrokerOptions {
   /** Same Hono app that was passed to mountAgentBroker. */
   app: Hono
-  /** Node HTTP server (e.g. returned by @hono/node-server's `serve`). */
-  server: HttpServer
+  /**
+   * The Node server to take WebSocket upgrades from: an `http.Server`, or
+   * whatever @hono/node-server's `serve` returns.
+   */
+  // biome-ignore lint/suspicious/noExplicitAny: matches Node's EventEmitter listener type.
+  server: { on(event: string, listener: (...args: any[]) => void): unknown }
   projectRoot: string
   /** Test injection: override spawnClaude args without touching production code. */
   spawnOverride?: () => Pick<SpawnClaudeOptions, "command" | "argsOverride">

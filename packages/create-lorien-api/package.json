@@ -1,7 +1,7 @@
 {
   "name": "create-lorien",
   "version": "0.1.1",
-  "description": "Scaffold a new lorien project — npx create-lorien <name>",
+  "description": "Scaffold a new lorien project \u2014 npx create-lorien <name>",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -23,6 +23,13 @@
     "create-lorien": "./dist/cli.js"
   },
   "main": "./dist/cli.js",
+  "exports": {
+    ".": "./dist/cli.js",
+    "./templates": {
+      "types": "./dist/templates.d.ts",
+      "default": "./dist/templates.js"
+    }
+  },
   "files": [
     "dist",
     "README.md"

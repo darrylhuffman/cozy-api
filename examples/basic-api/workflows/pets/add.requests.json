@@ -102,7 +102,7 @@
         },
         {
           "target": "body",
-          "path": "error",
+          "path": "detail",
           "op": "contains",
           "value": "database is locked"
         },

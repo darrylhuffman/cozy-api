@@ -20,6 +20,33 @@ describe("ide command — registration smoke", () => {
   })
 })
 
+describe("resolveTsxEsmApi", () => {
+  it("picks tsx's ESM api entry, not the CommonJS one", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lorien-tsx-"))
+    try {
+      writeFileSync(join(dir, "package.json"), "{}")
+      mkdirSync(join(dir, "node_modules/tsx"), { recursive: true })
+      writeFileSync(
+        join(dir, "node_modules/tsx/package.json"),
+        JSON.stringify({
+          name: "tsx",
+          exports: {
+            "./package.json": "./package.json",
+            "./esm/api": {
+              import: { default: "./dist/esm/api/index.mjs" },
+              require: { default: "./dist/esm/api/index.cjs" },
+            },
+          },
+        }),
+      )
+      const { resolveTsxEsmApi } = await import("./ide.js")
+      expect(resolveTsxEsmApi(dir)).toBe(join(dir, "node_modules/tsx/dist/esm/api/index.mjs"))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe("PUT /api/workspace/file", () => {
   let dir: string
 

@@ -50,6 +50,12 @@ export function emitIndex(opts: EmitIndexOptions): EmitIndexResult {
 
   lines.push("")
   lines.push(`const app = new Hono()`)
+  // Same JSON body as \`lorien dev\`, minus the message, which is logged instead.
+  lines.push(`app.onError((err, c) => {`)
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted as-is into generated code.
+  lines.push("  console.error(`[lorien] ${c.req.method} ${c.req.path} failed:`, err)")
+  lines.push(`  return c.json({ error: "Internal Server Error" }, 500)`)
+  lines.push(`})`)
   for (const ident of idents) {
     lines.push(`${ident}(app)`)
   }
