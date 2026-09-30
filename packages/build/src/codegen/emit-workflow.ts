@@ -140,6 +140,8 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   }
 }
 
+const VARIABLE = "@core/variable"
+
 interface TriggerInfo {
   nodeId: string
   path: string
@@ -247,10 +249,20 @@ function renderRun(
     `export async function ${runFnName(trigger.nodeId)}(trigger: HttpTrigger, services: unknown): Promise<WorkflowResult> {`,
   )
   lines.push(`  const ${outputsVar(trigger.nodeId)} = trigger`)
+  // Variables are constants: their value is written straight into the code.
+  const variableIds = [...sliceIds].filter((id) => workflow.nodes[id]?.uses === VARIABLE).sort()
+  for (const id of variableIds) {
+    const value = workflow.nodes[id]?.values?.value
+    lines.push(
+      `  const ${outputsVar(id)} = { value: ${value === undefined ? "undefined" : JSON.stringify(value)} }`,
+    )
+  }
 
   let waveNum = 0
   for (const wave of waves) {
-    const interesting = wave.filter((id) => id !== trigger.nodeId)
+    const interesting = wave.filter(
+      (id) => id !== trigger.nodeId && workflow.nodes[id]?.uses !== VARIABLE,
+    )
     if (interesting.length === 0) continue
     waveNum++
 

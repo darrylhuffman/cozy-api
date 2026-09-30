@@ -583,3 +583,46 @@ export async function openScope(ctx) { return { values: { tag: "scoped:" + ctx.r
     })
   }
 })
+
+describe("emitWorkflow — variables", () => {
+  it("writes a variable's value into the code and passes it to its readers", async () => {
+    const workflow = wf({
+      lorien: 1,
+      nodes: {
+        req: { uses: "@core/http-request", values: { path: "/greet", method: "GET" } },
+        role: { uses: "@core/variable", values: { value: "admin" } },
+        limits: { uses: "@core/variable", values: { value: { max: 3, tags: ["a"] } } },
+        greet: {
+          uses: "./nodes/greet",
+          in: { name: "req.query.name", role: "role.value", max: "limits.value.max" },
+        },
+        res: { uses: "@core/response", in: { body: "greet.text" } },
+      },
+    })
+    const { source, importedNodes } = emitWorkflow({ workflow, relativePath: "greet" })
+    expect(importedNodes).toEqual(["./nodes/greet"])
+    expect(source).toContain(`const role_outputs = { value: "admin" }`)
+    expect(source).not.toMatch(/Wave \d+: .*role/)
+
+    const dir = mkdtempSync(join(tmpdir(), "lorien-emit-var-"))
+    try {
+      mkdirSync(join(dir, "dist", "workflows"), { recursive: true })
+      mkdirSync(join(dir, "nodes"), { recursive: true })
+      writeFileSync(join(dir, "dist", "providers.gen.js"), "export const singletons = {}\n")
+      writeFileSync(
+        join(dir, "nodes", "greet.js"),
+        `export default { inputs: { parse: (v) => v }, run: async ({ name, role, max }) => ({ text: name + " is " + role + " (" + max + ")" }) }\n`,
+      )
+      const genPath = join(dir, "dist", "workflows", "greet.gen.ts")
+      writeFileSync(genPath, source)
+      const { Hono } = await import("hono")
+      const gen = await import(pathToFileURL(genPath).href)
+      const app = new Hono()
+      gen.register(app)
+      const res = await app.request("/greet?name=Ada")
+      expect(await res.json()).toBe("Ada is admin (3)")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

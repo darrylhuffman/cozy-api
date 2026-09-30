@@ -48,6 +48,7 @@ import { addNode } from "./add-node"
 import { CanvasContextMenu } from "./canvas-context-menu"
 import { CanvasToolbar, type SaveStatus } from "./canvas-toolbar"
 import { CommandPalette } from "./command-palette"
+import { ConnectionLine } from "./connection-line"
 import { removeMappings } from "./delete-edge"
 import { deleteNode } from "./delete-node"
 import { derivePorts, type NodePorts } from "./derive-ports"
@@ -65,6 +66,15 @@ import { extractReferences } from "./parse-references"
 import { PathEdge, type PathMapping } from "./path-edge"
 import { resetNodeConnections } from "./reset-node-connections"
 import { ShortcutsDialog } from "./shortcuts-dialog"
+import { VariableNode } from "./variable-node"
+import {
+  extractVariable,
+  schemaAtPath,
+  VARIABLE_USES,
+  variableKind,
+  variableSchema,
+  variableTargets,
+} from "./variables"
 import { nodeTint, ROOT_HANDLE_ID, WorkflowNode, type WorkflowNodeData } from "./workflow-node"
 
 interface Props {
@@ -95,7 +105,10 @@ const minimapStroke = (node: RFNode) => minimapTint(node)
 
 const DELETE_KEYS = ["Delete", "Backspace"]
 
-const nodeTypes: NodeTypes = { workflow: WorkflowNode as NodeTypes[string] }
+const nodeTypes: NodeTypes = {
+  workflow: WorkflowNode as NodeTypes[string],
+  variable: VariableNode as NodeTypes[string],
+}
 const edgeTypes: EdgeTypes = { path: PathEdge as EdgeTypes[string] }
 
 type SaveState = "idle" | "saving" | "saved" | "error"
@@ -672,6 +685,23 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       // expanded/collapsed state back to empty sets.
       const existingExp = expansionRef.current.get(id)
       const bp = breakpointDataFor(breakpointsRef.current, path, id)
+      if (instance.uses === VARIABLE_USES) {
+        return {
+          id,
+          type: "variable",
+          position: view ?? autoPosition(i),
+          dragHandle: ".node-drag-handle",
+          data: {
+            id,
+            instance,
+            schema: variableSchema(workflow, schemas, id),
+            targets: variableTargets(workflow, id),
+            onValueChange: (value: unknown) => onInputValueChange(id, "value", value),
+            nodeStatus: nodeStatusesRef.current.get(id),
+            issues: issuesByNode.get(id),
+          },
+        }
+      }
       return {
         id,
         type: "workflow",
@@ -1201,6 +1231,41 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
   connectRef.current = connect
   const onConnect = useCallback((conn: Connection) => connect(conn), [connect])
 
+  /**
+   * An input's handle let go over empty canvas becomes a variable: typed from
+   * that input's schema, placed where it was dropped and wired to the input.
+   */
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      const from = state.fromHandle
+      if (state.isValid || state.toNode || !from || from.type !== "target") return
+      const wf = workflowRef.current
+      const target = from.nodeId
+      const node = wf?.nodes[target]
+      if (!wf || !node || node.uses === VARIABLE_USES) return
+      const portId = from.id === ROOT_HANDLE_ID ? "" : (from.id ?? "")
+      // A whole-input variable would replace every binding the node has.
+      const bound = typeof node.in === "string" || Object.keys(node.in ?? {}).length > 0
+      if (portId === "" && bound) return
+      const schema = schemaAtPath(schemas[node.uses]?.inputs, portId)
+      const point = "changedTouches" in event ? event.changedTouches[0] : event
+      if (!point) return
+      const drop = screenToFlowPosition({ x: point.clientX, y: point.clientY })
+      // Put the variable's output handle (top right) under the pointer.
+      const width = variableKind(schema, undefined) === "json" ? 300 : 206
+      const result = extractVariable(wf, {
+        target,
+        portId,
+        schema,
+        position: { x: Math.round(drop.x - width), y: Math.round(drop.y - 16) },
+      })
+      if (!result) return
+      applyWorkflow(result.workflow)
+      setSelected(result.id)
+    },
+    [applyWorkflow, schemas, screenToFlowPosition, setSelected],
+  )
+
   // Live file events. Changes to this workflow flow into the draft: a clean
   // tab reloads (as an undoable step), a dirty tab keeps its edits and shows
   // a conflict notice. (Node source changes refresh schemas via useSchemas.)
@@ -1288,6 +1353,8 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
             edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
             onConnect={onConnect}
+            onConnectEnd={onConnectEnd}
+            connectionLineComponent={ConnectionLine}
             onNodesDelete={onNodesDelete}
             deleteKeyCode={DELETE_KEYS}
             onEdgesDelete={onEdgesDelete}

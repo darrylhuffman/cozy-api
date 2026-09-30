@@ -92,6 +92,7 @@ Rules:
 - Keys in \`in\` must match the target node's \`inputs\` schema.
 - Values in \`in\` are \`<nodeId>.<outputField>\` references (or just \`<nodeId>\` to pass the whole output object).
 - No cycles.
+- Fixed inputs go under \`values\` (e.g. \`"values": { "status": 201 }\`). To share one value between several inputs, add a variable: \`"role": { "uses": "@core/variable", "values": { "value": "admin" } }\`, read as \`role.value\`.
 - A \`view\` block (when present) is IDE-only layout metadata. After hand-editing, you may set it to \`null\` and the IDE will re-lay-out.
 
 ## Authoring recipes
