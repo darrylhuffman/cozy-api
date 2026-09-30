@@ -1,8 +1,9 @@
 import type { IncomingMessage } from "node:http"
+import { createRequire } from "node:module"
 import type { Duplex } from "node:stream"
 import type { Hono } from "hono"
 import { cors } from "hono/cors"
-import { type WebSocket, WebSocketServer } from "ws"
+import type { WebSocket, WebSocketServer } from "ws"
 import { isLoopbackOriginString } from "../dev-server/cors.js"
 import { AvailabilityProbe } from "./availability.js"
 import { type ClaudeProcess, type SpawnClaudeOptions, spawnClaude } from "./subprocess.js"
@@ -79,7 +80,7 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
   const subs = new SubscriberRegistry()
   const chats = new Map<string, ChatLifecycle>()
 
-  const wss = new WebSocketServer({ noServer: true })
+  const wss = new (loadWs().WebSocketServer)({ noServer: true })
 
   const sockets = new WeakMap<WebSocket, SocketLike>()
 
@@ -288,4 +289,12 @@ export function attachAgentBroker(opts: AttachAgentBrokerOptions): void {
       }
     }
   })
+}
+
+/**
+ * ws is loaded when a socket server is attached, not at import, so a built
+ * app that bundles this package (for defineNode) doesn't carry ws with it.
+ */
+function loadWs(): { WebSocketServer: typeof WebSocketServer } {
+  return createRequire(import.meta.url)("ws")
 }

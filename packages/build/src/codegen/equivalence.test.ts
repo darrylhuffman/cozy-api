@@ -81,4 +81,11 @@ describe("equivalence: interpreter == codegen", () => {
     expect(missing.status).toBe(400)
     expect((await missing.json()).error).toBe("Invalid request")
   })
+
+  it("keeps ws and the dev server out of the built bundle", async () => {
+    // Nodes import defineNode from the runtime; the bundle must not drag in
+    // the runtime's dev-only pieces (ws, the debug socket, the agent broker).
+    const bundle = await readFile(join(distDir, "index.js"), "utf-8")
+    expect(bundle).not.toMatch(/WebSocketServer|permessage-deflate/)
+  })
 })
