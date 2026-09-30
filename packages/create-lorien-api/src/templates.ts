@@ -327,7 +327,9 @@ export function renderPackageJson(ctx: TemplateContext): string {
       "@types/node": "^25.9.1",
       tsx: "^4.20.0",
       typescript: "^6.0.3",
-      vitest: "^4.1.7",
+      // vitest 4.1 crashes npm 10's installer ("reading 'edgesOut'"), and npm 10
+      // ships with Node 22, so `npm create lorien` stays on 4.0 for now.
+      vitest: "~4.0.18",
     },
   }
   return `${JSON.stringify(pkg, null, 2)}\n`
