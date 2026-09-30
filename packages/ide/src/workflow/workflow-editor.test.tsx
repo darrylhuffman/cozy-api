@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type React from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { WorkflowFile } from "@/lib/api"
@@ -490,12 +490,12 @@ describe("WorkflowEditor", () => {
       expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
     })
 
-    // The save node shows a single root input port labeled "input" — children
-    // (email/password) live behind the root chevron and only render when expanded.
+    // The save node shows a single root input port labeled "input", expanded
+    // so its fields (email/password) and their values show on the card.
     const saveNodeEl = screen.getByTestId("rf-node-save")
     expect(saveNodeEl.textContent).toContain("input")
-    expect(saveNodeEl.textContent).not.toContain("email")
-    expect(saveNodeEl.textContent).not.toContain("password")
+    expect(saveNodeEl.textContent).toContain("email")
+    expect(saveNodeEl.textContent).toContain("password")
 
     // The save node should also show its output port: "user"
     expect(saveNodeEl).toContainElement(screen.getByText("user"))
@@ -519,8 +519,8 @@ describe("WorkflowEditor", () => {
   describe("edge routing & expansion state", () => {
     it("re-routes edges to the visible parent when target inputs collapse", async () => {
       // Provide a schema so `save` gets a non-trivial inputs tree (email/password
-      // as top-level fields of the input root). `save.in` is fully satisfied, so
-      // the editor's initial expansion seeds the inputs as COLLAPSED.
+      // as top-level fields of the input root). Inputs start expanded; the
+      // test collapses them.
       vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
         "./nodes/users/save-user": {
           inputs: {
@@ -551,7 +551,14 @@ describe("WorkflowEditor", () => {
         expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
       })
 
-      // After schemas resolve, edges should be re-routed. The reference
+      // Expanded: each binding routes to its own field.
+      await waitFor(() => {
+        const edges = capturedEdges?.filter((e) => e.source === "request" && e.target === "save")
+        expect(edges?.map((e) => e.targetHandle).sort()).toEqual(["email", "password"])
+      })
+      fireEvent.click(within(screen.getByTestId("rf-node-save")).getByTestId("chevron-"))
+
+      // After collapsing, edges should be re-routed. The reference
       // request.body.email → save.email has its target collapsed (because
       // save's inputs are fully satisfied → root not expanded) so the edge
       // terminates at the root ("") instead of "email". Both email AND

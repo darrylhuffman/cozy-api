@@ -550,6 +550,8 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       if (!node) return
       const baseValues = node.values ? { ...node.values } : {}
       const nextValues: Record<string, unknown> = { ...baseValues, [portId]: value }
+      // Clearing a value falls back to the schema default.
+      if (value === undefined) delete nextValues[portId]
       const next: WorkflowFile = {
         ...wf,
         nodes: { ...wf.nodes, [nodeId]: { ...node, values: nextValues } },

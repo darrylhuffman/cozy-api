@@ -24,6 +24,8 @@ export interface PortNode {
    * initial-expansion logic to keep inferred branches collapsed by default.
    */
   inferred?: boolean
+  /** True when the parent schema lists this field in `required`. */
+  required?: boolean
 }
 
 /**
@@ -33,6 +35,7 @@ export interface PortNode {
 export function schemaToTree(schema: JsonSchema | undefined, parentPath = ""): PortNode[] {
   if (!schema || schema.type !== "object" || !schema.properties) return []
   const out: PortNode[] = []
+  const required = new Set(Array.isArray(schema.required) ? (schema.required as string[]) : [])
   for (const [key, sub] of Object.entries(schema.properties)) {
     const id = parentPath ? `${parentPath}.${key}` : key
     const isObject = sub?.type === "object" && Boolean(sub.properties)
@@ -43,6 +46,7 @@ export function schemaToTree(schema: JsonSchema | undefined, parentPath = ""): P
       children,
       isLeaf: !isObject,
     }
+    if (required.has(key)) node.required = true
     // Attach schema to leaf ports so the node UI can pick the right widget.
     if (!isObject) node.schema = sub
     out.push(node)
