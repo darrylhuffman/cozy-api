@@ -242,6 +242,18 @@ describe("useDebugSessionStore (multi-active)", () => {
     expect(useDebugSessionStore.getState().breakpoints).not.toContainEqual(bp)
   })
 
+  it("toggleBreakpoint sends the new set to the dev server", () => {
+    const sent: unknown[] = []
+    useDebugSessionStore.getState().setWsSender((msg) => sent.push(msg))
+    const bp = { workflowPath: "workflows/a.workflow", nodeId: "n1", kind: "before" as const }
+    useDebugSessionStore.getState().toggleBreakpoint(bp)
+    useDebugSessionStore.getState().toggleBreakpoint(bp)
+    expect(sent).toEqual([
+      { type: "set-breakpoints", breakpoints: [bp] },
+      { type: "set-breakpoints", breakpoints: [] },
+    ])
+  })
+
   it("hydrateBreakpoints loads from localStorage", () => {
     const bp = {
       workflowPath: "workflows/a.workflow",
