@@ -49,6 +49,8 @@ export function SavedRequests({ workflowPath }: { workflowPath: string }) {
   const passed = ran.filter((r) => r.passed).length
 
   const runOne = async (req: SavedRequest) => {
+    // Load it into the builder below so its result shows there as it arrives.
+    openSavedRequest(req)
     setRunningId(req.id)
     try {
       await runSaved(workflowPath, req)
