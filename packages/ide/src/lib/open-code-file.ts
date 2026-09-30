@@ -2,7 +2,7 @@ import { useDockviewApi } from "@/store/dockview-api"
 import { useTabsStore } from "@/store/tabs"
 
 /**
- * Open a code file in the Code panel, or refocus the existing tab if already
+ * Open a code file in the editor, or refocus the existing tab if already
  * open. Uses the file path as the stable tab id so multiple callers (files
  * panel, View-source context-menu action) always land on the same tab.
  */
@@ -15,5 +15,5 @@ export function openCodeFile(path: string): void {
     path,
   })
   const api = useDockviewApi.getState().api
-  api?.getPanel("code")?.api.setActive()
+  api?.getPanel("editor")?.api.setActive()
 }

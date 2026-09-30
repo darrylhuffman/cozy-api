@@ -24,7 +24,7 @@ export function RunTab() {
       <div className="flex items-center justify-between gap-2">
         <EnvironmentPicker />
         <div className="shrink-0 text-[10px]">
-          <span className={connected ? "text-green-600" : "text-muted-foreground"}>
+          <span className={connected ? "text-success" : "text-muted-foreground"}>
             {connected ? "● debug connected" : "○ debug disconnected"}
           </span>
         </div>

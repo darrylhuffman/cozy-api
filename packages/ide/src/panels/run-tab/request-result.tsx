@@ -53,9 +53,7 @@ export function RequestResult({
         <span
           className={cn(
             "rounded px-1.5 py-0.5 font-medium",
-            result.passed
-              ? "bg-green-500/15 text-green-700 dark:text-green-400"
-              : "bg-red-500/15 text-red-700 dark:text-red-400",
+            result.passed ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
           )}
         >
           {result.passed ? "Passed" : "Failed"}
@@ -72,17 +70,15 @@ export function RequestResult({
           <button
             type="button"
             onClick={onAskAi}
-            className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-violet-600 hover:bg-accent dark:text-violet-400"
+            className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ai hover:bg-accent"
           >
             <Sparkles className="h-3 w-3" /> Ask AI why it failed
           </button>
         )}
       </div>
-      {result.error && (
-        <div className="text-red-700 dark:text-red-400">Request failed: {result.error}</div>
-      )}
+      {result.error && <div className="text-destructive">Request failed: {result.error}</div>}
       {result.missingVariables.length > 0 && (
-        <div className="text-amber-700 dark:text-amber-400">
+        <div className="text-warning">
           Undefined variables: {result.missingVariables.map((v) => `{{${v}}}`).join(", ")}. Add them
           to the environment, or capture them from an earlier request.
         </div>
@@ -94,11 +90,14 @@ export function RequestResult({
             <li key={i} className="flex items-start gap-1.5">
               {a.pass ? (
                 <CheckCircle2
-                  className="mt-px h-3.5 w-3.5 shrink-0 text-green-600"
+                  className="mt-px h-3.5 w-3.5 shrink-0 text-success"
                   aria-label="passed"
                 />
               ) : (
-                <XCircle className="mt-px h-3.5 w-3.5 shrink-0 text-red-600" aria-label="failed" />
+                <XCircle
+                  className="mt-px h-3.5 w-3.5 shrink-0 text-destructive"
+                  aria-label="failed"
+                />
               )}
               <span className={a.pass ? "text-muted-foreground" : ""}>{a.message}</span>
             </li>

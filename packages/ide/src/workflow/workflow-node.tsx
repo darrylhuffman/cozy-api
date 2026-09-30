@@ -162,7 +162,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
       data-testid="node-card"
       className={cn(
         "rounded-md border border-border bg-card text-card-foreground shadow-sm hover:brightness-98 dark:hover:brightness-115",
-        errorCount > 0 ? "border-red-500/70" : warningCount > 0 && "border-amber-500/70",
+        errorCount > 0 ? "border-destructive/70" : warningCount > 0 && "border-warning/70",
         isSelected && "ring-2 ring-primary",
         statusClass,
       )}
@@ -181,7 +181,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         {nodeBreakpoint?.before && (
           <span
             data-testid="node-breakpoint-dot-before"
-            className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-red-600"
+            className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-destructive"
             role="img"
             aria-label="Breakpoint before this node"
           />
@@ -189,7 +189,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         {nodeBreakpoint?.after && (
           <span
             data-testid="node-breakpoint-dot-after"
-            className="absolute -right-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-red-600"
+            className="absolute -right-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-destructive"
             role="img"
             aria-label="Breakpoint after this node"
           />
@@ -421,7 +421,7 @@ function PortRow({
         {isOutput && portBreakpoints?.has(port.id) && (
           <span
             data-testid={`port-breakpoint-${port.id}`}
-            className="absolute rounded-full bg-red-600"
+            className="absolute rounded-full bg-destructive"
             style={{ right: -4, top: "50%", transform: "translateY(-50%)", width: 8, height: 8 }}
           />
         )}
@@ -604,9 +604,7 @@ function IssueBadge({ issues, errorCount }: { issues: Diagnostic[]; errorCount: 
       title={summary}
       className={cn(
         "inline-flex items-center gap-0.5 rounded px-1 text-[10px] font-medium",
-        isError
-          ? "bg-red-500/15 text-red-600 dark:text-red-400"
-          : "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+        isError ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning",
       )}
     >
       <Icon className="h-3 w-3" aria-hidden />
@@ -628,9 +626,7 @@ function TestsBadge({ tests }: { tests: NonNullable<WorkflowNodeData["tests"]> }
       title={label}
       className={cn(
         "inline-flex items-center gap-0.5 rounded px-1 text-[10px] font-medium",
-        ok
-          ? "bg-green-500/15 text-green-700 dark:text-green-400"
-          : "bg-red-500/15 text-red-600 dark:text-red-400",
+        ok ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
       )}
     >
       {ok ? (

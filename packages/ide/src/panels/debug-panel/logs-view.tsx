@@ -78,11 +78,11 @@ function LogRow({ row }: { row: DisplayRow }) {
   const [open, setOpen] = useState(false)
   const tone =
     row.level === "error"
-      ? "text-red-700"
+      ? "text-destructive"
       : row.level === "warn"
-        ? "text-yellow-700"
+        ? "text-primary"
         : row.level === "info"
-          ? "text-blue-700"
+          ? "text-info"
           : "text-foreground"
   return (
     <div data-testid="log-row">

@@ -2,21 +2,22 @@ import type { AddPanelOptions, DockviewApi } from "dockview-react"
 
 const STORAGE_KEY = "lorien-ide-layout"
 
-export type PaneId = "files" | "workflow" | "code" | "inspector" | "agents" | "debug"
+/** Bumped when the set of panes changes; older saved layouts reset to default. */
+const LAYOUT_VERSION = 2
 
-export const PANE_IDS = ["files", "workflow", "code", "inspector", "agents", "debug"] as const
+export type PaneId = "files" | "editor" | "inspector" | "debug"
+
+export const PANE_IDS = ["files", "editor", "inspector", "debug"] as const
 
 export const PANE_TITLES: Record<PaneId, string> = {
-  files: "Files",
-  workflow: "Workflow",
-  code: "Code",
+  files: "Explorer",
+  editor: "Editor",
   inspector: "Inspector",
-  agents: "Agents",
   debug: "Debug",
 }
 
 export interface SavedLayout {
-  version: 1
+  version: typeof LAYOUT_VERSION
   state: ReturnType<DockviewApi["toJSON"]>
 }
 
@@ -29,7 +30,7 @@ export function loadSavedLayout(): SavedLayout | null {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as SavedLayout
-    if (parsed.version !== 1 || !parsed.state) return null
+    if (parsed.version !== LAYOUT_VERSION || !parsed.state) return null
     return parsed
   } catch {
     return null
@@ -41,7 +42,7 @@ export function loadSavedLayout(): SavedLayout | null {
  */
 export function saveLayout(api: DockviewApi): void {
   try {
-    const payload: SavedLayout = { version: 1, state: api.toJSON() }
+    const payload: SavedLayout = { version: LAYOUT_VERSION, state: api.toJSON() }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
   } catch {
     // localStorage may be unavailable in some browsers (private mode, quota)
@@ -50,77 +51,57 @@ export function saveLayout(api: DockviewApi): void {
 }
 
 /**
- * Builds the default Layout B arrangement.
+ * Builds the default layout.
  *
- * Files sidebar: 250 px (left)
- * Inspector:     400 px (right)
- * Workflow/Code: remaining space (centre, same dockview group — top-tabs)
+ * Explorer: left column
+ * Editor:   centre (workflows and code share one tab strip)
+ * Debug:    under the editor
+ * Inspector: right column (Inspect · Tests · Run · Agents)
  */
 export function buildDefaultLayout(api: DockviewApi): void {
   api.addPanel({
     id: "files",
     component: "files",
-    title: "Files",
+    title: PANE_TITLES.files,
     initialWidth: FILES_WIDTH,
   })
   api.addPanel({
-    id: "workflow",
-    component: "workflow",
-    title: "Workflow",
+    id: "editor",
+    component: "editor",
+    title: PANE_TITLES.editor,
     position: { referencePanel: "files", direction: "right" },
-  })
-  api.addPanel({
-    id: "code",
-    component: "code",
-    title: "Code",
-    // "within" places this panel in the same group as "workflow",
-    // giving dockview's native "Workflow | Code" tab strip at the top.
-    position: { referencePanel: "workflow", direction: "within" },
   })
   api.addPanel({
     id: "inspector",
     component: "inspector",
-    title: "Inspector",
-    position: { referencePanel: "code", direction: "right" },
+    title: PANE_TITLES.inspector,
+    position: { referencePanel: "editor", direction: "right" },
     initialWidth: INSPECTOR_WIDTH,
-  })
-  api.addPanel({
-    id: "agents",
-    component: "agents",
-    title: "Agents",
-    position: { referencePanel: "inspector", direction: "within" },
   })
   api.addPanel({
     id: "debug",
     component: "debug",
-    title: "Debug",
-    position: { referencePanel: "inspector", direction: "within" },
+    title: PANE_TITLES.debug,
+    position: { referencePanel: "editor", direction: "below" },
+    initialHeight: DEBUG_HEIGHT,
   })
-  // dockview only honours initialWidth for the first split, so pin the side
-  // columns explicitly; the editor group takes whatever is left.
+  // dockview only honours initial sizes for the first split, so pin the side
+  // columns and the bottom panel explicitly; the editor takes what is left.
   api.getPanel("files")?.api.setSize({ width: FILES_WIDTH })
   api.getPanel("inspector")?.api.setSize({ width: INSPECTOR_WIDTH })
-  // Workflow is the default editor tab and Inspector the default side tab —
-  // dockview otherwise activates the most recently added panel in each group.
-  api.getPanel("workflow")?.api.setActive()
-  api.getPanel("inspector")?.api.setActive()
+  api.getPanel("debug")?.api.setSize({ height: DEBUG_HEIGHT })
+  api.getPanel("editor")?.api.setActive()
 }
 
-export const FILES_WIDTH = 250
-export const INSPECTOR_WIDTH = 400
+export const FILES_WIDTH = 248
+export const INSPECTOR_WIDTH = 380
+export const DEBUG_HEIGHT = 240
 
 export { STORAGE_KEY }
 
 /**
- * Reopens a pane that was previously closed by the user.
- *
- * Position is chosen to join an existing tab group when possible:
- * - workflow/code prefer to dock `within` each other (single shared tab strip),
- *   falling back to sitting beside Files or Inspector.
- * - files docks to the left of any existing pane.
- * - inspector docks to the right of any existing pane.
- *
- * If no other panes exist, the panel is added fresh and dockview places it.
+ * Reopens a pane that was previously closed by the user, next to the panes
+ * that are still open.
  */
 export function reopenPanel(api: DockviewApi, id: PaneId): void {
   if (api.getPanel(id)) return
@@ -132,40 +113,33 @@ export function reopenPanel(api: DockviewApi, id: PaneId): void {
   }
 
   if (id === "files") {
-    const ref = api.getPanel("workflow") ?? api.getPanel("code") ?? api.getPanel("inspector")
+    const ref = api.getPanel("editor") ?? api.getPanel("debug") ?? api.getPanel("inspector")
     if (ref) options.position = { referencePanel: ref.id, direction: "left" }
-    options.initialWidth = 250
+    options.initialWidth = FILES_WIDTH
   } else if (id === "inspector") {
-    const ref = api.getPanel("code") ?? api.getPanel("workflow") ?? api.getPanel("files")
+    const ref = api.getPanel("editor") ?? api.getPanel("debug") ?? api.getPanel("files")
     if (ref) options.position = { referencePanel: ref.id, direction: "right" }
-    options.initialWidth = 400
-  } else if (id === "agents") {
-    // Prefer joining Inspector's group; fall back to a new pane on the right.
-    const inspector = api.getPanel("inspector")
-    if (inspector) {
-      options.position = { referencePanel: inspector.id, direction: "within" }
-    } else {
-      const ref = api.getPanel("code") ?? api.getPanel("workflow") ?? api.getPanel("files")
-      if (ref) options.position = { referencePanel: ref.id, direction: "right" }
-      options.initialWidth = 400
-    }
+    options.initialWidth = INSPECTOR_WIDTH
   } else if (id === "debug") {
-    const ref = api.getPanel("inspector") ?? api.getPanel("code") ?? api.getPanel("workflow")
-    if (ref) options.position = { referencePanel: ref.id, direction: "within" }
-    options.initialWidth = 400
+    const ref = api.getPanel("editor") ?? api.getPanel("files") ?? api.getPanel("inspector")
+    if (ref) options.position = { referencePanel: ref.id, direction: "below" }
+    options.initialHeight = DEBUG_HEIGHT
   } else {
-    // workflow or code — prefer joining the sibling editor group
-    const sibling: PaneId = id === "workflow" ? "code" : "workflow"
-    const siblingPanel = api.getPanel(sibling)
-    if (siblingPanel) {
-      options.position = { referencePanel: siblingPanel.id, direction: "within" }
-    } else if (api.getPanel("files")) {
+    // editor
+    if (api.getPanel("debug")) options.position = { referencePanel: "debug", direction: "above" }
+    else if (api.getPanel("files"))
       options.position = { referencePanel: "files", direction: "right" }
-    } else if (api.getPanel("inspector")) {
+    else if (api.getPanel("inspector"))
       options.position = { referencePanel: "inspector", direction: "left" }
-    }
   }
 
   api.addPanel(options)
   api.getPanel(id)?.api.setActive()
+}
+
+/** Opens (or focuses) a pane. */
+export function showPanel(api: DockviewApi, id: PaneId): void {
+  const panel = api.getPanel(id)
+  if (panel) panel.api.setActive()
+  else reopenPanel(api, id)
 }

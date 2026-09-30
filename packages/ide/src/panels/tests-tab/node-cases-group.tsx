@@ -119,8 +119,8 @@ export function NodeCasesGroup({
             className={cn(
               "rounded px-1.5 text-[10px] font-medium",
               summary.failed === 0
-                ? "bg-green-500/15 text-green-700 dark:text-green-400"
-                : "bg-red-500/15 text-red-700 dark:text-red-400",
+                ? "bg-success/15 text-success"
+                : "bg-destructive/15 text-destructive",
             )}
           >
             {summary.passed}/{summary.run} passed
@@ -139,7 +139,7 @@ export function NodeCasesGroup({
       {open && (
         <div className="flex flex-col gap-1 border-t px-2 py-1.5 text-xs">
           {entry?.error && (
-            <div role="alert" className="text-red-700 dark:text-red-400">
+            <div role="alert" className="text-destructive">
               {entry.error}
             </div>
           )}
@@ -158,8 +158,8 @@ export function NodeCasesGroup({
                         !r
                           ? "border border-muted-foreground/50"
                           : r.passed
-                            ? "bg-green-500"
-                            : "bg-red-500",
+                            ? "bg-success"
+                            : "bg-destructive",
                       )}
                     />
                     <button
@@ -194,7 +194,7 @@ export function NodeCasesGroup({
                   </div>
                   {r && !r.passed && (
                     <ul
-                      className="ml-4 text-[11px] text-red-700 dark:text-red-400"
+                      className="ml-4 text-[11px] text-destructive"
                       aria-label={`${c.name} failures`}
                     >
                       {r.failures.map((f) => (
@@ -204,7 +204,7 @@ export function NodeCasesGroup({
                         <button
                           type="button"
                           onClick={() => askAi(fixFailingCase({ uses, testCase: c, result: r }))}
-                          className="mt-0.5 flex items-center gap-1 rounded px-1 text-violet-600 hover:bg-accent dark:text-violet-400"
+                          className="mt-0.5 flex items-center gap-1 rounded px-1 text-ai hover:bg-accent"
                         >
                           <Sparkles className="h-3 w-3" /> Ask AI to fix
                         </button>
@@ -252,7 +252,7 @@ export function NodeCasesGroup({
               <button
                 type="button"
                 onClick={() => askAi(generateCases({ uses, schema, existing: cases }))}
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-violet-600 hover:bg-accent dark:text-violet-400"
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-ai hover:bg-accent"
               >
                 <Sparkles className="h-3 w-3" /> Write with AI
               </button>

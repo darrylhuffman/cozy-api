@@ -13,7 +13,11 @@ export interface OpenTab {
 
 interface TabsState {
   tabs: OpenTab[]
+  /** The tab shown in the editor area (workflows and code share one strip). */
+  activeId: string | null
+  /** Last active workflow tab — drives the Inspector, Tests and Run panels. */
   activeWorkflowId: string | null
+  /** Last active code tab. */
   activeCodeId: string | null
 
   openTab(tab: OpenTab): void
@@ -24,14 +28,15 @@ interface TabsState {
 
 /** Returns the state slice that tracks which tab is active for this tab's kind. */
 function activationUpdate(tab: OpenTab): Partial<TabsState> {
-  if (tab.kind === "workflow") return { activeWorkflowId: tab.id }
-  return { activeCodeId: tab.id }
+  if (tab.kind === "workflow") return { activeId: tab.id, activeWorkflowId: tab.id }
+  return { activeId: tab.id, activeCodeId: tab.id }
 }
 
 export const useTabsStore = create<TabsState>()(
   persist(
     (set, get) => ({
       tabs: [],
+      activeId: null,
       activeWorkflowId: null,
       activeCodeId: null,
 
@@ -54,27 +59,31 @@ export const useTabsStore = create<TabsState>()(
 
       closeTab(id) {
         set((s) => {
-          const target = s.tabs.find((t) => t.id === id)
+          const index = s.tabs.findIndex((t) => t.id === id)
+          const target = s.tabs[index]
           if (!target) return s
 
           const tabs = s.tabs.filter((t) => t.id !== id)
+          const next: Partial<TabsState> = { tabs }
 
-          if (target.kind === "workflow") {
-            const wasActive = s.activeWorkflowId === id
-            if (!wasActive) return { tabs }
+          // Per-kind pointers fall back to the last remaining tab of that kind.
+          if (target.kind === "workflow" && s.activeWorkflowId === id) {
             const remaining = tabs.filter((t) => t.kind === "workflow")
-            const activeWorkflowId =
-              remaining.length > 0 ? (remaining[remaining.length - 1]?.id ?? null) : null
-            return { tabs, activeWorkflowId }
+            next.activeWorkflowId = remaining[remaining.length - 1]?.id ?? null
+          }
+          if (target.kind === "node" && s.activeCodeId === id) {
+            const remaining = tabs.filter((t) => t.kind === "node")
+            next.activeCodeId = remaining[remaining.length - 1]?.id ?? null
           }
 
-          // node kind
-          const wasActive = s.activeCodeId === id
-          if (!wasActive) return { tabs }
-          const remaining = tabs.filter((t) => t.kind === "node")
-          const activeCodeId =
-            remaining.length > 0 ? (remaining[remaining.length - 1]?.id ?? null) : null
-          return { tabs, activeCodeId }
+          // The editor shows the neighbour that slid into the closed tab's
+          // place (or the one before it when the last tab closed).
+          if (s.activeId === id) {
+            const neighbour = tabs[index] ?? tabs[index - 1] ?? null
+            next.activeId = neighbour?.id ?? null
+            if (neighbour) Object.assign(next, activationUpdate(neighbour))
+          }
+          return next
         })
       },
 
@@ -92,31 +101,38 @@ export const useTabsStore = create<TabsState>()(
     }),
     {
       name: "lorien-ide-tabs",
-      version: 4,
+      version: 5,
       migrate(persistedState, fromVersion) {
         const state = persistedState as {
           tabs?: unknown
+          activeId?: unknown
           activeWorkflowId?: unknown
           activeCodeId?: unknown
         }
         if (fromVersion < 2) {
           // Drop all tabs from before this schema; their shape was incomplete
           // (missing path, and activeId is now split into activeWorkflowId / activeCodeId).
-          return { tabs: [], activeWorkflowId: null, activeCodeId: null }
+          return { tabs: [], activeId: null, activeWorkflowId: null, activeCodeId: null }
         }
         // v2 → v3: dirty field added (optional, defaults to undefined = clean). No migration needed.
         // v3 → v4: node tab ids now use the file path instead of the tree node id.
         //   Drop persisted node tabs whose id doesn't look like a file path (i.e.
         //   ids that start with "n-" are legacy tree node ids). Workflow tabs are
         //   unaffected.
+        let next = state
         if (fromVersion < 4) {
           const tabs = Array.isArray(state.tabs) ? state.tabs : []
           const cleaned = (tabs as Array<{ kind?: unknown; id?: unknown }>).filter(
             (t) => t.kind !== "node" || (typeof t.id === "string" && !t.id.startsWith("n-")),
           )
-          return { ...state, tabs: cleaned }
+          next = { ...next, tabs: cleaned }
         }
-        return state as never
+        // v4 → v5: workflows and code share one editor; show the workflow
+        // that was open, else the code file.
+        if (fromVersion < 5) {
+          next = { ...next, activeId: next.activeWorkflowId ?? next.activeCodeId ?? null }
+        }
+        return next as never
       },
     },
   ),

@@ -1,4 +1,5 @@
 import { ConfirmDialogHost } from "@/components/confirm-dialog-host"
+import { StatusBar } from "@/components/status-bar"
 import { Topbar } from "@/components/topbar"
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard"
 import { DockView } from "@/layout/dock-view"
@@ -11,6 +12,7 @@ export function App() {
       <div className="flex-1 overflow-hidden">
         <DockView />
       </div>
+      <StatusBar />
       <ConfirmDialogHost />
     </div>
   )

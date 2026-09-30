@@ -4,6 +4,7 @@ import { EditorNotice } from "@/components/editor-notice"
 import { fetchFile, saveFile } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
 import { isCodeDraftDirty, useCodeDrafts } from "@/store/code-drafts"
+import { useCommands } from "@/store/commands"
 import { useTabsStore } from "@/store/tabs"
 import { useThemeStore } from "@/store/theme"
 
@@ -110,6 +111,11 @@ export function CodeEditor({ path, tabId }: Props) {
   const saveRef = useRef(save)
   saveRef.current = save
 
+  useEffect(
+    () => useCommands.getState().register({ "file.save": { run: () => void saveRef.current() } }),
+    [],
+  )
+
   const onMount: OnMount = (editor, monaco) => {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       void saveRef.current()
@@ -153,7 +159,7 @@ export function CodeEditor({ path, tabId }: Props) {
         options={{
           minimap: { enabled: false },
           fontSize: 13,
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+          fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
           scrollBeyondLastLine: false,
           automaticLayout: true,
           tabSize: 2,
