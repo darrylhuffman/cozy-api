@@ -1,13 +1,16 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { useShallow } from "zustand/react/shallow"
+import type { GitRevision } from "@/lib/api"
 
 export interface OpenTab {
   id: string // file id from the tree
   title: string // display label
-  /** "node" is every code tab (nodes, providers, lib). */
-  kind: "workflow" | "node"
+  /** "node" is every code tab (nodes, providers, lib); "diff" compares two revisions of `path`. */
+  kind: "workflow" | "node" | "diff"
   path?: string // relative path from workspace root (e.g., "workflows/users/create.workflow")
+  /** For diff tabs: the older and newer revision. */
+  diff?: { base: GitRevision; head: GitRevision }
   dirty?: boolean // true when the tab has unsaved changes
 }
 
@@ -31,6 +34,7 @@ interface TabsState {
 /** Returns the state slice that tracks which tab is active for this tab's kind. */
 function activationUpdate(tab: OpenTab): Partial<TabsState> {
   if (tab.kind === "workflow") return { activeId: tab.id, activeWorkflowId: tab.id }
+  if (tab.kind === "diff") return { activeId: tab.id }
   return { activeId: tab.id, activeCodeId: tab.id }
 }
 

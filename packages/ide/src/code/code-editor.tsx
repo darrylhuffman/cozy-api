@@ -226,7 +226,7 @@ export function CodeEditor({ path, tabId }: Props) {
   )
 }
 
-function languageFor(path: string): string {
+export function languageFor(path: string): string {
   if (path.endsWith(".json") || path.endsWith(".workflow")) return "json"
   if (path.endsWith(".md")) return "markdown"
   return "typescript"

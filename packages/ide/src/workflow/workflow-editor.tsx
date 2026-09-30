@@ -24,12 +24,19 @@ import { nodeFileForUses } from "@darrylondil/lorien-runtime/cases"
 import { askAi } from "@/ai/ask"
 import { explainNode, fixProblems, freeform, generateCases } from "@/ai/prompts"
 import { EditorNotice } from "@/components/editor-notice"
-import { fetchWorkflowFile, saveFile, type WorkflowFile } from "@/lib/api"
+import {
+  fetchGitFile,
+  fetchWorkflowFile,
+  parseWorkflowContent,
+  saveFile,
+  type WorkflowFile,
+} from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
 import { openCodeFile } from "@/lib/open-code-file"
 import { useCommands } from "@/store/commands"
 import { confirmAction } from "@/store/confirm"
 import { type NodeStatus, useDebugSessionStore } from "@/store/debug-session"
+import { useGitStore } from "@/store/git"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
 import { useWorkspaceProviders } from "@/store/providers"
@@ -75,6 +82,7 @@ import {
   variableSchema,
   variableTargets,
 } from "./variables"
+import { diffWorkflows, type NodeDiffState } from "./workflow-diff"
 import { nodeTint, ROOT_HANDLE_ID, WorkflowNode, type WorkflowNodeData } from "./workflow-node"
 
 interface Props {
@@ -104,6 +112,11 @@ const minimapFill = (node: RFNode) => `color-mix(in srgb, ${minimapTint(node)} 4
 const minimapStroke = (node: RFNode) => minimapTint(node)
 
 const DELETE_KEYS = ["Delete", "Backspace"]
+
+/** The header mark for a node that differs from the last commit. */
+function markFor(state: NodeDiffState | undefined): "added" | "changed" | undefined {
+  return state === "added" || state === "changed" ? state : undefined
+}
 
 const nodeTypes: NodeTypes = {
   workflow: WorkflowNode as NodeTypes[string],
@@ -699,6 +712,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
             onValueChange: (value: unknown) => onInputValueChange(id, "value", value),
             nodeStatus: nodeStatusesRef.current.get(id),
             issues: issuesByNode.get(id),
+            gitChange: markFor(changeMarksRef.current[id]),
           },
         }
       }
@@ -725,12 +739,60 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
           tests: testsByUsesRef.current.get(instance.uses) ?? null,
           nodeBreakpoint: bp.nodeBreakpoint,
           portBreakpoints: bp.portBreakpoints,
+          gitChange: markFor(changeMarksRef.current[id]),
         },
       }
     })
     setNodes(initial)
     nodesRef.current = initial
   }, [workflow, schemas, portsByNode, issuesByNode, onTogglePort, onInputValueChange, path])
+
+  // Nodes added or changed since the last commit get a mark on their header.
+  const gitStatus = useGitStore((s) => s.status)
+  const [committed, setCommitted] = useState<WorkflowFile | null>(null)
+  // Re-read HEAD whenever git status changes (a commit moves it).
+  useEffect(() => {
+    if (!gitStatus?.repo) {
+      setCommitted(null)
+      return
+    }
+    let alive = true
+    fetchGitFile(path, "HEAD")
+      .then((text) => {
+        if (!alive) return
+        try {
+          setCommitted(text === null ? null : parseWorkflowContent(path, text))
+        } catch {
+          setCommitted(null)
+        }
+      })
+      .catch(() => {
+        if (alive) setCommitted(null)
+      })
+    return () => {
+      alive = false
+    }
+  }, [path, gitStatus])
+  const changeMarks = useMemo<Record<string, NodeDiffState>>(
+    () => (committed && workflow ? diffWorkflows(committed, workflow).nodes : {}),
+    [committed, workflow],
+  )
+  const changeMarksRef = useRef(changeMarks)
+  changeMarksRef.current = changeMarks
+  useEffect(() => {
+    setNodes((curr) => {
+      let changed = false
+      const next = curr.map((n) => {
+        const gitChange = markFor(changeMarks[n.id])
+        if ((n.data as { gitChange?: string }).gitChange === gitChange) return n
+        changed = true
+        return { ...n, data: { ...n.data, gitChange } }
+      })
+      if (!changed) return curr
+      nodesRef.current = next
+      return next
+    })
+  }, [changeMarks])
 
   // Node test results (from the Tests tab) as pass/fail badges on the cards.
   // Patched into existing nodes so a test run doesn't rebuild the canvas.

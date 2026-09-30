@@ -437,3 +437,85 @@ export async function runNodeTests(req: {
   if (!res.ok) throw new ApiError(body.error ?? `${what} failed (HTTP ${res.status})`, res.status)
   return body
 }
+
+// ── Git (Source Control panel) ───────────────────────────────────────────────
+
+export interface GitFileChange {
+  /** Path relative to the workspace root. */
+  path: string
+  /** M modified, A added, D deleted, R renamed, U untracked (new, not yet staged). */
+  status: "M" | "A" | "D" | "R" | "U"
+  from?: string
+}
+
+export type GitStatus =
+  | { repo: false }
+  | {
+      repo: true
+      branch: string | null
+      upstream: string | null
+      ahead: number
+      behind: number
+      staged: GitFileChange[]
+      changes: GitFileChange[]
+      stagedElsewhere: number
+    }
+
+export interface GitCommit {
+  hash: string
+  subject: string
+  /** Unix seconds. */
+  time: number
+  author: string
+}
+
+/** HEAD is the last commit, index what's staged, worktree what's on disk. */
+export type GitRevision = "HEAD" | "index" | "worktree"
+
+export function fetchGitStatus(): Promise<GitStatus> {
+  return getJson("/api/git/status", "Reading git status")
+}
+
+export async function fetchGitLog(limit = 30): Promise<GitCommit[]> {
+  const { commits } = await getJson<{ commits: GitCommit[] }>(
+    `/api/git/log?limit=${limit}`,
+    "Reading history",
+  )
+  return commits
+}
+
+/** A file's content at a revision; null when it doesn't exist there. */
+export async function fetchGitFile(path: string, rev: GitRevision): Promise<string | null> {
+  const { content } = await getJson<{ content: string | null }>(
+    `/api/git/show?path=${encodeURIComponent(path)}&rev=${rev}`,
+    `Reading ${path}`,
+  )
+  return content
+}
+
+async function postGit<T>(url: string, body: unknown, what: string): Promise<T> {
+  const res = await request(
+    url,
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+    what,
+  )
+  if (!res.ok) throw await errorFromResponse(res, what)
+  return res.json() as Promise<T>
+}
+
+export function stageFiles(paths: string[]): Promise<GitStatus> {
+  return postGit("/api/git/stage", { paths }, "Staging")
+}
+
+export function unstageFiles(paths: string[]): Promise<GitStatus> {
+  return postGit("/api/git/unstage", { paths }, "Unstaging")
+}
+
+export async function commitStaged(message: string): Promise<GitCommit> {
+  const { commit } = await postGit<{ commit: GitCommit }>(
+    "/api/git/commit",
+    { message },
+    "Committing",
+  )
+  return commit
+}
