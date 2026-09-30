@@ -445,8 +445,8 @@ export async function runNodeTests(req: {
 export interface GitFileChange {
   /** Path relative to the workspace root. */
   path: string
-  /** M modified, A added, D deleted, R renamed, U untracked (new, not yet staged). */
-  status: "M" | "A" | "D" | "R" | "U"
+  /** M modified, A added, D deleted, R renamed, U untracked (new, not yet staged), C in conflict. */
+  status: "M" | "A" | "D" | "R" | "U" | "C"
   from?: string
 }
 
@@ -461,7 +461,32 @@ export type GitStatus =
       staged: GitFileChange[]
       changes: GitFileChange[]
       stagedElsewhere: number
+      /** Files a merge left for a person to resolve. */
+      conflicts: GitConflict[]
+      conflictsElsewhere: number
+      /** Set while a merge waits to be committed. */
+      merging: { branch: string | null; message: string } | null
     }
+
+export type ConflictSide = "modified" | "added" | "deleted"
+
+export interface GitConflict {
+  path: string
+  ours: ConflictSide
+  theirs: ConflictSide
+}
+
+export interface GitBranch {
+  /** "main", or "origin/main" for a remote branch. */
+  name: string
+  remote: boolean
+  current: boolean
+  upstream: string | null
+  ahead: number
+  behind: number
+  /** Unix seconds of the last commit. */
+  time: number
+}
 
 export interface GitCommit {
   hash: string
@@ -471,8 +496,12 @@ export interface GitCommit {
   author: string
 }
 
-/** HEAD is the last commit, index what's staged, worktree what's on disk. */
-export type GitRevision = "HEAD" | "index" | "worktree"
+/**
+ * HEAD is the last commit, index what's staged, worktree what's on disk.
+ * During a merge, base is the common ancestor, ours the current branch and
+ * theirs the branch being merged in.
+ */
+export type GitRevision = "HEAD" | "index" | "worktree" | "base" | "ours" | "theirs"
 
 export function fetchGitStatus(): Promise<GitStatus> {
   return getJson("/api/git/status", "Reading git status")
@@ -511,6 +540,49 @@ export function stageFiles(paths: string[]): Promise<GitStatus> {
 
 export function unstageFiles(paths: string[]): Promise<GitStatus> {
   return postGit("/api/git/unstage", { paths }, "Unstaging")
+}
+
+export async function fetchGitBranches(): Promise<GitBranch[]> {
+  const { branches } = await getJson<{ branches: GitBranch[] }>(
+    "/api/git/branches",
+    "Reading branches",
+  )
+  return branches
+}
+
+/** Switches to `branch`, or creates `create` (from `from`) and switches to it. */
+export function switchBranch(
+  opts: { branch: string } | { create: string; from?: string },
+): Promise<GitStatus> {
+  return postGit("/api/git/switch", opts, "Switching branch")
+}
+
+export function fetchRemotes(): Promise<GitStatus> {
+  return postGit("/api/git/fetch", {}, "Fetching")
+}
+
+export function pullBranch(): Promise<GitStatus> {
+  return postGit("/api/git/pull", {}, "Pulling")
+}
+
+export function pushBranch(): Promise<GitStatus> {
+  return postGit("/api/git/push", {}, "Pushing")
+}
+
+export function mergeBranch(branch: string): Promise<GitStatus> {
+  return postGit("/api/git/merge", { branch }, `Merging ${branch}`)
+}
+
+export function abortMerge(): Promise<GitStatus> {
+  return postGit("/api/git/merge-abort", {}, "Aborting the merge")
+}
+
+/** Marks a conflict resolved, as written or by taking one side. */
+export function resolveConflict(
+  path: string,
+  how: { content: string } | { take: "ours" | "theirs" },
+): Promise<GitStatus> {
+  return postGit("/api/git/resolve", { path, ...how }, `Resolving ${path}`)
 }
 
 export async function commitStaged(message: string): Promise<GitCommit> {

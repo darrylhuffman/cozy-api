@@ -5,6 +5,7 @@ import { confirmAction } from "@/store/confirm"
 import { type OpenTab, useTabsStore } from "@/store/tabs"
 import { useWorkflowDrafts } from "@/store/workflow-drafts"
 import { WorkflowEditor } from "@/workflow/workflow-editor"
+import { ConflictView } from "./diff-view/conflict-view"
 import { DiffView } from "./diff-view/diff-view"
 
 /** Folder name to tell apart tabs whose file names collide. */
@@ -127,7 +128,10 @@ export function EditorPanel() {
         {active?.path && active.kind === "node" && (
           <CodeEditor key={active.id} path={active.path} tabId={active.id} />
         )}
-        {active?.path && active.kind === "diff" && active.diff && (
+        {active?.path && active.kind === "diff" && active.diff?.base === "ours" && (
+          <ConflictView key={active.id} path={active.path} />
+        )}
+        {active?.path && active.kind === "diff" && active.diff && active.diff.base !== "ours" && (
           <DiffView
             key={active.id}
             path={active.path}
