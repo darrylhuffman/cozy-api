@@ -1,6 +1,6 @@
 {
   "name": "@darrylondil/lorien-build",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Compiler and CLI for lorien projects: lorien build (codegen), lorien dev (interpreter), lorien init, lorien import-openapi",
   "license": "MIT",
   "repository": {

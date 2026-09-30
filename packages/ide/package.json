@@ -1,6 +1,6 @@
 {
   "name": "@darrylondil/lorien-ide",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Browser IDE for lorien projects — workflow graph editor, code editor, debugger UI",
   "license": "MIT",
   "repository": {
