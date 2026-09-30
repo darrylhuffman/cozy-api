@@ -16,7 +16,7 @@ It ships as plain TypeScript with **zero lorien runtime dependency**.
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-5fa04e?logo=nodedotjs&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/license-MIT-7bd389)
 
-[Why lorien](#why-lorien) · [Typed end to end](#typed-end-to-end) · [The IDE](#a-tour-of-the-ide) · [Quickstart](#quickstart) · [Sample](#try-the-sample) · [Packages](#packages)
+[Quickstart](#quickstart) · [Why lorien](#why-lorien) · [Typed end to end](#typed-end-to-end) · [The IDE](#a-tour-of-the-ide) · [Sample](#try-the-sample) · [Packages](#packages)
 
 </div>
 
@@ -25,6 +25,36 @@ It ships as plain TypeScript with **zero lorien runtime dependency**.
 ![A workflow on the lorien canvas: HTTP Request, Add Pet and Response nodes wired together, with the Inspector describing Add Pet and the Debug panel showing a completed 201 run](docs/images/workflow-canvas.png)
 
 <br />
+
+## Quickstart
+
+```bash
+npx create-lorien my-app
+cd my-app
+pnpm install
+pnpm dev          # dev server + IDE in your browser
+```
+
+When you're ready to ship:
+
+```bash
+pnpm build        # plain TypeScript + Hono in dist/, no lorien runtime
+pnpm start
+```
+
+<details>
+<summary><b>All CLI commands</b></summary>
+
+| Command | What it does |
+|---|---|
+| `lorien dev` | Start the dev server and open the IDE (`--no-ide` to skip the IDE) |
+| `lorien ide` | Open only the IDE |
+| `lorien build` | Generate `dist/` from `workflows/`, `nodes/` and `providers/` |
+| `lorien test` | Run every node case and saved request |
+| `lorien import-openapi` | Generate typed client nodes from an OpenAPI 3.x spec |
+| `lorien init` | Add `AGENTS.md` to an existing project |
+
+</details>
 
 ## Why lorien
 
@@ -42,31 +72,7 @@ lorien gives your API a fixed shape that is easy to follow, for people and agent
 
 ## Typed end to end
 
-lorien uses **[zod](https://zod.dev) (v4)** as its schema language. A node's zod schemas are the single source of truth, and everything else is derived from them: the TypeScript types in your editor, the checks on the graph, the runtime validation, and the shapes the IDE shows.
-
-```ts
-// nodes/pets/add-pet.ts
-import { defineNode } from "@darrylondil/lorien-runtime"
-import { z } from "zod"
-import { petSchema, petStatusSchema } from "../../lib/schemas.js"
-
-export default defineNode({
-  name: "Add Pet",
-  inputs: z.object({
-    name: z.string().trim().min(1, "name is required"),
-    species: z.string().trim().min(1, "species is required"),
-    status: petStatusSchema.default("available"), // z.enum(["available", "pending", "sold"])
-  }),
-  outputs: z.object({ pet: petSchema }),
-
-  //    ↓ z.infer<inputs>                  ↓ typed providers
-  async run({ name, species, status }, { db, logger }) {
-    const pet = await db.addPet({ name, species, status })
-    logger.info("pet added", { id: pet.id, name: pet.name })
-    return { pet } // must match z.infer<outputs>
-  },
-})
-```
+lorien uses **[zod](https://zod.dev) (v4)** as its schema language. A node's zod schemas are the single source of truth, and everything else is derived from them: the TypeScript types in your editor, the checks on the graph, the runtime validation, and the shapes the IDE shows. Below, `run()` knows `status` is `"available" | "pending" | "sold"` straight from the `z.enum`, with no type written by hand.
 
 ![Hovering status in the node's run function shows the type "available" | "pending" | "sold", inferred from the zod enum](docs/images/type-hover.png)
 
@@ -115,36 +121,6 @@ A provider card shows its **lifetime** (`singleton`, `scoped` per request, or `t
 - **`lorien test`** runs all of them in CI. The IDE badges each node and file with its pass count.
 
 When a request fails, the Debug panel names the node that failed and offers **Ask AI to fix** with the trace attached.
-
-## Quickstart
-
-```bash
-npx create-lorien my-app
-cd my-app
-pnpm install
-pnpm dev          # dev server + IDE in your browser
-```
-
-When you're ready to ship:
-
-```bash
-pnpm build        # plain TypeScript + Hono in dist/, no lorien runtime
-pnpm start
-```
-
-<details>
-<summary><b>All CLI commands</b></summary>
-
-| Command | What it does |
-|---|---|
-| `lorien dev` | Start the dev server and open the IDE (`--no-ide` to skip the IDE) |
-| `lorien ide` | Open only the IDE |
-| `lorien build` | Generate `dist/` from `workflows/`, `nodes/` and `providers/` |
-| `lorien test` | Run every node case and saved request |
-| `lorien import-openapi` | Generate typed client nodes from an OpenAPI 3.x spec |
-| `lorien init` | Add `AGENTS.md` to an existing project |
-
-</details>
 
 ## Project layout
 
