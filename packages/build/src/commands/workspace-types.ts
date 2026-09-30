@@ -25,10 +25,17 @@ const DEFAULT_BUDGET = 24 * 1024 * 1024
 
 const DECLARATION = /\.d\.(ts|mts|cts)$/
 
+/** The project's own code that nodes import: providers, shared lib, and src. */
+const SOURCE_DIRS = ["providers", "lib", "src"]
+const SOURCE = /\.(ts|mts|cts)$/
+const TEST_SOURCE = /\.(test|spec|test-d)\.[mc]?ts$/
+
 /**
  * Collects the declaration files the code editor needs to type-check node
  * sources the way `tsc` would: every package the workspace depends on (and
- * the packages those depend on), plus generated types under `.lorien/types`.
+ * the packages those depend on), generated types under `.lorien/types`, and
+ * the project's own `providers/`, `lib/` and `src/` sources, so relative
+ * imports from a node (and the provider types) resolve.
  *
  * Packages are flattened to `node_modules/<name>/…` so the editor can resolve
  * them from any file, and are visited breadth-first so the workspace's own
@@ -46,6 +53,14 @@ export async function collectWorkspaceTypes(
     const content = await readFile(abs, "utf-8")
     used += content.length
     files.push({ path: toPosix(relative(root, abs)), content })
+  }
+  for (const dir of SOURCE_DIRS) {
+    for (const abs of await walk(join(root, dir), SOURCE)) {
+      if (TEST_SOURCE.test(abs)) continue
+      const content = await readFile(abs, "utf-8")
+      used += content.length
+      files.push({ path: toPosix(relative(root, abs)), content })
+    }
   }
 
   const rootPkg = await readJson(join(root, "package.json"))
