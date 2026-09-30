@@ -1,8 +1,10 @@
 import { Handle, Position } from "@xyflow/react"
 import { AlertTriangle, ChevronDown, ChevronRight, FlaskConical, XCircle } from "lucide-react"
 import { useState } from "react"
+import { ProviderChip } from "@/code/provider-card"
 import type { JsonSchema, NodeInstance } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { useProvidersStore } from "@/store/providers"
 import { useSelectionStore } from "@/store/selection"
 import { idFromUses } from "./add-node"
 import type { NodePorts, PortNode } from "./derive-ports"
@@ -104,6 +106,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     issues,
     tests,
   } = data as unknown as WorkflowNodeData
+  const providers = useProvidersStore((s) => s.nodes[instance.uses])
   const errorCount = issues?.filter((i) => i.severity === "error").length ?? 0
   const warningCount = (issues?.length ?? 0) - errorCount
 
@@ -234,12 +237,15 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         )}
       </div>
 
-      {/* Footer — uses */}
+      {/* Footer — uses, and the providers its run reads */}
       <div
         data-testid="node-footer"
-        className="truncate border-t border-border px-3 py-1.5 font-mono text-[10px] text-muted-foreground"
+        className="flex items-center gap-1.5 border-t border-border px-3 py-1.5 font-mono text-[10px] text-muted-foreground"
       >
-        {instance.uses}
+        <span className="min-w-0 flex-1 truncate">{instance.uses}</span>
+        {providers?.map((name) => (
+          <ProviderChip key={name} name={name} className="shrink-0" />
+        ))}
       </div>
     </div>
   )

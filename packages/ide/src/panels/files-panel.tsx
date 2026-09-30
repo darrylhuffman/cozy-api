@@ -5,6 +5,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  Plug,
   Plus,
   WifiOff,
   Workflow,
@@ -20,15 +21,25 @@ import { deleteItem, type WorkspaceItem } from "@/lib/workspace-items"
 import { useCommands } from "@/store/commands"
 import { useDockviewApi } from "@/store/dockview-api"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
+import { useProvidersStore, useWorkspaceProviders } from "@/store/providers"
 import { useTabsStore } from "@/store/tabs"
 import { NewFolderDialog } from "@/workflow/new-folder-dialog"
 import { NewNodeDialog } from "@/workflow/new-node-dialog"
+import { NewProviderDialog } from "@/workflow/new-provider-dialog"
 import { NewWorkflowDialog } from "@/workflow/new-workflow-dialog"
 import { RenameItemDialog } from "@/workflow/rename-item-dialog"
+import { resolveAccentColor } from "@/workflow/tailwind-colors"
 import { TreeContextMenu } from "./tree-context-menu"
 
 type LoadState = "loading" | "ready" | "fallback"
-type TreeKind = "workflows" | "nodes"
+export type TreeKind = "workflows" | "nodes" | "providers" | "lib"
+
+const emptyFolder = (name: string): FileFolder => ({
+  type: "folder",
+  id: `${name}-root`,
+  name,
+  children: [],
+})
 
 function sortChildren(children: readonly FileNode[]): FileNode[] {
   return [...children].sort((a, b) => {
@@ -47,11 +58,27 @@ interface MenuState {
   item?: WorkspaceItem | undefined
 }
 
-type DialogKind = "none" | "new-folder" | "new-workflow" | "new-node"
+type DialogKind =
+  | "none"
+  | "new-folder"
+  | "new-workflow"
+  | "new-node"
+  | "new-provider"
+  | "new-lib-file"
+
+/** The create dialog behind each section's "+" button. */
+const NEW_ITEM_DIALOG: Record<TreeKind, Exclude<DialogKind, "none">> = {
+  workflows: "new-workflow",
+  nodes: "new-node",
+  providers: "new-provider",
+  lib: "new-lib-file",
+}
 
 export function FilesPanel() {
   const [workflows, setWorkflows] = useState<FileFolder>(mockWorkflows)
   const [nodes, setNodes] = useState<FileFolder>(mockNodes)
+  const [providers, setProviders] = useState<FileFolder>(emptyFolder("providers"))
+  const [lib, setLib] = useState<FileFolder>(emptyFolder("lib"))
   const [loadState, setLoadState] = useState<LoadState>("loading")
   const [menu, setMenu] = useState<MenuState>({
     open: false,
@@ -76,6 +103,8 @@ export function FilesPanel() {
         if (!mountedRef.current) return
         setWorkflows(tree.workflows)
         setNodes(tree.nodes)
+        setProviders(tree.providers ?? emptyFolder("providers"))
+        setLib(tree.lib ?? emptyFolder("lib"))
         setLoadState("ready")
       })
       .catch(() => {
@@ -92,7 +121,7 @@ export function FilesPanel() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: subscribe once; refreshTree reads refs and is safe to capture
   useEffect(() => {
     return subscribeToFileEvents((e) => {
-      if (e.type === "add" || e.type === "unlink") {
+      if (e.type === "add" || e.type === "unlink" || e.type === "ready") {
         refreshTree()
       }
     })
@@ -107,11 +136,13 @@ export function FilesPanel() {
   const [renaming, setRenaming] = useState<WorkspaceItem | null>(null)
   const [itemError, setItemError] = useState<string | null>(null)
 
-  const itemTree = menu.tree === "workflows" ? workflows : nodes
+  useWorkspaceProviders()
+  const trees: Record<TreeKind, FileFolder> = { workflows, nodes, providers, lib }
+  const itemTree = trees[menu.tree]
 
   // Opens a create dialog aimed at a tree's root folder (header buttons, File menu).
   const openRootDialog = (tree: TreeKind, kind: Exclude<DialogKind, "none">) => {
-    const root = tree === "workflows" ? workflows : nodes
+    const root = trees[tree]
     setMenu((m) => ({ ...m, open: false, tree, folder: root.name || tree }))
     setDialog(kind)
   }
@@ -128,6 +159,10 @@ export function FilesPanel() {
         },
         "file.newNode": {
           run: () => openRootDialogRef.current("nodes", "new-node"),
+          enabled: ready,
+        },
+        "file.newProvider": {
+          run: () => openRootDialogRef.current("providers", "new-provider"),
           enabled: ready,
         },
         "file.newFolder": {
@@ -189,6 +224,30 @@ export function FilesPanel() {
                   onNewFolder: () => openRootDialog("nodes", "new-folder"),
                 })}
               />
+              <Section
+                title="PROVIDERS"
+                treeKind="providers"
+                tree={providers}
+                onContextMenu={openMenu}
+                autoExpand={false}
+                emptyHint="Databases, loggers and clients that nodes read."
+                {...(ready && {
+                  onNewItem: () => openRootDialog("providers", "new-provider"),
+                  onNewFolder: () => openRootDialog("providers", "new-folder"),
+                })}
+              />
+              <Section
+                title="LIB"
+                treeKind="lib"
+                tree={lib}
+                onContextMenu={openMenu}
+                autoExpand={false}
+                emptyHint="Shared helpers and types."
+                {...(ready && {
+                  onNewItem: () => openRootDialog("lib", "new-lib-file"),
+                  onNewFolder: () => openRootDialog("lib", "new-folder"),
+                })}
+              />
             </>
           )}
         </div>
@@ -200,7 +259,7 @@ export function FilesPanel() {
         y={menu.y}
         tree={menu.tree}
         onNewFolder={() => setDialog("new-folder")}
-        onNewItem={() => setDialog(menu.tree === "workflows" ? "new-workflow" : "new-node")}
+        onNewItem={() => setDialog(NEW_ITEM_DIALOG[menu.tree])}
         item={menu.item && { name: menu.item.path.split("/").pop() ?? menu.item.path }}
         onRename={() => setRenaming(menu.item ?? null)}
         onDelete={() => {
@@ -241,6 +300,28 @@ export function FilesPanel() {
         defaultFolder={menu.folder}
         nodesTree={nodes}
       />
+      <NewProviderDialog
+        open={dialog === "new-provider"}
+        onOpenChange={(o) => !o && setDialog("none")}
+        onCreated={(path) => {
+          refreshTree()
+          void useProvidersStore.getState().refresh()
+          openCodeFile(path)
+        }}
+      />
+      <NewNodeDialog
+        open={dialog === "new-lib-file"}
+        onOpenChange={(o) => !o && setDialog("none")}
+        onCreated={(uses) => {
+          refreshTree()
+          openCodeFile(`${uses.replace(/^\.\//, "")}.ts`)
+        }}
+        defaultFolder={menu.tree === "lib" ? menu.folder : "lib"}
+        nodesTree={lib}
+        title="New file"
+        template={"export {}\n"}
+        placeholder="schemas"
+      />
     </div>
   )
 }
@@ -253,6 +334,7 @@ function Section({
   autoExpand = false,
   onNewItem,
   onNewFolder,
+  emptyHint,
 }: {
   title: string
   treeKind: TreeKind
@@ -261,6 +343,8 @@ function Section({
   autoExpand?: boolean
   onNewItem?: () => void
   onNewFolder?: () => void
+  /** Shown instead of the tree when the folder is empty or missing. */
+  emptyHint?: string
 }) {
   const rootPath = tree.type === "folder" ? tree.name : treeKind
   // Render children of the root folder directly (the section header IS the root label).
@@ -273,10 +357,7 @@ function Section({
       <div className="group/section flex h-7 items-center gap-1 px-1 text-[11px] font-semibold tracking-wider text-muted-foreground">
         <span className="flex-1">{title}</span>
         {onNewItem && (
-          <SectionAction
-            label={treeKind === "workflows" ? "New workflow" : "New node"}
-            onClick={onNewItem}
-          >
+          <SectionAction label={NEW_ITEM_LABEL[treeKind]} onClick={onNewItem}>
             <Plus className="h-3.5 w-3.5" />
           </SectionAction>
         )}
@@ -286,6 +367,9 @@ function Section({
           </SectionAction>
         )}
       </div>
+      {children.length === 0 && emptyHint && (
+        <div className="px-2 pb-1 text-[11.5px] text-muted-foreground">{emptyHint}</div>
+      )}
       {children.map((child) => (
         <TreeNode
           key={child.id}
@@ -299,6 +383,13 @@ function Section({
       ))}
     </div>
   )
+}
+
+const NEW_ITEM_LABEL: Record<TreeKind, string> = {
+  workflows: "New workflow",
+  nodes: "New node",
+  providers: "New provider",
+  lib: "New file in lib",
 }
 
 function SectionAction({
@@ -435,17 +526,18 @@ function Leaf({
 }) {
   const openTab = useTabsStore((s) => s.openTab)
   const activeId = useTabsStore((s) => s.activeId)
-  const tabId = node.kind === "node" ? (node.path ?? node.id) : node.id
+  const isCode = node.kind !== "workflow" && node.path !== undefined
+  const tabId = isCode ? (node.path ?? node.id) : node.id
   const isActive = activeId === tabId
 
-  const Icon = node.kind === "workflow" ? Workflow : FileCode
+  const Icon = node.kind === "workflow" ? Workflow : node.kind === "provider" ? Plug : FileCode
 
   return (
     <button
       type="button"
-      draggable={node.kind === "node" && node.path?.endsWith(".ts")}
+      draggable={treeKind === "nodes" && node.path?.endsWith(".ts")}
       onDragStart={(e) => {
-        if (node.path?.endsWith(".ts")) {
+        if (treeKind === "nodes" && node.path?.endsWith(".ts")) {
           const uses = `./${node.path.replace(/\.ts$/, "")}`
           e.dataTransfer.setData("application/lorien-node", uses)
           e.dataTransfer.effectAllowed = "copy"
@@ -464,14 +556,14 @@ function Leaf({
         onContextMenu(e, treeKind, folder, item)
       }}
       onClick={() => {
-        if (node.kind === "node" && node.path) {
+        if (isCode && node.path) {
           openCodeFile(node.path)
           return
         }
         const tab: Parameters<typeof openTab>[0] = {
           id: node.id,
           title: node.name,
-          kind: node.kind,
+          kind: node.kind === "workflow" ? "workflow" : "node",
         }
         if (node.path !== undefined) tab.path = node.path
         openTab(tab)
@@ -490,12 +582,33 @@ function Leaf({
       <Icon
         className={cn(
           "h-3.5 w-3.5 shrink-0",
-          node.kind === "workflow" ? "text-primary" : "text-info",
+          node.kind === "workflow"
+            ? "text-primary"
+            : node.kind === "node"
+              ? "text-info"
+              : "text-muted-foreground",
         )}
       />
       <span className="min-w-0 flex-1 truncate">{node.name}</span>
+      {node.kind === "provider" && node.path && <ProviderTag path={node.path} />}
       {node.kind === "node" && node.path && <NodeTestCount nodeFile={node.path} />}
     </button>
+  )
+}
+
+/** A provider's lifetime, tinted with its colour, next to its file. */
+function ProviderTag({ path }: { path: string }) {
+  const lifetime = useProvidersStore((s) => s.providers.find((p) => p.path === path)?.lifetime)
+  const color = useProvidersStore((s) => s.providers.find((p) => p.path === path)?.color)
+  if (!lifetime) return null
+  const tint = color ? resolveAccentColor(color) : "var(--muted-foreground)"
+  return (
+    <span
+      className="mr-1 shrink-0 rounded px-1 font-mono text-[10px]"
+      style={{ color: tint, background: `color-mix(in srgb, ${tint} 14%, transparent)` }}
+    >
+      {lifetime}
+    </span>
   )
 }
 

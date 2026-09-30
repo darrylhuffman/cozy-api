@@ -169,3 +169,84 @@ describe("FilesPanel — right-click context menu (ready)", () => {
     expect(screen.queryByText(/New workflow/)).not.toBeInTheDocument()
   })
 })
+
+describe("FilesPanel — providers and lib", () => {
+  const folder = (name: string, children: unknown[] = []) => ({
+    type: "folder",
+    id: name,
+    name,
+    children,
+  })
+  beforeEach(() => {
+    const tree = {
+      workflows: folder("workflows"),
+      nodes: folder("nodes"),
+      providers: folder("providers", [
+        { type: "file", id: "p-db", name: "db.ts", kind: "provider", path: "providers/db.ts" },
+      ]),
+      lib: folder("lib"),
+    }
+    const providers = {
+      providers: [
+        {
+          name: "db",
+          path: "providers/db.ts",
+          lifetime: "singleton",
+          color: "sky",
+          uses: [],
+          env: [],
+          hasDispose: false,
+          packages: [],
+          usedBy: [],
+        },
+      ],
+      nodes: {},
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        const json = (body: unknown) =>
+          Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
+        if (url.endsWith("/api/workspace/tree")) return json(tree)
+        if (url.endsWith("/api/workspace/providers")) return json(providers)
+        if (init?.method === "PUT") return json({ path: "x", bytes: 1 })
+        return Promise.reject(new Error("unexpected fetch"))
+      }),
+    )
+  })
+
+  it("lists providers with their lifetime and hints at an empty lib", async () => {
+    render(<FilesPanel />)
+    await waitFor(() => expect(screen.getByText("db.ts")).toBeInTheDocument())
+    expect(screen.getByText("PROVIDERS")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText("singleton")).toBeInTheDocument())
+    expect(screen.getByText("Shared helpers and types.")).toBeInTheDocument()
+  })
+
+  it("opens a provider as a code tab and never drags it onto the canvas", async () => {
+    render(<FilesPanel />)
+    await waitFor(() => expect(screen.getByText("db.ts")).toBeInTheDocument())
+    const leaf = screen.getByText("db.ts").closest("button")!
+    expect(leaf).toHaveAttribute("draggable", "false")
+    fireEvent.click(leaf)
+    expect(useTabsStore.getState().activeCodeId).toBe("providers/db.ts")
+  })
+
+  it("creates a provider from the section's + button", async () => {
+    render(<FilesPanel />)
+    await waitFor(() => expect(screen.getByText("db.ts")).toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: "New provider" }))
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "http-client" } })
+    expect(screen.getByText("httpClient")).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText("Scoped"))
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    await waitFor(() =>
+      expect(useTabsStore.getState().activeCodeId).toBe("providers/http-client.ts"),
+    )
+    const put = vi
+      .mocked(fetch)
+      .mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!
+    expect(put[0]).toContain(encodeURIComponent("providers/http-client.ts"))
+    expect((put[1] as RequestInit).body).toContain(`lifetime: "scoped"`)
+  })
+})

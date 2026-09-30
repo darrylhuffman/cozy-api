@@ -10,6 +10,7 @@ import { useCommands } from "@/store/commands"
 import { useSettings } from "@/store/settings"
 import { useTabsStore } from "@/store/tabs"
 import { useActiveTheme } from "@/store/theme"
+import { FileContextBar } from "./provider-card"
 
 interface Props {
   /** API path like "nodes/parse-credentials.ts" */
@@ -152,71 +153,75 @@ export function CodeEditor({ path, tabId }: Props) {
   }
 
   return (
-    <div className="relative h-full w-full">
-      <Editor
-        height="100%"
-        defaultLanguage={languageFor(path)}
-        path={path}
-        value={content}
-        theme={monacoThemeName(theme)}
-        beforeMount={(monaco) => {
-          defineMonacoThemes(monaco)
-          void setupWorkspaceTypes(monaco)
-        }}
-        onMount={onMount}
-        onChange={(v) => {
-          useCodeDrafts.getState().edit(tabId, v ?? "")
-        }}
-        options={{
-          minimap: { enabled: minimap },
-          fontSize,
-          lineNumbers: lineNumbers ? "on" : "off",
-          fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          tabSize: 2,
-          wordWrap: wordWrap ? "on" : "off",
-          // Hovers and suggestions escape the editor box instead of being
-          // clipped by the tab strip above it.
-          fixedOverflowWidgets: true,
-        }}
-      />
-      <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-col items-center gap-2">
-        {ownDraft?.diskConflict != null && (
-          <EditorNotice
-            tone="warning"
-            title="This file changed on disk"
-            actions={[
-              {
-                label: "Reload from disk",
-                onClick: () => useCodeDrafts.getState().resolveConflict(tabId, "disk"),
-              },
-              {
-                label: "Keep my changes",
-                onClick: () => useCodeDrafts.getState().resolveConflict(tabId, "mine"),
-              },
-            ]}
+    <div className="flex h-full w-full flex-col">
+      <FileContextBar path={path} />
+      <div className="relative min-h-0 flex-1">
+        <Editor
+          height="100%"
+          defaultLanguage={languageFor(path)}
+          path={path}
+          value={content}
+          theme={monacoThemeName(theme)}
+          beforeMount={(monaco) => {
+            defineMonacoThemes(monaco)
+            void setupWorkspaceTypes(monaco)
+          }}
+          onMount={onMount}
+          onChange={(v) => {
+            useCodeDrafts.getState().edit(tabId, v ?? "")
+          }}
+          options={{
+            minimap: { enabled: minimap },
+            fontSize,
+            lineNumbers: lineNumbers ? "on" : "off",
+            fontFamily:
+              "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            tabSize: 2,
+            wordWrap: wordWrap ? "on" : "off",
+            // Hovers and suggestions escape the editor box instead of being
+            // clipped by the tab strip above it.
+            fixedOverflowWidgets: true,
+          }}
+        />
+        <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-col items-center gap-2">
+          {ownDraft?.diskConflict != null && (
+            <EditorNotice
+              tone="warning"
+              title="This file changed on disk"
+              actions={[
+                {
+                  label: "Reload from disk",
+                  onClick: () => useCodeDrafts.getState().resolveConflict(tabId, "disk"),
+                },
+                {
+                  label: "Keep my changes",
+                  onClick: () => useCodeDrafts.getState().resolveConflict(tabId, "mine"),
+                },
+              ]}
+            >
+              You have unsaved edits. Keeping them overwrites the disk version on your next save.
+            </EditorNotice>
+          )}
+          {deletedOnDisk && (
+            <EditorNotice tone="warning" title="This file was deleted on disk">
+              Save (Ctrl+S) to recreate it, or close the tab.
+            </EditorNotice>
+          )}
+        </div>
+        {status !== "idle" && statusMessage && (
+          <div
+            className={
+              status === "error"
+                ? "absolute bottom-3 right-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-1 text-xs text-destructive"
+                : "absolute bottom-3 right-3 rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground"
+            }
           >
-            You have unsaved edits. Keeping them overwrites the disk version on your next save.
-          </EditorNotice>
-        )}
-        {deletedOnDisk && (
-          <EditorNotice tone="warning" title="This file was deleted on disk">
-            Save (Ctrl+S) to recreate it, or close the tab.
-          </EditorNotice>
+            {statusMessage}
+          </div>
         )}
       </div>
-      {status !== "idle" && statusMessage && (
-        <div
-          className={
-            status === "error"
-              ? "absolute bottom-3 right-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-1 text-xs text-destructive"
-              : "absolute bottom-3 right-3 rounded-md border border-border bg-card px-3 py-1 text-xs text-muted-foreground"
-          }
-        >
-          {statusMessage}
-        </div>
-      )}
     </div>
   )
 }

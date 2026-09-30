@@ -29,6 +29,7 @@ import { streamSSE } from "hono/streaming"
 import { generateServicesTypes } from "../generate-services-types.js"
 import { findAvailablePort, parseStartingPort } from "../ports.js"
 import { makeDebugIntegration } from "./debug-integration.js"
+import { introspectProviders } from "./introspect-providers.js"
 import { introspectWorkspace, invalidateSchemaCache } from "./introspect-workspace.js"
 import { type NodeCasesRequest, type NodeCasesRun, runNodeCasesInWorker } from "./run-node-cases.js"
 import {
@@ -40,7 +41,8 @@ import {
 import { collectWorkspaceTypes } from "./workspace-types.js"
 
 // ── FileNode types (mirrors packages/ide/src/data/mock-files.ts) ─────────────
-export type FileKind = "workflow" | "node"
+/** "provider" is a top-level `providers/*.ts`; "code" is any other TypeScript file. */
+export type FileKind = "workflow" | "node" | "provider" | "code"
 
 export interface FileLeaf {
   type: "file"
@@ -149,7 +151,21 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
         "node",
         "**/*.ts",
       )
-      return c.json({ workflows, nodes })
+      const providers = await buildFileTree(
+        workspaceRoot,
+        join(workspaceRoot, "providers"),
+        "p",
+        "provider",
+        "**/*.ts",
+      )
+      const lib = await buildFileTree(
+        workspaceRoot,
+        join(workspaceRoot, "lib"),
+        "l",
+        "code",
+        "**/*.ts",
+      )
+      return c.json({ workflows, nodes, providers, lib })
     } catch (e) {
       return c.json({ error: (e as Error).message }, 500)
     }
@@ -198,6 +214,8 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
       }
       const content = await c.req.text()
       try {
+        // First provider or lib file: the folder may not exist yet.
+        await mkdir(dirname(abs), { recursive: true })
         await writeFile(abs, content, "utf-8")
         return c.json({ path: rawPath, bytes: content.length })
       } catch (e) {
@@ -317,6 +335,16 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
     }
   })
 
+  // ── Providers (lifetimes, deps, env, which nodes read them) ──────────────
+
+  app.get("/api/workspace/providers", async (c) => {
+    try {
+      return c.json(await introspectProviders(workspaceRoot))
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 500)
+    }
+  })
+
   // ── Type declarations for the code editor ────────────────────────────────
 
   app.get("/api/workspace/types", async (c) => {
@@ -335,9 +363,8 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
 
   app.get("/api/events", (c) => {
     return streamSSE(c, async (stream) => {
-      const watchPaths = [join(workspaceRoot, "workflows"), join(workspaceRoot, "nodes")]
-      const watcher = chokidar.watch(watchPaths, {
-        ignored: /(^|[/\\])\../,
+      const watcher = chokidar.watch(workspaceRoot, {
+        ignored: onlyWorkspaceDirs(workspaceRoot, ["workflows", "nodes", "providers", "lib"]),
         ignoreInitial: true,
         persistent: true,
       })
@@ -367,6 +394,11 @@ export function createIdeApp(workspaceRoot: string, deps: IdeAppDeps = {}): Hono
       })
       watcher.on("unlink", (p) => {
         void emit("unlink", p)
+      })
+      // Files created before the watcher finished its first scan raise no
+      // "add"; "ready" tells the client to re-read the tree once.
+      watcher.on("ready", () => {
+        void stream.writeSSE({ event: "ready", data: "{}" }).catch(() => {})
       })
 
       // Periodic keep-alive so proxies don't close the connection
@@ -547,6 +579,25 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
   })
   const watcherReady = new Promise<void>((r) => workflowWatcher.once("ready", r))
 
+  // Adding or removing a provider changes what nodes can read: regenerate
+  // .lorien/types/providers.d.ts so the editor types it straight away. The
+  // running container picks new providers up on the next `lorien ide`.
+  const regenerateProviderTypes = debounce(() => {
+    void generateServicesTypes(workspaceRoot).catch((e: unknown) => {
+      console.error(`[lorien] generating provider types failed: ${(e as Error).message}`)
+    })
+  }, 100)
+  const providersWatcher = chokidar.watch(workspaceRoot, {
+    ignored: onlyWorkspaceDirs(workspaceRoot, ["providers"]),
+    ignoreInitial: true,
+    persistent: true,
+    depth: 1,
+    usePolling: process.platform === "win32",
+    interval: 50,
+  })
+  providersWatcher.on("add", regenerateProviderTypes)
+  providersWatcher.on("unlink", regenerateProviderTypes)
+
   return new Promise((resolveStarted) => {
     const dispatcher: typeof currentApp.fetch = (req, env, ctx) => currentApp.fetch(req, env, ctx)
     const server = serve({ fetch: dispatcher, port: availablePort }, ({ port: actualPort }) => {
@@ -570,6 +621,21 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     attachAgentBroker({ app: currentApp, server: httpServer, projectRoot: workspaceRoot })
     attachDebugWebSocket({ app: currentApp, server: httpServer, session: debugSession })
   })
+}
+
+/**
+ * chokidar `ignored` filter that keeps only `dirs` under `root` (and skips
+ * dotfiles). Watching the root rather than each folder means a folder created
+ * after the IDE started, like the first `providers/`, is still seen.
+ */
+function onlyWorkspaceDirs(root: string, dirs: string[]): (path: string) => boolean {
+  const keep = new Set(dirs)
+  return (path) => {
+    const rel = relative(root, path)
+    if (rel === "") return false
+    const parts = rel.split(sep)
+    return !keep.has(parts[0] ?? "") || parts.some((p) => p.startsWith("."))
+  }
 }
 
 // ── File-tree builder ─────────────────────────────────────────────────────────
@@ -614,12 +680,17 @@ async function buildFileTree(
       } else {
         // Filter by kind
         if (kind === "workflow" && !entry.name.endsWith(".workflow")) continue
-        if (kind === "node" && !entry.name.endsWith(".ts")) continue
+        if (kind !== "workflow" && !/\.[mc]?ts$/.test(entry.name)) continue
         result.push({
           type: "file",
           id,
           name: entry.name,
-          kind,
+          // Only top-level files in providers/ are providers; the rest is
+          // private code for one of them.
+          kind:
+            kind === "provider" && (absDir !== dir || /\.(test|spec|d)\.[mc]?ts$/.test(entry.name))
+              ? "code"
+              : kind,
           path: relPath.replace(/\\/g, "/"),
         })
       }

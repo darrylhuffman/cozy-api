@@ -13,6 +13,10 @@ interface Props {
   defaultFolder?: string
   /** Nodes tree for the picker. If omitted, the dialog fetches it on open. */
   nodesTree?: FileFolder
+  /** Overrides for reusing the dialog for plain files, e.g. in `lib/`. */
+  title?: string
+  template?: string
+  placeholder?: string
 }
 
 const TEMPLATE = `import { defineNode } from "@darrylondil/lorien-runtime"
@@ -33,6 +37,9 @@ export function NewNodeDialog({
   onCreated,
   defaultFolder = "nodes",
   nodesTree,
+  title = "New custom node",
+  template = TEMPLATE,
+  placeholder = "my-node",
 }: Props) {
   const [folder, setFolder] = useState(defaultFolder)
   const [name, setName] = useState("")
@@ -74,7 +81,7 @@ export function NewNodeDialog({
     const bare = trimmed.replace(/\.ts$/, "")
     const fullPath = `${folder}/${bare}.ts`
     try {
-      await createWorkspaceFile(fullPath, TEMPLATE)
+      await createWorkspaceFile(fullPath, template)
       const uses = `./${fullPath.replace(/\.ts$/, "")}`
       onOpenChange(false)
       onCreated(uses)
@@ -89,7 +96,7 @@ export function NewNodeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New custom node</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -131,7 +138,7 @@ export function NewNodeDialog({
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="my-node"
+                  placeholder={placeholder}
                   autoFocus
                   className="flex-1 bg-transparent px-3 py-1 text-sm outline-none placeholder:text-muted-foreground"
                 />

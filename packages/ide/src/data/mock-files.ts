@@ -1,4 +1,5 @@
-export type FileKind = "workflow" | "node"
+/** "provider" is a top-level `providers/*.ts`; "code" is any other TypeScript file. */
+export type FileKind = "workflow" | "node" | "provider" | "code"
 
 export interface FileLeaf {
   type: "file"
