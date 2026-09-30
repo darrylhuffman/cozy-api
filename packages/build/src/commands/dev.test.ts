@@ -107,6 +107,19 @@ describe("runDevWithIde", () => {
     expect(result.exitCode).toBe(0)
   })
 
+  it("leaves the browser closed with open: false (--no-open)", async () => {
+    const runIdeImpl = vi.fn().mockResolvedValue({ port: 8188, root: "dist" })
+    const fakeChild = {
+      on(event: string, cb: (...args: unknown[]) => void) {
+        if (event === "close") setTimeout(() => cb(0), 5)
+        return this
+      },
+    }
+    const spawnImpl = vi.fn(() => fakeChild as never)
+    await runDevWithIde({ root: dir, idePort: 8188, open: false, spawnImpl, runIdeImpl })
+    expect(runIdeImpl).toHaveBeenCalledWith({ port: 8188, open: false, root: dir })
+  })
+
   it("falls back to the dev server alone when the IDE cannot start", async () => {
     const runIdeImpl = vi.fn().mockRejectedValue(new Error("dist missing"))
     const fakeChild = {

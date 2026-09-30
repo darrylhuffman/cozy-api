@@ -35,6 +35,13 @@ describe("template renderers", () => {
     expect(pkg.dependencies.hono).toMatch(/^\^/)
   })
 
+  it("package.json can run the biome.json it ships, and lets pnpm build esbuild", () => {
+    const pkg = JSON.parse(renderPackageJson(ctx))
+    expect(pkg.scripts.lint).toBe("biome check .")
+    expect(pkg.devDependencies["@biomejs/biome"]).toMatch(/^\^2\./)
+    expect(pkg.pnpm.onlyBuiltDependencies).toEqual(["esbuild"])
+  })
+
   it("package.json keeps vitest on 4.0, which npm 10 can install", () => {
     const pkg = JSON.parse(renderPackageJson(ctx))
     expect(pkg.devDependencies.vitest).toMatch(/^~4\.0\./)

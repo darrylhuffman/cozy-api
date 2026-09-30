@@ -332,6 +332,7 @@ export function renderPackageJson(ctx: TemplateContext): string {
       start: "node dist/index.js",
       test: "lorien test && vitest run --passWithNoTests",
       typecheck: "lorien types && tsc --noEmit",
+      lint: "biome check .",
     },
     dependencies: {
       "@hono/node-server": "^1.13.0",
@@ -339,6 +340,7 @@ export function renderPackageJson(ctx: TemplateContext): string {
       zod: "^4.4.3",
     },
     devDependencies: {
+      "@biomejs/biome": "^2.4.15",
       "@darrylondil/lorien-build": LORIEN_RANGE,
       "@darrylondil/lorien-runtime": LORIEN_RANGE,
       "@types/node": "^25.9.1",
@@ -348,6 +350,8 @@ export function renderPackageJson(ctx: TemplateContext): string {
       // ships with Node 22, so `npm create lorien` stays on 4.0 for now.
       vitest: "~4.0.18",
     },
+    // pnpm 10 skips install scripts unless allowed; esbuild (used by lorien build) needs its own.
+    pnpm: { onlyBuiltDependencies: ["esbuild"] },
   }
   return `${JSON.stringify(pkg, null, 2)}\n`
 }

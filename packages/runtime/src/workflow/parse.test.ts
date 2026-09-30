@@ -56,3 +56,15 @@ describe("parseWorkflowFromString", () => {
     expect(() => parseWorkflowFromString(JSON.stringify({ lorien: 1 }))).toThrow(WorkflowParseError)
   })
 })
+
+describe("unknown node keys", () => {
+  it("suggests the key that was probably meant", () => {
+    const parse = (node: Record<string, unknown>) => () =>
+      parseWorkflow({ lorien: 1, nodes: { Find: { uses: "./nodes/find", ...node } } })
+    expect(parse({ input: { id: "Request.params.id" } })).toThrow(
+      /nodes\.Find: Unrecognized key: "input" \(did you mean `in`\?\)/,
+    )
+    expect(parse({ valeus: { a: 1 } })).toThrow(/\(did you mean `values`\?\)/)
+    expect(parse({ zzz: 1 })).toThrow(/Unrecognized key: "zzz"$/m)
+  })
+})

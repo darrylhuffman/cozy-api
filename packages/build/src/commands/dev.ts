@@ -25,26 +25,36 @@ export function registerDev(program: Command): void {
       process.env.PORT ?? String(DEFAULT_API_PORT),
     )
     .option("--no-ide", "skip the IDE — just run the dev server")
+    .option("--no-open", "start the IDE without opening a browser")
     .option(
       "--ide-port <number>",
       "starting port for the IDE static server",
       String(DEFAULT_IDE_PORT),
     )
-    .action(async (opts: { root: string; port: string; ide: boolean; idePort: string }) => {
-      const root = resolve(opts.root)
-      const port = parseStartingPort(opts.port, DEFAULT_API_PORT)
-      if (opts.ide === false) {
-        const r = await runDevServer({ root, port })
-        process.exit(r.exitCode ?? 1)
-      } else {
-        const r = await runDevWithIde({
-          root,
-          port,
-          idePort: parseStartingPort(opts.idePort, DEFAULT_IDE_PORT),
-        })
-        process.exit(r.exitCode ?? 1)
-      }
-    })
+    .action(
+      async (opts: {
+        root: string
+        port: string
+        ide: boolean
+        open: boolean
+        idePort: string
+      }) => {
+        const root = resolve(opts.root)
+        const port = parseStartingPort(opts.port, DEFAULT_API_PORT)
+        if (opts.ide === false) {
+          const r = await runDevServer({ root, port })
+          process.exit(r.exitCode ?? 1)
+        } else {
+          const r = await runDevWithIde({
+            root,
+            port,
+            idePort: parseStartingPort(opts.idePort, DEFAULT_IDE_PORT),
+            open: opts.open,
+          })
+          process.exit(r.exitCode ?? 1)
+        }
+      },
+    )
 
   program
     .command("dev:server")
@@ -125,6 +135,8 @@ export async function runDevWithIde(opts: {
   root: string
   port?: number
   idePort: number
+  /** Open the IDE in a browser (default true). */
+  open?: boolean
   spawnImpl?: typeof spawn
   /** For tests: replace the IDE server start. */
   runIdeImpl?: typeof runIde
@@ -136,7 +148,11 @@ export async function runDevWithIde(opts: {
   // Start the IDE static server first; it stays alive in the background.
   try {
     // The IDE must serve the same project as the API server, not the cwd.
-    await (opts.runIdeImpl ?? runIde)({ port: opts.idePort, open: true, root: opts.root })
+    await (opts.runIdeImpl ?? runIde)({
+      port: opts.idePort,
+      open: opts.open !== false,
+      root: opts.root,
+    })
   } catch (e) {
     console.error(`Could not start the IDE: ${(e as Error).message}`)
     console.error("Falling back to dev-server-only.")
