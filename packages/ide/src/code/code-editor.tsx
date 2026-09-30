@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { EditorNotice } from "@/components/editor-notice"
 import { fetchFile, saveFile } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
+import { setupWorkspaceTypes } from "@/lib/monaco-types"
 import { isCodeDraftDirty, useCodeDrafts } from "@/store/code-drafts"
 import { useCommands } from "@/store/commands"
 import { useTabsStore } from "@/store/tabs"
@@ -152,6 +153,7 @@ export function CodeEditor({ path, tabId }: Props) {
         path={path}
         value={content}
         theme={theme === "dark" ? "vs-dark" : "vs"}
+        beforeMount={(monaco) => void setupWorkspaceTypes(monaco)}
         onMount={onMount}
         onChange={(v) => {
           useCodeDrafts.getState().edit(tabId, v ?? "")
@@ -164,6 +166,9 @@ export function CodeEditor({ path, tabId }: Props) {
           automaticLayout: true,
           tabSize: 2,
           wordWrap: "on",
+          // Hovers and suggestions escape the editor box instead of being
+          // clipped by the tab strip above it.
+          fixedOverflowWidgets: true,
         }}
       />
       <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-col items-center gap-2">
