@@ -1,4 +1,4 @@
-import { Eye, X } from "lucide-react"
+import { Eye, Network, X } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { buildDisplay, type DisplayGraph, type Measure } from "./display"
@@ -29,27 +29,52 @@ function makeMeasure(): Measure {
   return (text) => c.measureText(text).width
 }
 
-/** The Application map tab: every route, node, middleware and provider, and how they connect. */
-export function AppMapView() {
+/** The Application map: every route, node, middleware and provider, and how they connect. */
+export function AppMapView({ onClose }: { onClose?: () => void }) {
   const { map, loaded } = useAppMap()
-  if (!loaded) {
-    return <Centered>Loading the map…</Centered>
+  if (!loaded || !map.items.length) {
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-background">
+        <div className="flex min-h-11 items-center gap-2 border-b border-border bg-card px-3">
+          <MapTitle />
+          <span className="flex-1" />
+          {onClose && <CloseButton onClose={onClose} />}
+        </div>
+        <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
+          {loaded
+            ? "Nothing to map yet. Add a workflow or a node and it shows up here."
+            : "Loading the map…"}
+        </div>
+      </div>
+    )
   }
-  if (!map.items.length) {
-    return <Centered>Nothing to map yet. Add a workflow or a node and it shows up here.</Centered>
-  }
-  return <AppMapLoaded map={map} />
+  return <AppMapLoaded map={map} onClose={onClose} />
 }
 
-function Centered({ children }: { children: React.ReactNode }) {
+function MapTitle() {
   return (
-    <div className="flex h-full items-center justify-center bg-background p-6 text-sm text-muted-foreground">
-      {children}
-    </div>
+    <h2 className="flex items-center gap-2 pr-2 text-[13px] font-semibold">
+      <Network className="h-4 w-4 text-primary" aria-hidden="true" />
+      Application map
+    </h2>
   )
 }
 
-function AppMapLoaded({ map }: { map: AppMap }) {
+function CloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label="Close the map"
+      title="Close (Esc)"
+      onClick={onClose}
+      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+    >
+      <X className="h-4 w-4" />
+    </button>
+  )
+}
+
+function AppMapLoaded({ map, onClose }: { map: AppMap; onClose?: (() => void) | undefined }) {
   const view = useAppMapPrefs((s) => s.view)
   const setView = useAppMapPrefs((s) => s.setView)
   const group = useAppMapPrefs((s) => s.group)
@@ -240,15 +265,9 @@ function AppMapLoaded({ map }: { map: AppMap }) {
     key.startsWith("folder:") ? `${key.slice(7)}/` : (map.byKey.get(key)?.label ?? key)
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: Escape clears the selection anywhere in the map
-    <div
-      ref={rootRef}
-      className="flex h-full min-h-0 flex-col bg-background"
-      onKeyDown={(e) => {
-        if (e.key === "Escape" && !(e.target instanceof HTMLInputElement)) setSelected(null)
-      }}
-    >
-      <div className="flex min-h-10 flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-1.5">
+    <div ref={rootRef} className="flex h-full min-h-0 flex-col bg-background">
+      <div className="flex min-h-11 flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-1.5">
+        <MapTitle />
         <div
           role="tablist"
           aria-label="Layout"
@@ -308,6 +327,7 @@ function AppMapLoaded({ map }: { map: AppMap }) {
           <Eye className="h-3 w-3" />
           Read-only
         </span>
+        {onClose && <CloseButton onClose={onClose} />}
       </div>
       <div
         className="grid min-h-0 flex-1"

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { AppMapView } from "./app-map-view"
 import { petShop } from "./fixture.test-data"
@@ -54,5 +54,18 @@ describe("AppMapView", () => {
     expect(screen.queryByRole("button", { name: "Node: Add Pet" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }))
     expect(screen.getByRole("button", { name: "Node: Add Pet" })).toBeInTheDocument()
+  })
+})
+
+describe("AppMapDialogHost", () => {
+  it("opens as a popup and closes from its close button", async () => {
+    const { AppMapDialogHost } = await import("./app-map-dialog")
+    const { openAppMap, useAppMapDialog } = await import("@/lib/open-app-map")
+    render(<AppMapDialogHost />)
+    expect(screen.queryByRole("dialog")).toBeNull()
+    act(() => openAppMap())
+    expect(screen.getByRole("dialog", { name: "Application map" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Close the map" }))
+    expect(useAppMapDialog.getState().open).toBe(false)
   })
 })

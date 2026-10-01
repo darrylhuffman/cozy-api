@@ -1,10 +1,14 @@
-import { useDockviewApi } from "@/store/dockview-api"
-import { useTabsStore } from "@/store/tabs"
+import { create } from "zustand"
 
-export const APP_MAP_TAB_ID = "app-map"
+/** Whether the Application map popup is showing. */
+export const useAppMapDialog = create<{ open: boolean; setOpen(open: boolean): void }>()((set) => ({
+  open: false,
+  setOpen(open) {
+    set({ open })
+  },
+}))
 
-/** Opens the read-only Application map in the editor (or switches to it). */
+/** Opens the read-only Application map. */
 export function openAppMap(): void {
-  useTabsStore.getState().openTab({ id: APP_MAP_TAB_ID, title: "Application map", kind: "map" })
-  useDockviewApi.getState().api?.getPanel("editor")?.api.setActive()
+  useAppMapDialog.getState().setOpen(true)
 }

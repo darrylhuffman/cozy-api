@@ -1,4 +1,3 @@
-import { AppMapView } from "@/app-map/app-map-view"
 import { CodeEditor } from "@/code/code-editor"
 import { EditorTabStrip, type StripTab } from "@/components/editor-tab-strip"
 import { useCodeDrafts } from "@/store/code-drafts"
@@ -118,8 +117,7 @@ export function EditorPanel() {
             />
           </div>
         )}
-        {active?.kind === "map" && <AppMapView />}
-        {active && !active.path && active.kind !== "map" && (
+        {active && !active.path && (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
             <h2 className="text-xl font-semibold">{active.title}</h2>
             <p className="text-sm text-muted-foreground">
