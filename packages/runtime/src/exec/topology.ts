@@ -1,3 +1,4 @@
+import { isTriggerUses } from "../workflow/schedules.js"
 import type { WorkflowFile } from "../workflow/types.js"
 
 export interface ExecutionPlan {
@@ -46,7 +47,7 @@ export function computeExecutionPlan(
 
   const reachableFrom = new Map<string, Set<string>>()
   for (const id of allIds) {
-    if (wf.nodes[id]?.uses.startsWith("@core/http-request")) {
+    if (isTriggerUses(wf.nodes[id]?.uses ?? "")) {
       const reachable = new Set<string>([id])
       const queue: string[] = [id]
       while (queue.length > 0) {

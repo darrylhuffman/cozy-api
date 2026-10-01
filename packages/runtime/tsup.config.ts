@@ -7,6 +7,7 @@ export default defineConfig({
     "requests/index": "src/requests/index.ts",
     "cases/index": "src/cases/index.ts",
     "agent-broker/index": "src/agent-broker/index.ts",
+    "schedule/index": "src/schedule/index.ts",
   },
   format: ["esm"],
   dts: true,

@@ -1,3 +1,4 @@
+import { cronProblem, isValidTimeZone } from "@darrylondil/lorien-runtime/schedule"
 import type { JsonSchema, NodeSchemas, WorkflowFile } from "@/lib/api"
 
 export type Severity = "error" | "warning"
@@ -17,8 +18,10 @@ const IDENT = /^[a-zA-Z_$][\w$]*$/
 /** A field after the node id; dashes allowed, for header names. */
 const SEGMENT = /^[a-zA-Z_$][\w$-]*$/
 /** Node types that start a run. They always run, so they take no `when`. */
-export const TRIGGERS = new Set(["@core/http-request"])
+export const TRIGGERS = new Set(["@core/http-request", "@core/schedule"])
 const RESPONSE = "@core/response"
+const HTTP_REQUEST = "@core/http-request"
+const SCHEDULE = "@core/schedule"
 
 export function isValidNodeId(id: string): boolean {
   return IDENT.test(id)
@@ -122,6 +125,30 @@ export function diagnoseWorkflow(
       }
     }
 
+    if (node.uses === SCHEDULE) {
+      const values = (node.values ?? {}) as Record<string, unknown>
+      const cron = typeof values.cron === "string" && values.cron.trim() ? values.cron : undefined
+      const tz =
+        typeof values.timezone === "string" && values.timezone.trim() ? values.timezone : undefined
+      const problem = cron ? cronProblem(cron) : null
+      if (problem)
+        push({ severity: "error", nodeId, field: "cron", message: `Schedule: ${problem}.` })
+      else if (tz && !isValidTimeZone(tz))
+        push({
+          severity: "error",
+          nodeId,
+          field: "timezone",
+          message: `Unknown time zone "${tz}".`,
+        })
+      if (node.in !== undefined)
+        push({
+          severity: "error",
+          nodeId,
+          field: "in",
+          message: "A schedule's cron and time zone are set on the node, not wired in.",
+        })
+    }
+
     if (typeof node.in === "string") checkRef(node.in, "input")
     else if (node.in) for (const [field, raw] of Object.entries(node.in)) checkRef(raw, field)
 
@@ -183,9 +210,9 @@ export function diagnoseWorkflow(
       push({
         severity: "warning",
         nodeId: null,
-        message: "No HTTP Request trigger: nothing can call this workflow.",
+        message: "No trigger (HTTP Request or Schedule): nothing starts this workflow.",
       })
-    } else if (!uses.includes(RESPONSE)) {
+    } else if (uses.includes(HTTP_REQUEST) && !uses.includes(RESPONSE)) {
       push({
         severity: "warning",
         nodeId: null,

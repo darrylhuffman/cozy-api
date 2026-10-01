@@ -77,6 +77,33 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
     },
     outputs: { type: "object", properties: {} },
   },
+  "@core/schedule": {
+    name: "Schedule",
+    color: null,
+    description:
+      "Schedule trigger. Starts this workflow at the times its cron expression names, in its time zone (UTC unless set). `lorien dev` and the built server keep the timers; in the IDE, Run now starts it by hand.",
+    inputs: {
+      type: "object",
+      properties: {
+        cron: {
+          type: "string",
+          default: "0 9 * * *",
+          description: "Five-field cron expression: minute hour day-of-month month day-of-week",
+        },
+        timezone: { type: "string", default: "UTC", description: "IANA time zone" },
+      },
+      required: ["cron"],
+    },
+    outputs: {
+      type: "object",
+      properties: {
+        scheduledAt: { type: "string", description: "The time this run was due, as ISO 8601" },
+        timestamp: { type: "number" },
+        manual: { type: "boolean", description: "True when started with Run now" },
+        context: { type: "object", properties: { runId: { type: "string" } } },
+      },
+    },
+  },
   "@core/variable": {
     name: "Variable",
     color: null,
