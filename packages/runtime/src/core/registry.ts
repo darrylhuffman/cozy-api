@@ -1,7 +1,7 @@
 import type { AnyNodeOrTrigger } from "../types.js"
 import httpRequest from "./http-request.js"
 import response from "./response.js"
-import schedule from "./schedule.js"
+import schedule from "./triggers/schedule.js"
 import variable from "./variable.js"
 
 const CORE_REGISTRY: Record<string, AnyNodeOrTrigger> = {

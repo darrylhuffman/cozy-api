@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { defineTrigger } from "../define-trigger.js"
+import { defineTrigger } from "../../define-trigger.js"
 
 /**
  * Built-in schedule trigger: starts the workflow at the times a cron
