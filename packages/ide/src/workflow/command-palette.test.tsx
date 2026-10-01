@@ -17,23 +17,23 @@ afterEach(() => {
   cleanup()
 })
 
-const schemas = { "@core/response": { color: null, inputs: {}, outputs: {} } }
+const schemas = { "@core/http-response": { color: null, inputs: {}, outputs: {} } }
 
 describe("CommandPalette", () => {
   it("opens on Ctrl+K and lists schemas", () => {
     render(<CommandPalette schemas={schemas as never} onPick={vi.fn()} />)
-    expect(screen.queryByText("@core/response")).not.toBeInTheDocument()
+    expect(screen.queryByText("@core/http-response")).not.toBeInTheDocument()
     fireEvent.keyDown(window, { key: "k", ctrlKey: true })
-    expect(screen.getByText("@core/response")).toBeInTheDocument()
+    expect(screen.getByText("@core/http-response")).toBeInTheDocument()
   })
 
   it("calls onPick and closes when an item is selected", () => {
     const onPick = vi.fn()
     render(<CommandPalette schemas={schemas as never} onPick={onPick} />)
     fireEvent.keyDown(window, { key: "k", ctrlKey: true })
-    fireEvent.click(screen.getByText("@core/response"))
-    expect(onPick).toHaveBeenCalledWith("@core/response")
-    expect(screen.queryByText("@core/response")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText("@core/http-response"))
+    expect(onPick).toHaveBeenCalledWith("@core/http-response")
+    expect(screen.queryByText("@core/http-response")).not.toBeInTheDocument()
   })
 
   it("Escape closes without calling onPick", () => {
@@ -42,6 +42,6 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(window, { key: "k", ctrlKey: true })
     fireEvent.keyDown(window, { key: "Escape" })
     expect(onPick).not.toHaveBeenCalled()
-    expect(screen.queryByText("@core/response")).not.toBeInTheDocument()
+    expect(screen.queryByText("@core/http-response")).not.toBeInTheDocument()
   })
 })

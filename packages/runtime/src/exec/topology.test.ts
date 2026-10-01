@@ -12,7 +12,7 @@ describe("computeExecutionPlan", () => {
         a: { uses: "./n", in: { v: "req.body" } },
         b: { uses: "./n", in: { v: "req.body" } },
         join: { uses: "./n", in: { x: "a.out", y: "b.out" } },
-        res: { uses: "@core/response", in: { body: "join.out" } },
+        res: { uses: "@core/http-response", in: { body: "join.out" } },
       },
     })
     const { depsByNode } = validateWorkflow(wf)
@@ -46,8 +46,8 @@ describe("computeExecutionPlan", () => {
         postReq: { uses: "@core/http-request", values: { path: "/y", method: "POST" } },
         getOnly: { uses: "./n", in: { v: "getReq.body" } },
         postOnly: { uses: "./n", in: { v: "postReq.body" } },
-        getRes: { uses: "@core/response", in: { body: "getOnly.out" } },
-        postRes: { uses: "@core/response", in: { body: "postOnly.out" } },
+        getRes: { uses: "@core/http-response", in: { body: "getOnly.out" } },
+        postRes: { uses: "@core/http-response", in: { body: "postOnly.out" } },
       },
     })
     const { depsByNode } = validateWorkflow(wf)

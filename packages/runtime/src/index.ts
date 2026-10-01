@@ -1,9 +1,22 @@
 // Helpers
 
+export {
+  IF_OPERATORS,
+  type IfOperator,
+  looseEquals,
+  pickField,
+  switchBranches,
+  testCondition,
+} from "./core/logic/compare.js"
 // Built-ins
 export {
   CORE_NODE_IDS,
+  type CoreCategory,
+  canonicalCoreId,
+  coreCategory,
+  HTTP_RESPONSE,
   isCoreReference,
+  isHttpResponse,
   resolveCoreNode,
 } from "./core/registry.js"
 export { defineConfig } from "./define-config.js"
@@ -27,8 +40,20 @@ export type { ImportNodesResult } from "./dev-server/import-nodes.js"
 export { importNodes } from "./dev-server/import-nodes.js"
 export type { LoadedWorkflow, LoadedWorkspace } from "./dev-server/load.js"
 // Dev server
-export { loadWorkspace } from "./dev-server/load.js"
+export { loadSubworkflows, loadWorkflowFile, loadWorkspace } from "./dev-server/load.js"
 export { allowedMethods, answerUnmatchedWithJson } from "./dev-server/not-found.js"
+export type {
+  PreparedSchedule,
+  RunningSchedules,
+  ScheduleRunOptions,
+} from "./dev-server/schedules.js"
+export {
+  mountScheduleRunner,
+  prepareSchedules,
+  RUN_SCHEDULE_PATH,
+  SCHEDULE_METHOD,
+  startWorkflowSchedules,
+} from "./dev-server/schedules.js"
 export type { DebugIntegration, MountOptions } from "./dev-server/server.js"
 export { mountWorkflows } from "./dev-server/server.js"
 export type { StartServerOptions } from "./dev-server/start.js"
@@ -115,6 +140,17 @@ export type {
 } from "./types.js"
 export type { ParsedWhen } from "./workflow/dependencies.js"
 export { dataDependencies, nodeDependencies, parseWhen } from "./workflow/dependencies.js"
+export type { Subworkflow, SubworkflowMap } from "./workflow/flatten.js"
+export {
+  flattenWorkflow,
+  referenceSource,
+  SUBWORKFLOW_INPUT,
+  SUBWORKFLOW_OUTPUT,
+  SUBWORKFLOW_SEPARATOR,
+  SubworkflowError,
+  subworkflowPorts,
+  subworkflowUses,
+} from "./workflow/flatten.js"
 // Workflow file primitives
 export {
   parseWorkflow,
@@ -124,6 +160,16 @@ export {
 export { isReferenceString, parseReference } from "./workflow/reference.js"
 export type { RouteConflict, WorkflowRoute } from "./workflow/routes.js"
 export { defaultRoutePath, findRouteConflicts, workflowRoutes } from "./workflow/routes.js"
+export type { WorkflowSchedule } from "./workflow/schedules.js"
+export {
+  DEFAULT_CRON,
+  HTTP_TRIGGER,
+  isTriggerUses,
+  SCHEDULE_TRIGGER,
+  scheduleProblems,
+  TRIGGER_USES,
+  workflowSchedules,
+} from "./workflow/schedules.js"
 export type {
   NodeInstance,
   NodeView,

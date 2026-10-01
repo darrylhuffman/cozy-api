@@ -88,3 +88,22 @@ describe("emitIndex", () => {
     expect(source).toContain('return c.json({ error: "Not Found" }, 404)')
   })
 })
+
+describe("emitIndex — schedules", () => {
+  it("starts each scheduled workflow's schedules", () => {
+    const { source } = emitIndex({
+      workflowPaths: ["ping", "jobs/nightly"],
+      scheduledPaths: ["jobs/nightly"],
+    })
+    expect(source).toContain('import { startSchedule } from "./schedule.gen.js"')
+    expect(source).toContain(
+      'import { register as register_jobs_nightly, schedules as schedules_jobs_nightly } from "./workflows/jobs/nightly.gen.js"',
+    )
+    expect(source).toContain('import { register as register_ping } from "./workflows/ping.gen.js"')
+    expect(source).toContain("for (const s of [...schedules_jobs_nightly]) {")
+  })
+
+  it("imports no scheduler without scheduled workflows", () => {
+    expect(emitIndex({ workflowPaths: ["ping"] }).source).not.toMatch(/schedule/)
+  })
+})

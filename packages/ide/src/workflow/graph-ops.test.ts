@@ -11,7 +11,7 @@ const wf: WorkflowFile = {
       in: { email: "http-request.body.email", other: "http-requestX.y" },
       after: ["http-request"],
     },
-    response: { uses: "@core/response", in: "save.user" },
+    response: { uses: "@core/http-response", in: "save.user" },
   },
   view: { "http-request": { x: 1, y: 2 }, save: { x: 3, y: 4 }, response: { x: 5, y: 6 } },
 }
@@ -36,8 +36,8 @@ describe("renameNode", () => {
       lorien: 1,
       nodes: {
         find: { uses: "./nodes/find" },
-        missing: { uses: "@core/response", when: "!find.found" },
-        found: { uses: "@core/response", when: "find.found" },
+        missing: { uses: "@core/http-response", when: "!find.found" },
+        found: { uses: "@core/http-response", when: "find.found" },
       },
     }
     const next = renameNode(branching, "find", "findRoom")

@@ -26,6 +26,11 @@ export interface PortNode {
   inferred?: boolean
   /** True when the parent schema lists this field in `required`. */
   required?: boolean
+  /**
+   * True for a logic node's branch output (a switch case, `default`, an
+   * if's `true`/`false`): wired into another node, it sets that node's `when`.
+   */
+  branch?: boolean
 }
 
 /**

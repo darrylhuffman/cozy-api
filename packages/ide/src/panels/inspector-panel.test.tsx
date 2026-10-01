@@ -50,7 +50,7 @@ const sampleWorkflow: WorkflowFile = {
       uses: "./nodes/save-user",
     },
     response: {
-      uses: "@core/response",
+      uses: "@core/http-response",
       in: { body: "save.user" },
     },
   },
@@ -58,7 +58,7 @@ const sampleWorkflow: WorkflowFile = {
 
 function resetStores() {
   resetSchemasStore()
-  useSelectionStore.setState({ selectedNodeId: null })
+  useSelectionStore.setState({ selectedNodeId: null, selectedNodeIds: [] })
   useLiveWorkflowStore.setState({ workflow: null, tabId: null })
   useWorkflowDrafts.setState({ drafts: {} })
 }
@@ -158,7 +158,7 @@ describe("InspectorPanel — InspectContent", () => {
 
   it("does not show a Config section (config is no longer surfaced in the inspector)", async () => {
     vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
-      "@core/response": {
+      "@core/http-response": {
         inputs: { type: "object", properties: {} },
         outputs: { type: "object", properties: {} },
       },
@@ -222,6 +222,17 @@ describe("InspectorPanel — InspectContent", () => {
     expect(screen.getByText("@core/http-request")).toBeInTheDocument()
     // "not found" error must NOT appear
     expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
+  })
+})
+
+describe("InspectorPanel — several nodes selected", () => {
+  it("lists the selected nodes, and a click inspects one on its own", () => {
+    useSelectionStore.getState().setSelection(["save", "response"])
+    render(<InspectorPanel />)
+    expect(screen.getByText("2 nodes selected")).toBeDefined()
+    fireEvent.click(screen.getByTitle("Inspect save on its own"))
+    expect(useSelectionStore.getState().selectedNodeIds).toEqual(["save"])
+    expect(screen.queryByText("2 nodes selected")).toBeNull()
   })
 })
 
@@ -466,7 +477,7 @@ describe("InspectorPanel — condition", () => {
     lorien: 1,
     nodes: {
       save: { uses: "./nodes/save-user" },
-      response: { uses: "@core/response", when: "save.ok", in: { body: "save.user" } },
+      response: { uses: "@core/http-response", when: "save.ok", in: { body: "save.user" } },
     },
   }
   beforeEach(() => {

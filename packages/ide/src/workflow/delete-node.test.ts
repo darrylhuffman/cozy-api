@@ -11,7 +11,7 @@ const wf: WorkflowFile = {
       in: { email: "request.body.email", password: "request.body.password" },
     },
     response: {
-      uses: "@core/response",
+      uses: "@core/http-response",
       in: { body: "save.user" },
       values: { status: 201 },
     },
@@ -43,12 +43,15 @@ describe("deleteNode", () => {
       ...wf,
       nodes: {
         ...wf.nodes,
-        missing: { uses: "@core/response", when: "!save.user", in: { body: "request.body" } },
-        other: { uses: "@core/response", when: "request.ok" },
+        missing: { uses: "@core/http-response", when: "!save.user", in: { body: "request.body" } },
+        other: { uses: "@core/http-response", when: "request.ok" },
       },
     }
     const next = deleteNode(branching, "save")
-    expect(next.nodes.missing).toEqual({ uses: "@core/response", in: { body: "request.body" } })
+    expect(next.nodes.missing).toEqual({
+      uses: "@core/http-response",
+      in: { body: "request.body" },
+    })
     expect(next.nodes.other?.when).toBe("request.ok")
   })
 

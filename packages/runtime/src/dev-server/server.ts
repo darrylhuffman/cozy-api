@@ -22,6 +22,7 @@ import { checkWiring } from "../workflow/wiring.js"
 import { withRunContext } from "./console-capture.js"
 import type { RequestEnvelope } from "./debug-protocol.js"
 import type { LoadedWorkflow } from "./load.js"
+import { mountScheduleRunner, prepareSchedules } from "./schedules.js"
 import { buildTriggerSlice, extractParams } from "./trigger-slice.js"
 
 export interface DebugIntegration {
@@ -114,6 +115,10 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
       const trace = traces.get(c.req.param("id"))
       return trace ? c.json(trace) : c.json({ error: "trace not found" }, 404)
     })
+  }
+  if (opts.testHooks) {
+    // Schedules don't fire on their own here; the IDE starts them with Run now.
+    mountScheduleRunner(app, prepareSchedules(workflows, opts))
   }
   const keepTrace = (id: string, trace: RunTrace) => {
     traces.set(id, trace)

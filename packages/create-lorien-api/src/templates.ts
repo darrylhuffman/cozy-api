@@ -24,7 +24,7 @@ const LORIEN_RANGE = lorienRange(
  * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
  * (with frontmatter wrapper). Single source of truth — both renderers must use this.
  */
-export const SKILL_BODY = `<!-- lorien-skill-version: 8 -->
+export const SKILL_BODY = `<!-- lorien-skill-version: 10 -->
 
 # lorien project guide
 
@@ -105,7 +105,7 @@ Named-input JSON. Each node lists where its inputs come from. No separate edges 
       "in": { "id": "Request.params.id" }
     },
     "Response": {
-      "uses": "@core/response",
+      "uses": "@core/http-response",
       "in": { "body": "FindRoom.room" }
     }
   }
@@ -140,9 +140,24 @@ Rules:
 
 The route comes from \`values.path\`, not from where the file sits. Two workflows serving the same method and path fail the build.
 
-**\`@core/response\`**: inputs \`body\`, \`status\` (default 200) and \`headers\`. The first Response that runs answers the request.
+**\`@core/http-response\`**: inputs \`body\`, \`status\` (default 200) and \`headers\`. The first Response that runs answers the request. (\`@core/response\` is its old name and still works.)
 
 **\`@core/variable\`**: a constant, \`values.value\`, read as \`<id>.value\`.
+
+**\`@core/schedule\`** (a trigger, instead of or beside \`@core/http-request\`): runs the workflow on a cron schedule. \`values.cron\` is a five-field cron expression (\`minute hour day-of-month month day-of-week\`, e.g. \`"0 9 * * 1-5"\` for 09:00 on weekdays; \`*/15\`, ranges, lists, \`MON\`/\`JAN\` names and \`@daily\`-style shortcuts work) and \`values.timezone\` an IANA zone (default \`UTC\`). Both must be literals under \`values\`. Outputs: \`scheduledAt\` (ISO string), \`timestamp\` (ms), \`manual\` (true when started from the IDE's Run now) and \`context.runId\`. \`lorien dev\` and the built server keep the timers; a run that comes due while the previous one is still going is skipped. There is no request, so a Response answers no one, and folder \`_middleware.ts\` doesn't run.
+
+Logic nodes produce boolean branch outputs for other nodes' \`when\`:
+- **\`@core/switch\`**: inputs \`value\`, optional \`field\` (a dotted attribute of \`value\` to compare, e.g. \`"role"\`) and \`values.cases\` (a list). Outputs \`case1\`…\`caseN\` (only the first matching case is true), \`default\` (true when none match) and \`value\`. Primitives match by their text, so the query string \`"2"\` matches the case \`2\`.
+- **\`@core/if\`**: inputs \`value\`, optional \`field\`, \`operator\` (\`is truthy\` by default; \`is falsy\`, \`==\`, \`!=\`, \`>\`, \`>=\`, \`<\`, \`<=\`, \`contains\`, \`starts with\`, \`ends with\`, \`is empty\`, \`is not empty\`, \`exists\`) and \`compare\`. Outputs \`true\`, \`false\` and \`value\`.
+- **\`@core/and\`**, **\`@core/or\`** (inputs \`a\`, \`b\`) and **\`@core/not\`** (input \`value\`): outputs \`result\`, \`true\` and \`false\`.
+
+\`\`\`json
+"Kind": { "uses": "@core/switch", "in": { "value": "Request.query" }, "values": { "field": "kind", "cases": ["cat", "dog"] } },
+"Cats": { "uses": "./nodes/pets/list-cats", "when": "Kind.case1" },
+"Unknown": { "uses": "@core/http-response", "when": "Kind.default", "values": { "status": 400 } }
+\`\`\`
+
+Prefer a plain \`when\` on a node's own boolean output; reach for these when the branch depends on comparing a value.
 
 ## Status codes and branching
 
@@ -155,7 +170,7 @@ Every node runs unless its \`when\` says otherwise. A node that doesn't run is s
     "Request": { "uses": "@core/http-request", "values": { "path": "/bookings", "method": "POST" } },
     "FindRoom": { "uses": "./nodes/rooms/find-room", "in": { "id": "Request.body.roomId" } },
     "NoRoom": {
-      "uses": "@core/response",
+      "uses": "@core/http-response",
       "when": "!FindRoom.found",
       "values": { "status": 404, "body": { "error": "room not found" } }
     },
@@ -165,7 +180,7 @@ Every node runs unless its \`when\` says otherwise. A node that doesn't run is s
       "in": { "roomId": "FindRoom.room.id", "from": "Request.body.from", "to": "Request.body.to" }
     },
     "Taken": {
-      "uses": "@core/response",
+      "uses": "@core/http-response",
       "when": "CheckOverlap.overlaps",
       "values": { "status": 409, "body": { "error": "room already booked" } }
     },
@@ -175,7 +190,7 @@ Every node runs unless its \`when\` says otherwise. A node that doesn't run is s
       "in": { "roomId": "FindRoom.room.id", "from": "Request.body.from", "to": "Request.body.to" }
     },
     "Created": {
-      "uses": "@core/response",
+      "uses": "@core/http-response",
       "in": { "body": "Insert.booking", "headers": "Insert.headers" },
       "values": { "status": 201 }
     }
@@ -506,7 +521,7 @@ export function renderHelloWorkflow(): string {
         in: {},
       },
       response: {
-        uses: "@core/response",
+        uses: "@core/http-response",
         in: { body: "say.greeting" },
       },
     },

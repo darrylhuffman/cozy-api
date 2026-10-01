@@ -1,3 +1,4 @@
+import { describeCron } from "@darrylondil/lorien-runtime/schedule"
 import { useEffect } from "react"
 import {
   Select,
@@ -10,6 +11,7 @@ import type { NodeSchemas, WorkflowFile } from "@/lib/api"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { useSchemas } from "@/store/schemas"
+import { SCHEDULE_USES, scheduleValues } from "@/workflow/schedule"
 import { discoverTriggerConsumers } from "./discover-trigger-consumers"
 import { sampleFromSchema } from "./sample-from-schema"
 
@@ -19,10 +21,17 @@ interface Trigger {
   path: string
 }
 
+/** The Run tab's "method" for a schedule trigger, whose "path" is its cron. */
+export const SCHEDULE_METHOD = "CRON"
+
 function discoverTriggers(workflow: WorkflowFile | null): Trigger[] {
   if (!workflow) return []
   const triggers: Trigger[] = []
   for (const [nodeId, instance] of Object.entries(workflow.nodes)) {
+    if (instance.uses === SCHEDULE_USES) {
+      triggers.push({ nodeId, method: SCHEDULE_METHOD, path: scheduleValues(instance).cron })
+      continue
+    }
     if (instance.uses !== "@core/http-request") continue
     const values = (instance.values ?? {}) as Record<string, unknown>
     triggers.push({
@@ -44,6 +53,16 @@ function pickTrigger(
   workflow: WorkflowFile | null,
   schemas: Record<string, NodeSchemas>,
 ) {
+  if (t.method === SCHEDULE_METHOD) {
+    useDebugSessionStore.getState().setRequestForm((cur) => ({
+      ...cur,
+      triggerNodeId: t.nodeId,
+      method: t.method,
+      path: t.path,
+      bodyKind: "none",
+    }))
+    return
+  }
   const consumed = workflow
     ? discoverTriggerConsumers(workflow, t.nodeId, schemas)
     : { body: null, query: null, headers: null }
@@ -133,7 +152,8 @@ export function TriggerSelector() {
   if (triggers.length === 0) {
     return (
       <div className="w-full rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
-        Add an <code className="font-mono">@core/http-request</code> node to debug this workflow.
+        Add an <code className="font-mono">@core/http-request</code> or{" "}
+        <code className="font-mono">@core/schedule</code> node to debug this workflow.
       </div>
     )
   }
@@ -156,11 +176,28 @@ export function TriggerSelector() {
         <SelectContent>
           {triggers.map((t) => (
             <SelectItem key={t.nodeId} value={t.nodeId}>
-              <span className="font-mono">{t.method}</span> {t.path}
+              {t.method === SCHEDULE_METHOD ? (
+                <>
+                  <span className="font-sans">{t.nodeId}</span>{" "}
+                  <span className="font-sans text-muted-foreground">{safeDescribe(t.path)}</span>
+                </>
+              ) : (
+                <>
+                  <span className="font-mono">{t.method}</span> {t.path}
+                </>
+              )}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
     </div>
   )
+}
+
+function safeDescribe(cron: string): string {
+  try {
+    return describeCron(cron)
+  } catch {
+    return cron
+  }
 }

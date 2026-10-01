@@ -36,7 +36,11 @@ function petApp(testHooks: boolean, guarded = false) {
           uses: "./nodes/pets/add-pet",
           in: { name: "Request.body.name", species: "Request.body.species" },
         },
-        Response: { uses: "@core/response", in: { body: "AddPet.pet" }, values: { status: 201 } },
+        Response: {
+          uses: "@core/http-response",
+          in: { body: "AddPet.pet" },
+          values: { status: 201 },
+        },
       },
     }),
   }

@@ -98,7 +98,7 @@ describe("template renderers", () => {
     expect(out.startsWith("---")).toBe(false)
     expect(out).toMatch(/# lorien project guide/)
     expect(out).toMatch(/## The node contract/)
-    expect(out).toMatch(/<!-- lorien-skill-version: 8 -->/)
+    expect(out).toMatch(/<!-- lorien-skill-version: 10 -->/)
     // Project name is intentionally NOT interpolated — guide is generic.
     expect(out).not.toMatch(/my-app/)
     // Trailing newline preserved
@@ -127,7 +127,7 @@ describe("template renderers", () => {
   })
 
   it("SKILL_BODY contains the canonical authoring guide content", () => {
-    expect(SKILL_BODY).toMatch(/<!-- lorien-skill-version: 8 -->/)
+    expect(SKILL_BODY).toMatch(/<!-- lorien-skill-version: 10 -->/)
     expect(SKILL_BODY).toMatch(/# lorien project guide/)
     expect(SKILL_BODY).toMatch(/## The node contract/)
     expect(SKILL_BODY).toMatch(/## The \.workflow file format/)
@@ -162,7 +162,7 @@ describe("template renderers", () => {
     expect(fmLines).toHaveLength(2) // name + description, no continuation lines
     // Body follows the frontmatter
     expect(out).toMatch(/# lorien project guide/)
-    expect(out).toMatch(/<!-- lorien-skill-version: 8 -->/)
+    expect(out).toMatch(/<!-- lorien-skill-version: 10 -->/)
     // Trailing newline preserved
     expect(out.endsWith("\n")).toBe(true)
   })

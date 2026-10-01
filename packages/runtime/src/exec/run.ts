@@ -1,7 +1,10 @@
+import { isHttpResponse } from "../core/registry.js"
 import type { NodeMock } from "../requests/types.js"
 import type { AnyNodeOrTrigger, Node, Services } from "../types.js"
 import { dataDependencies, nodeDependencies, parseWhen } from "../workflow/dependencies.js"
+import { referenceSource } from "../workflow/flatten.js"
 import { parseReference } from "../workflow/reference.js"
+import { HTTP_TRIGGER } from "../workflow/schedules.js"
 import type { NodeInstance, WorkflowFile } from "../workflow/types.js"
 import {
   NodeRunError,
@@ -42,7 +45,7 @@ export interface RunWorkflowOptions {
    * after the corresponding `after-node` lifecycle event has been emitted,
    * before downstream nodes can consume the output. Not called when `run()`
    * throws (use lifecycle `error` events for that). Not called for
-   * @core/response (which short-circuits without `outputs.set`).
+   * @core/http-response (which short-circuits without `outputs.set`).
    */
   onAfterNode?: (nodeId: string, output: Record<string, unknown>) => Promise<void>
   /**
@@ -193,8 +196,11 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<WorkflowRun
   lifecycle?.emit({ type: "complete", totalMs: Date.now() - startedAt })
 
   if (responseResult) return responseResult
+  // Only an HTTP caller is owed an answer; a schedule may finish without one.
+  if (workflow.nodes[triggerNodeId]?.uses !== HTTP_TRIGGER)
+    return { status: 200, body: null, headers: {} }
   throw new NoResponseError(
-    [...execSet].filter((id) => workflow.nodes[id]?.uses === "@core/response").sort(),
+    [...execSet].filter((id) => isHttpResponse(workflow.nodes[id]?.uses ?? "")).sort(),
   )
 }
 
@@ -225,6 +231,7 @@ function isSkipped(
  * failing becomes "query.minCapacity".
  */
 function requestIssues(
+  workflow: WorkflowFile,
   instance: NodeInstance,
   triggerNodeId: string,
   issues: Array<{ path: PropertyKey[]; message: string }>,
@@ -235,10 +242,10 @@ function requestIssues(
     let ref: ReturnType<typeof parseReference> = null
     let rest = path
     if (typeof instance.in === "string") {
-      ref = parseReference(instance.in)
+      ref = referenceSource(workflow, instance.in)
     } else {
       const raw = path[0] !== undefined ? instance.in?.[path[0]] : undefined
-      ref = raw !== undefined ? parseReference(raw) : null
+      ref = raw !== undefined ? referenceSource(workflow, raw) : null
       rest = path.slice(1)
     }
     if (ref?.nodeId !== triggerNodeId) continue
@@ -336,8 +343,8 @@ async function runOneNode(
     }
   }
 
-  // Special-case @core/response: collect status/body/headers and short-circuit.
-  if (instance.uses === "@core/response") {
+  // Special-case @core/http-response: collect status/body/headers and short-circuit.
+  if (isHttpResponse(instance.uses)) {
     lifecycle?.emit({ type: "before-node", nodeId, input })
     if (opts.onBeforeNode) {
       try {
@@ -357,7 +364,7 @@ async function runOneNode(
       output: { sent: true },
       durationMs: 0,
     })
-    // onAfterNode is intentionally NOT called for @core/response — no outputs exposed downstream.
+    // onAfterNode is intentionally NOT called for @core/http-response — no outputs exposed downstream.
     return { kind: "response", value: response }
   }
 
@@ -371,7 +378,12 @@ async function runOneNode(
   if (nodeDef.inputs) {
     const result = (nodeDef as Node).inputs.safeParse(input)
     if (!result.success) {
-      const fromRequest = requestIssues(instance, opts.triggerNodeId, result.error.issues)
+      const fromRequest = requestIssues(
+        opts.workflow,
+        instance,
+        opts.triggerNodeId,
+        result.error.issues,
+      )
       if (fromRequest.length > 0) throw new RequestValidationError(nodeId, fromRequest)
       const issue = result.error.issues[0]
       const path = issue?.path?.join(".") ?? "<root>"

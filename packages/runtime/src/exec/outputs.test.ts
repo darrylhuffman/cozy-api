@@ -24,7 +24,7 @@ const workflow = parseWorkflow({
   nodes: {
     Request: { uses: "@core/http-request", values: { path: "/check", method: "GET" } },
     Check: { uses: "./check", after: ["Request"] },
-    Response: { uses: "@core/response", in: { body: "Check.ok" }, values: { status: 200 } },
+    Response: { uses: "@core/http-response", in: { body: "Check.ok" }, values: { status: 200 } },
   },
 })
 

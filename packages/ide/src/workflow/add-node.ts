@@ -1,4 +1,5 @@
 import type { WorkflowFile } from "@/lib/api"
+import { SWITCH_USES } from "./core-nodes"
 
 /**
  * Returns a new workflow with a new node appended. Generates a unique id
@@ -10,9 +11,11 @@ export function addNode(
   position: { x: number; y: number },
 ): WorkflowFile {
   const id = uniqueId(nodeIdFromUses(uses), new Set(Object.keys(wf.nodes)))
+  // A new switch starts with two empty cases, so its branches show.
+  const node = uses === SWITCH_USES ? { uses, values: { cases: ["", ""] } } : { uses }
   return {
     ...wf,
-    nodes: { ...wf.nodes, [id]: { uses } },
+    nodes: { ...wf.nodes, [id]: node },
     view: { ...(wf.view ?? {}), [id]: position },
   }
 }

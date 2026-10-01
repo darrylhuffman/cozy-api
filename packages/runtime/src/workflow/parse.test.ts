@@ -7,7 +7,7 @@ describe("parseWorkflow", () => {
       lorien: 1,
       nodes: {
         request: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
-        response: { uses: "@core/response", in: { body: "request.params" } },
+        response: { uses: "@core/http-response", in: { body: "request.params" } },
       },
     })
     expect(wf.nodes.request.uses).toBe("@core/http-request")
@@ -29,7 +29,7 @@ describe("parseWorkflow", () => {
   it("accepts optional view block", () => {
     const wf = parseWorkflow({
       lorien: 1,
-      nodes: { r: { uses: "@core/response" } },
+      nodes: { r: { uses: "@core/http-response" } },
       view: { r: { x: 10, y: 20 } },
     })
     expect(wf.view?.r).toEqual({ x: 10, y: 20 })
@@ -41,10 +41,10 @@ describe("parseWorkflowFromString", () => {
     const wf = parseWorkflowFromString(
       JSON.stringify({
         lorien: 1,
-        nodes: { r: { uses: "@core/response" } },
+        nodes: { r: { uses: "@core/http-response" } },
       }),
     )
-    expect(wf.nodes.r?.uses).toBe("@core/response")
+    expect(wf.nodes.r?.uses).toBe("@core/http-response")
   })
 
   it("throws WorkflowParseError on invalid JSON syntax", () => {

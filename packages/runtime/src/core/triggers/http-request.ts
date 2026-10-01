@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { defineTrigger } from "../define-trigger.js"
+import { defineTrigger } from "../../define-trigger.js"
 
 /**
  * Built-in HTTP request trigger. v1 supports JSON bodies; non-JSON is exposed as raw text.

@@ -1,9 +1,41 @@
 import { describe, expect, it } from "vitest"
-import { CORE_NODE_IDS, isCoreReference, resolveCoreNode } from "./registry.js"
+import {
+  CORE_NODE_IDS,
+  canonicalCoreId,
+  coreCategory,
+  isCoreReference,
+  isHttpResponse,
+  resolveCoreNode,
+} from "./registry.js"
 
 describe("core node registry", () => {
-  it("exposes http-request and response", () => {
-    expect(CORE_NODE_IDS).toEqual(expect.arrayContaining(["@core/http-request", "@core/response"]))
+  it("exposes the trigger, logic, data and response nodes", () => {
+    expect(CORE_NODE_IDS).toEqual(
+      expect.arrayContaining([
+        "@core/http-request",
+        "@core/http-response",
+        "@core/variable",
+        "@core/if",
+        "@core/switch",
+        "@core/and",
+        "@core/or",
+        "@core/not",
+      ]),
+    )
+  })
+
+  it("files every core node under a folder", () => {
+    expect(coreCategory("@core/http-request")).toBe("triggers")
+    expect(coreCategory("@core/switch")).toBe("logic")
+    expect(coreCategory("@core/variable")).toBe("data")
+    expect(coreCategory("@core/http-response")).toBe("responses")
+  })
+
+  it("still resolves @core/response, the old name of @core/http-response", () => {
+    expect(canonicalCoreId("@core/response")).toBe("@core/http-response")
+    expect(resolveCoreNode("@core/response")).toBe(resolveCoreNode("@core/http-response"))
+    expect(isHttpResponse("@core/response")).toBe(true)
+    expect(CORE_NODE_IDS).not.toContain("@core/response")
   })
 
   it("isCoreReference matches @core/* uses", () => {

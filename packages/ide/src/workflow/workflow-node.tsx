@@ -1,10 +1,13 @@
+import { cronProblem, describeCron, nextCronTime } from "@darrylondil/lorien-runtime/schedule"
 import { Handle, Position, useConnection } from "@xyflow/react"
 import {
   AlertTriangle,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   FlaskConical,
   GitBranch,
+  Plus,
   ShieldCheck,
   X,
   XCircle,
@@ -14,13 +17,16 @@ import { ProviderChip } from "@/code/provider-card"
 import type { JsonSchema, NodeInstance } from "@/lib/api"
 import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
+import { useInspectorTab } from "@/store/inspector-tab"
 import { middlewareFor, useProvidersStore } from "@/store/providers"
 import { useSelectionStore } from "@/store/selection"
 import { idFromUses } from "./add-node"
 import { conditionColor } from "./condition-edge"
 import { type Condition, parseCondition, WHEN_HANDLE_ID } from "./conditions"
+import { SWITCH_USES, switchCases } from "./core-nodes"
 import type { NodePorts, PortNode } from "./derive-ports"
 import { type Diagnostic, TRIGGERS } from "./diagnose"
+import { formatRun, SCHEDULE_USES, scheduleValues } from "./schedule"
 import { resolveAccentColor } from "./tailwind-colors"
 import { expandTemplate } from "./template"
 import { type ChipState, ValueChip } from "./value-chip"
@@ -76,6 +82,8 @@ export interface WorkflowNodeData {
   gitChange?: "added" | "changed" | undefined
   /** Removes the node's `when` condition. */
   onClearCondition?: () => void
+  /** A switch's cases changed; `removed` is the index of a case taken out. */
+  onSwitchCasesChange?: (cases: unknown[], removed?: number) => void
 }
 
 // Using the xyflow NodeProps generic requires the data type to extend Node which
@@ -123,12 +131,15 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     tests,
     gitChange,
     onClearCondition,
+    onSwitchCasesChange,
   } = data as unknown as WorkflowNodeData
   const providers = useProvidersStore((s) => s.nodes[instance.uses])
   const errorCount = issues?.filter((i) => i.severity === "error").length ?? 0
   const warningCount = (issues?.length ?? 0) - errorCount
 
-  const isSelected = useSelectionStore((s) => s.selectedNodeId === id)
+  const isSelected = useSelectionStore(
+    (s) => s.selectedNodeId === id || s.selectedNodeIds.includes(id),
+  )
   const isCore = instance.uses.startsWith("@core/")
   const isLocal = instance.uses.startsWith("./")
   const kindLabel = isCore ? "core" : isLocal ? "node" : "external"
@@ -149,10 +160,12 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
   // Triggers (and other nodes that take no input) shouldn't show the synthetic
   // root branch — it would be a dead-end leaf with no handle. We detect this
   // by an empty leaf root.
+  // A schedule's cron and time zone are edited in the inspector, not wired.
   const showInputRoot = !(
-    safePorts.inputs.id === "" &&
-    safePorts.inputs.isLeaf &&
-    safePorts.inputs.children.length === 0
+    instance.uses === SCHEDULE_USES ||
+    (safePorts.inputs.id === "" &&
+      safePorts.inputs.isLeaf &&
+      safePorts.inputs.children.length === 0)
   )
 
   const nodeStatus = (
@@ -181,6 +194,11 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
   const cardBg = accent ? `color-mix(in srgb, ${accent} 6%, var(--popover))` : undefined
 
   const hasOutputs = safePorts.outputs.length > 0
+  // A switch's case outputs are edited in place, so they get their own rows.
+  const isSwitch = instance.uses === SWITCH_USES
+  const outputPorts = isSwitch
+    ? safePorts.outputs.filter((p) => !CASE_PORT.test(p.id))
+    : safePorts.outputs
 
   return (
     <div
@@ -238,6 +256,8 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         <GuardedBy workflowPath={workflowPath} />
       )}
 
+      {instance.uses === SCHEDULE_USES && <ScheduleStrip id={id} instance={instance} />}
+
       <div className="flex flex-col pt-1.5 pb-1">
         {showInputRoot && (
           <PortRow
@@ -256,8 +276,11 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         {hasOutputs && (
           <>
             <SectionLabel align="right">output</SectionLabel>
+            {isSwitch && (
+              <SwitchCases cases={switchCases(instance)} onChange={onSwitchCasesChange} />
+            )}
             <PortTree
-              ports={safePorts.outputs}
+              ports={outputPorts}
               side="output"
               expandedSet={expandedOutputs}
               onToggle={onTogglePort}
@@ -277,6 +300,126 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
           <ProviderChip key={name} name={name} className="shrink-0" />
         ))}
       </div>
+    </div>
+  )
+}
+
+const CASE_PORT = /^case\d+$/
+
+/** Colour of a branch output: green when it's the positive branch, amber for false/default. */
+function branchColor(portId: string): string {
+  return conditionColor(portId === "false" || portId === "default")
+}
+
+/**
+ * A switch's cases, one row each: the value it matches, edited in place, and
+ * the branch handle that fires when it does. Values are stored as typed
+ * (strings); the runtime matches primitives by their text.
+ */
+function SwitchCases({
+  cases,
+  onChange,
+}: {
+  cases: unknown[]
+  onChange: ((cases: unknown[], removed?: number) => void) | undefined
+}) {
+  return (
+    <div data-testid="switch-cases">
+      {cases.map((value, i) => (
+        <SwitchCaseRow
+          // biome-ignore lint/suspicious/noArrayIndexKey: a case is its position (case1, case2, ...)
+          key={i}
+          index={i}
+          value={value}
+          {...(onChange && {
+            onCommit: (next: string) => onChange(cases.map((c, j) => (j === i ? next : c))),
+            onRemove: () => onChange(cases, i),
+          })}
+        />
+      ))}
+      {onChange && (
+        <div className="flex justify-end px-3" style={{ height: ROW_HEIGHT }}>
+          <button
+            type="button"
+            data-testid="switch-add-case"
+            onClick={(e) => {
+              e.stopPropagation()
+              onChange([...cases, ""])
+            }}
+            className="nodrag inline-flex items-center gap-1 rounded-[5px] px-1.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <Plus aria-hidden className="h-3 w-3" />
+            Add case
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SwitchCaseRow({
+  index,
+  value,
+  onCommit,
+  onRemove,
+}: {
+  index: number
+  value: unknown
+  onCommit?: (value: string) => void
+  onRemove?: () => void
+}) {
+  const shown = typeof value === "string" ? value : (JSON.stringify(value) ?? "")
+  const [draft, setDraft] = useState<string | null>(null)
+  const id = `case${index + 1}`
+  const commit = () => {
+    if (draft !== null && draft !== shown) onCommit?.(draft)
+    setDraft(null)
+  }
+  return (
+    <div
+      className="group/case relative flex items-center gap-1.5 pr-3 pl-2"
+      style={{ height: ROW_HEIGHT }}
+    >
+      {onRemove && (
+        <button
+          type="button"
+          aria-label={`Remove case ${index + 1}`}
+          title="Remove case"
+          onClick={(e) => {
+            e.stopPropagation()
+            onRemove()
+          }}
+          className="nodrag flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover/case:opacity-100"
+        >
+          <X aria-hidden className="h-3 w-3" />
+        </button>
+      )}
+      <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">=</span>
+      <input
+        aria-label={`Case ${index + 1} value`}
+        data-testid={`switch-case-${index + 1}`}
+        value={draft ?? shown}
+        placeholder="value"
+        readOnly={!onCommit}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur()
+          if (e.key === "Escape") {
+            setDraft(null)
+            e.currentTarget.blur()
+          }
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        className="nodrag nopan h-5 min-w-0 flex-1 rounded-[5px] bg-accent px-[7px] font-mono text-[10.5px] text-foreground outline-none focus:ring-1 focus:ring-ring"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id={id}
+        title={`Runs what's wired here when the value matches case ${index + 1}`}
+        style={conditionHandleStyle(branchColor(id))}
+      />
     </div>
   )
 }
@@ -394,6 +537,40 @@ function GuardedBy({ workflowPath }: { workflowPath: string }) {
         )),
       )}
     </div>
+  )
+}
+
+/**
+ * What a schedule node runs on, in words, and when it runs next. Clicking it
+ * opens the schedule editor in the inspector.
+ */
+function ScheduleStrip({ id, instance }: { id: string; instance: NodeInstance }) {
+  const { cron, timezone } = scheduleValues(instance)
+  const problem = cronProblem(cron, timezone)
+  const next = problem ? null : nextCronTime(cron, new Date(), timezone)
+  return (
+    <button
+      type="button"
+      data-testid="node-schedule"
+      title="Edit the schedule"
+      onClick={() => {
+        useSelectionStore.getState().setSelected(id)
+        useInspectorTab.getState().setTab("inspect")
+      }}
+      className="nodrag flex w-full items-start gap-2 border-b border-border px-3 py-2 text-left hover:bg-accent/50"
+    >
+      <CalendarClock aria-hidden className="mt-px h-3.5 w-3.5 shrink-0 text-primary" />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span
+          className={cn("truncate text-[12px]", problem ? "text-destructive" : "text-foreground")}
+        >
+          {problem ? "Invalid schedule" : describeCron(cron)}
+        </span>
+        <span className="truncate text-[10.5px] text-muted-foreground">
+          {problem ?? (next ? `Next ${formatRun(next, timezone)} · ${timezone}` : timezone)}
+        </span>
+      </span>
+    </button>
   )
 }
 
@@ -663,16 +840,20 @@ function PortRow({
           type={handleType}
           position={handlePosition}
           id={port.id === "" ? ROOT_HANDLE_ID : port.id}
-          style={{
-            top: "50%",
-            transform: "translateY(-50%)",
-            width: 10,
-            height: 10,
-            background: handleColor,
-            border: `2px solid ${
-              chipState === "missing" && !isBranch ? "var(--destructive)" : "var(--popover)"
-            }`,
-          }}
+          style={
+            port.branch
+              ? conditionHandleStyle(branchColor(port.id))
+              : {
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: 10,
+                  height: 10,
+                  background: handleColor,
+                  border: `2px solid ${
+                    chipState === "missing" && !isBranch ? "var(--destructive)" : "var(--popover)"
+                  }`,
+                }
+          }
         />
         {isOutput && portBreakpoints?.has(port.id) && (
           <span

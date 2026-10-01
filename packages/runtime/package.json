@@ -41,6 +41,10 @@
       "types": "./dist/cases/index.d.ts",
       "default": "./dist/cases/index.js"
     },
+    "./schedule": {
+      "types": "./dist/schedule/index.d.ts",
+      "default": "./dist/schedule/index.js"
+    },
     "./agent-broker": {
       "types": "./dist/agent-broker/index.d.ts",
       "default": "./dist/agent-broker/index.js"

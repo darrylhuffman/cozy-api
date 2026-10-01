@@ -79,7 +79,7 @@ describe("emitWorkflow — handler shape", () => {
             uses: "@core/http-request",
             values: { path: "/users", method: "POST" },
           },
-          res: { uses: "@core/response", in: { body: "req.body" } },
+          res: { uses: "@core/http-response", in: { body: "req.body" } },
         },
       }),
       relativePath: "users/create",
@@ -163,7 +163,7 @@ describe("emitWorkflow — handler shape", () => {
             values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/foo", in: {} },
-          res: { uses: "@core/response", in: { body: "a.value" } },
+          res: { uses: "@core/http-response", in: { body: "a.value" } },
         },
       }),
       relativePath: "x",
@@ -182,7 +182,7 @@ describe("emitWorkflow — input value resolution", () => {
         lorien: 1,
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
-          res: { uses: "@core/response", in: { body: "req.headers.x-api-key" } },
+          res: { uses: "@core/http-response", in: { body: "req.headers.x-api-key" } },
         },
       }),
       relativePath: "x",
@@ -200,7 +200,7 @@ describe("emitWorkflow — input value resolution", () => {
             values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/foo", in: { x: "req.body" } },
-          res: { uses: "@core/response", in: { body: "a.value" } },
+          res: { uses: "@core/http-response", in: { body: "a.value" } },
         },
       }),
       relativePath: "x",
@@ -218,7 +218,7 @@ describe("emitWorkflow — input value resolution", () => {
             values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/foo", in: { email: "req.body.user.email" } },
-          res: { uses: "@core/response", in: { body: "a.value" } },
+          res: { uses: "@core/http-response", in: { body: "a.value" } },
         },
       }),
       relativePath: "x",
@@ -236,7 +236,7 @@ describe("emitWorkflow — input value resolution", () => {
             values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/foo", values: { n: 42, b: true, s: "hello world" } },
-          res: { uses: "@core/response", in: { body: "a.value" }, values: { status: 201 } },
+          res: { uses: "@core/http-response", in: { body: "a.value" }, values: { status: 201 } },
         },
       }),
       relativePath: "x",
@@ -262,7 +262,7 @@ describe("emitWorkflow — input value resolution", () => {
             uses: "./nodes/foo",
             values: { s: "looks.like.a.ref" },
           },
-          res: { uses: "@core/response", in: { body: "a.value" } },
+          res: { uses: "@core/http-response", in: { body: "a.value" } },
         },
       }),
       relativePath: "x",
@@ -284,7 +284,7 @@ describe("emitWorkflow — input value resolution", () => {
             values: { x: 99 },
             in: { x: "req.body" },
           },
-          res: { uses: "@core/response", in: { body: "a.value" } },
+          res: { uses: "@core/http-response", in: { body: "a.value" } },
         },
       }),
       relativePath: "x",
@@ -306,7 +306,7 @@ describe("emitWorkflow — parallel waves", () => {
             values: { path: "/", method: "GET" },
           },
           a: { uses: "./nodes/foo", in: {} },
-          res: { uses: "@core/response", in: { body: "a.value" } },
+          res: { uses: "@core/http-response", in: { body: "a.value" } },
         },
       }),
       relativePath: "x",
@@ -328,7 +328,7 @@ describe("emitWorkflow — parallel waves", () => {
           },
           a: { uses: "./nodes/foo", in: { x: "req.body" } },
           b: { uses: "./nodes/bar", in: { x: "req.body" } },
-          res: { uses: "@core/response", in: { body: "a.value" } },
+          res: { uses: "@core/http-response", in: { body: "a.value" } },
         },
       }),
       relativePath: "x",
@@ -344,13 +344,13 @@ describe("emitWorkflow — parallel waves", () => {
     expect(source).toMatch(/a_settled/)
     expect(source).toMatch(/b_settled/)
     expect(source).toMatch(
-      /if \(_rejection\) throw \(_rejection as PromiseRejectedResult\)\.reason/,
+      /if \(a_settled_rejection\) throw \(a_settled_rejection as PromiseRejectedResult\)\.reason/,
     )
   })
 })
 
 describe("emitWorkflow — response", () => {
-  it("emits a Response with the given status and JSON body for @core/response", () => {
+  it("emits a Response with the given status and JSON body for @core/http-response", () => {
     const { source } = emitWorkflow({
       workflow: wf({
         lorien: 1,
@@ -361,7 +361,7 @@ describe("emitWorkflow — response", () => {
           },
           save: { uses: "./nodes/save-user", in: { x: "req.body" } },
           res: {
-            uses: "@core/response",
+            uses: "@core/http-response",
             in: { body: "save.user" },
             values: { status: 201 },
           },
@@ -376,7 +376,7 @@ describe("emitWorkflow — response", () => {
     expect(source).toMatch(/"content-type": "application\/json"/)
   })
 
-  it("throws instead of answering 200 null when no @core/response is wired", () => {
+  it("throws instead of answering 200 null when no @core/http-response is wired", () => {
     const { source } = emitWorkflow({
       workflow: wf({
         lorien: 1,
@@ -457,8 +457,8 @@ describe("emitWorkflow — multiple triggers", () => {
             uses: "@core/http-request",
             values: { path: "/b", method: "POST" },
           },
-          resA: { uses: "@core/response", in: { body: "reqA.body" } },
-          resB: { uses: "@core/response", in: { body: "reqB.body" } },
+          resA: { uses: "@core/http-response", in: { body: "reqA.body" } },
+          resB: { uses: "@core/http-response", in: { body: "reqB.body" } },
         },
       }),
       relativePath: "two",
@@ -476,7 +476,11 @@ describe("emitWorkflow — whole-object `in` (string form)", () => {
         nodes: {
           request: { uses: "@core/http-request", values: { path: "/u", method: "POST" } },
           save: { uses: "./nodes/save-user", in: "request.body" },
-          response: { uses: "@core/response", in: { body: "save.user" }, values: { status: 201 } },
+          response: {
+            uses: "@core/http-response",
+            in: { body: "save.user" },
+            values: { status: 201 },
+          },
         },
       }),
       relativePath: "users/create",
@@ -501,7 +505,7 @@ describe("emitWorkflow — whole-object `in` (string form)", () => {
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
           n: { uses: "./nodes/foo", in: "req.body.user" },
-          res: { uses: "@core/response", in: { body: "n.value" } },
+          res: { uses: "@core/http-response", in: { body: "n.value" } },
         },
       }),
       relativePath: "x",
@@ -509,14 +513,14 @@ describe("emitWorkflow — whole-object `in` (string form)", () => {
     expect(source).toMatch(/const _nInputRaw = req_outputs\?\.body\?\.user/)
   })
 
-  it("supports @core/response with whole-object `in:` (plucks body/status/headers)", () => {
+  it("supports @core/http-response with whole-object `in:` (plucks body/status/headers)", () => {
     const { source } = emitWorkflow({
       workflow: wf({
         lorien: 1,
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
           shape: { uses: "./nodes/shape", in: { x: "req.body" } },
-          res: { uses: "@core/response", in: "shape.result" },
+          res: { uses: "@core/http-response", in: "shape.result" },
         },
       }),
       relativePath: "x",
@@ -546,7 +550,7 @@ describe("emitWorkflow — full example matches the spec shape", () => {
             },
           },
           response: {
-            uses: "@core/response",
+            uses: "@core/http-response",
             in: { body: "save.user" },
             values: { status: 201 },
           },
@@ -573,7 +577,7 @@ describe("emitWorkflow — middleware", () => {
     lorien: 1,
     nodes: {
       req: { uses: "@core/http-request", values: { path: "/admin/ping", method: "GET" } },
-      res: { uses: "@core/response", in: { body: "req.context.requestId" } },
+      res: { uses: "@core/http-response", in: { body: "req.context.requestId" } },
     },
   })
 
@@ -651,7 +655,7 @@ describe("emitWorkflow — variables", () => {
           uses: "./nodes/greet",
           in: { name: "req.query.name", role: "role.value", max: "limits.value.max" },
         },
-        res: { uses: "@core/response", in: { body: "greet.text" } },
+        res: { uses: "@core/http-response", in: { body: "greet.text" } },
       },
     })
     const { source, importedNodes } = emitWorkflow({ workflow, relativePath: "greet" })
@@ -693,13 +697,13 @@ describe("emitWorkflow — when and request validation", () => {
         },
         FindRoom: { uses: "./nodes/find-room", in: { id: "Request.params.id" } },
         NotFound: {
-          uses: "@core/response",
+          uses: "@core/http-response",
           when: "!FindRoom.found",
           values: { status: 404, body: { error: "room not found" } },
         },
         Guests: { uses: "./nodes/guests", when: "FindRoom.found", in: { n: "Request.query.n" } },
         Book: { uses: "./nodes/book", in: { room: "FindRoom.room", guests: "Guests.n" } },
-        Booked: { uses: "@core/response", in: { body: "Book" }, values: { status: 201 } },
+        Booked: { uses: "@core/http-response", in: { body: "Book" }, values: { status: 201 } },
       },
     })
     const { source } = emitWorkflow({ workflow, relativePath: "book" })
@@ -750,5 +754,111 @@ describe("emitWorkflow — when and request validation", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  it("runs logic nodes inline, the same as the interpreter", async () => {
+    const workflow = wf({
+      lorien: 1,
+      nodes: {
+        Request: { uses: "@core/http-request", values: { path: "/pets", method: "GET" } },
+        Kind: {
+          uses: "@core/switch",
+          in: { value: "Request.query" },
+          values: { field: "kind", cases: ["cat", "dog"] },
+        },
+        Cats: { uses: "@core/http-response", when: "Kind.case1", values: { body: "meow" } },
+        Dogs: { uses: "@core/http-response", when: "Kind.case2", values: { body: "woof" } },
+        Big: {
+          uses: "@core/if",
+          when: "Kind.default",
+          in: { value: "Request.query.size" },
+          values: { operator: ">", compare: 10 },
+        },
+        Both: { uses: "@core/and", in: { a: "Big.true", b: "Request.query.loud" } },
+        Huge: { uses: "@core/http-response", when: "Both.true", values: { body: "HUGE" } },
+        Quiet: { uses: "@core/not", when: "Both.false", in: { value: "Request.query.loud" } },
+        Shh: { uses: "@core/http-response", when: "Quiet.true", values: { body: "shh" } },
+        Other: { uses: "@core/http-response", values: { status: 404 }, after: ["Shh"] },
+      },
+    })
+    const { source, importedNodes } = emitWorkflow({ workflow, relativePath: "pets" })
+    expect(importedNodes).toEqual([])
+    expect(source).toContain("const core_switch = {")
+    expect(source).not.toContain("const core_or = {")
+
+    const dir = mkdtempSync(join(tmpdir(), "lorien-emit-logic-"))
+    try {
+      mkdirSync(join(dir, "dist", "workflows"), { recursive: true })
+      writeFileSync(join(dir, "dist", "providers.gen.js"), "export const singletons = {}\n")
+      const genPath = join(dir, "dist", "workflows", "pets.gen.ts")
+      writeFileSync(genPath, source)
+      const { Hono } = await import("hono")
+      const gen = await import(pathToFileURL(genPath).href)
+      const app = new Hono()
+      gen.register(app)
+      const get = async (q: string) => {
+        const res = await app.request(`/pets?${q}`)
+        return { status: res.status, body: await res.json() }
+      }
+
+      expect(await get("kind=cat")).toEqual({ status: 200, body: "meow" })
+      expect(await get("kind=dog")).toEqual({ status: 200, body: "woof" })
+      expect(await get("kind=fish&size=40&loud=1")).toEqual({ status: 200, body: "HUGE" })
+      expect(await get("kind=fish&size=40")).toEqual({ status: 200, body: "shh" })
+      expect(await get("kind=fish&size=2&loud=1")).toEqual({ status: 404, body: null })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("emitWorkflow — schedules", () => {
+  const scheduled = wf({
+    lorien: 1,
+    nodes: {
+      Nightly: { uses: "@core/schedule", values: { cron: "0 3 * * *", timezone: "Europe/Paris" } },
+      cleanup: { uses: "./nodes/cleanup", in: { before: "Nightly.scheduledAt" } },
+    },
+  })
+
+  it("exports a run function and a `schedules` entry per schedule trigger", () => {
+    const { source, hasSchedules } = emitWorkflow({ workflow: scheduled, relativePath: "nightly" })
+    expect(hasSchedules).toBe(true)
+    expect(source).toMatch(/export interface ScheduleTrigger \{/)
+    expect(source).toContain("/** Schedule 0 3 * * * (Europe/Paris) */")
+    expect(source).toContain(
+      "export async function run_Nightly(trigger: ScheduleTrigger, services: unknown): Promise<WorkflowResult> {",
+    )
+    expect(source).toContain('id: "workflows/nightly.workflow#Nightly",')
+    expect(source).toContain('cron: "0 3 * * *",')
+    expect(source).toContain('timezone: "Europe/Paris",')
+    expect(source).toContain("return run_Nightly(trigger, singletons)")
+    // No route, and a value from the schedule isn't treated as a client error.
+    expect(source).not.toMatch(/app\.on\(/)
+    expect(source).not.toMatch(/parseInput|InvalidRequest/)
+  })
+
+  it("opens a provider scope per run when providers are per request", () => {
+    const { source } = emitWorkflow({
+      workflow: scheduled,
+      relativePath: "nightly",
+      perRequestProviders: true,
+    })
+    expect(source).toContain(
+      "const scope = await openScope({ requestId: runId, timestamp: Date.now() })",
+    )
+    expect(source).toContain("return await run_Nightly(trigger, scope.values)")
+  })
+
+  it("leaves HTTP-only workflows without `schedules`", () => {
+    const { source, hasSchedules } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: { req: { uses: "@core/http-request", values: { path: "/", method: "GET" } } },
+      }),
+      relativePath: "ping",
+    })
+    expect(hasSchedules).toBe(false)
+    expect(source).not.toMatch(/schedules|ScheduleTrigger/)
   })
 })

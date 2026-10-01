@@ -1,10 +1,15 @@
 import {
+  coreCategory,
   dataDependencies,
+  isHttpResponse,
+  isTriggerUses,
   nodeDependencies,
   parseReference,
   parseWhen,
+  referenceSource,
   type WorkflowFile,
   workflowRoutes,
+  workflowSchedules,
 } from "@darrylondil/lorien-runtime"
 
 /**
@@ -15,6 +20,8 @@ export interface EmitWorkflowResult {
   source: string
   /** The user node `uses` strings imported by this workflow (e.g. "./nodes/foo"). */
   importedNodes: string[]
+  /** True when the module exports `schedules` (it has `@core/schedule` triggers). */
+  hasSchedules: boolean
 }
 
 /**
@@ -53,9 +60,11 @@ export interface EmitWorkflowOptions {
 
 /**
  * Given a parsed workflow, emit the .gen.ts source string. It exports one
- * `run_<trigger>(trigger, services)` per @core/http-request trigger, holding
- * the workflow's logic with no Hono in it, and `register(app: Hono)`, which
- * mounts a thin route per trigger that calls it.
+ * `run_<trigger>(trigger, services)` per trigger, holding the workflow's
+ * logic with no Hono in it, and `register(app: Hono)`, which mounts a thin
+ * route per @core/http-request trigger that calls it. A workflow with
+ * @core/schedule triggers also exports `schedules`, which dist/index.ts
+ * starts.
  *
  * The emitted code has zero @darrylondil/lorien-runtime imports. Only hono and the
  * user's own node modules are imported.
@@ -84,12 +93,33 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   // Find all http-request triggers in this workflow.
   // `method` and `path` are literals under `values:`; the route is fixed at
   // build time. A missing path defaults to the workflow's folder.
-  const triggers: TriggerInfo[] = workflowRoutes(workflow, `workflows/${relativePath}.workflow`)
+  const routes: HttpTriggerInfo[] = workflowRoutes(
+    workflow,
+    `workflows/${relativePath}.workflow`,
+  ).map((r) => ({ kind: "http", ...r }))
+  const schedules: ScheduleTriggerInfo[] = workflowSchedules(workflow).map((s) => ({
+    kind: "schedule",
+    ...s,
+  }))
+  const triggers: TriggerInfo[] = [...routes, ...schedules]
 
   // Build a stable map from `uses` to local identifier.
   const sortedUses = [...userUses].sort()
   const usesToIdent = new Map<string, string>()
   const seenIdents = new Set<string>()
+  // Logic nodes (switch, if, ...) are emitted inline as `core_<name>` objects.
+  const logicIds = [
+    ...new Set(
+      Object.values(workflow.nodes)
+        .map((inst) => inst.uses)
+        .filter((uses) => coreCategory(uses) === "logic"),
+    ),
+  ].sort()
+  for (const uses of logicIds) {
+    const ident = logicIdent(uses)
+    seenIdents.add(ident)
+    usesToIdent.set(uses, ident)
+  }
   for (const uses of sortedUses) {
     let ident = importIdentForUses(uses)
     // Collision-safety: append a counter if necessary.
@@ -123,12 +153,16 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
     lines.push(`import mw${i} from "${upPrefix}${path.replace(/\.([mc]?)ts$/, ".$1js")}"`)
   })
   lines.push("")
-  lines.push(renderTypes())
+  lines.push(renderTypes(schedules.length > 0))
   lines.push("")
   lines.push(renderReadJsonBodyHelper())
   lines.push("")
   lines.push(renderCheckOutputHelper())
-  if (triggers.some((t) => requestSourcedNodes(workflow, t.nodeId).size > 0)) {
+  if (logicIds.length > 0) {
+    lines.push("")
+    lines.push(renderLogicHelpers(logicIds))
+  }
+  if (routes.some((t) => requestSourcedNodes(workflow, t.nodeId).size > 0)) {
     lines.push("")
     lines.push(renderParseInputHelper())
   }
@@ -142,8 +176,8 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   lines.push(`export function register(app: Hono): void {`)
   if (guarded) lines.push(...renderGuards(middleware.length, perRequest))
 
-  for (let i = 0; i < triggers.length; i++) {
-    const trigger = triggers[i]!
+  for (let i = 0; i < routes.length; i++) {
+    const trigger = routes[i]!
     if (i > 0) lines.push("")
     lines.push(...renderRoute(trigger, perRequest, guarded))
   }
@@ -155,21 +189,41 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   }
 
   lines.push(`}`)
+  if (schedules.length > 0) {
+    lines.push("")
+    lines.push(...renderSchedules(schedules, `workflows/${relativePath}.workflow`, perRequest))
+  }
   lines.push("")
 
   return {
     source: lines.join("\n"),
     importedNodes: sortedUses,
+    hasSchedules: schedules.length > 0,
   }
 }
 
 const VARIABLE = "@core/variable"
+/**
+ * A flattened sub-workflow's Input and Output: each passes its input straight
+ * on, so it compiles to a plain object rather than a node call.
+ */
+const PASS_THROUGH = new Set(["@core/input", "@core/output"])
 
-interface TriggerInfo {
+interface HttpTriggerInfo {
+  kind: "http"
   nodeId: string
   path: string
   method: string
 }
+
+interface ScheduleTriggerInfo {
+  kind: "schedule"
+  nodeId: string
+  cron: string
+  timezone: string
+}
+
+type TriggerInfo = HttpTriggerInfo | ScheduleTriggerInfo
 
 function renderReadJsonBodyHelper(): string {
   return [
@@ -219,7 +273,19 @@ function renderCheckOutputHelper(): string {
   ].join("\n")
 }
 
-function renderTypes(): string {
+function renderTypes(withSchedule: boolean): string {
+  const schedule = withSchedule
+    ? [
+        ``,
+        `/** What a schedule trigger hands the workflow: the time it was due. */`,
+        `export interface ScheduleTrigger {`,
+        `  scheduledAt: string`,
+        `  timestamp: number`,
+        `  manual: boolean`,
+        `  context: { runId: string }`,
+        `}`,
+      ]
+    : []
   return [
     `/** What an HTTP trigger hands the workflow: the parsed request. */`,
     `export interface HttpTrigger {`,
@@ -229,6 +295,8 @@ function renderTypes(): string {
     `  headers: Record<string, string>`,
     `  context: { requestId: string; timestamp: number }`,
     `}`,
+    ``,
+    ...schedule,
     ``,
     `/** A workflow's result; the HTTP route turns it into a JSON Response. */`,
     `export interface WorkflowResult {`,
@@ -267,9 +335,11 @@ function renderRun(
     workflow,
     usesToIdent,
     triggerId: trigger.nodeId,
+    fromRequest: trigger.kind === "http",
     conditional: conditionalNodes(workflow, waves, trigger.nodeId),
   }
-  const checksRequest = requestSourcedNodes(workflow, trigger.nodeId).size > 0
+  const checksRequest =
+    trigger.kind === "http" && requestSourcedNodes(workflow, trigger.nodeId).size > 0
 
   const body: string[] = []
   body.push(`const ${outputsVar(trigger.nodeId)} = trigger`)
@@ -291,8 +361,19 @@ function renderRun(
     if (interesting.length === 0) continue
     waveNum++
 
-    const responseIds = interesting.filter((id) => workflow.nodes[id]?.uses === "@core/response")
-    const computeIds = interesting.filter((id) => workflow.nodes[id]?.uses !== "@core/response")
+    const responseIds = interesting.filter((id) => isHttpResponse(workflow.nodes[id]?.uses ?? ""))
+    const passIds = interesting.filter((id) => PASS_THROUGH.has(workflow.nodes[id]?.uses ?? ""))
+    const computeIds = interesting.filter(
+      (id) =>
+        !isHttpResponse(workflow.nodes[id]?.uses ?? "") &&
+        !PASS_THROUGH.has(workflow.nodes[id]?.uses ?? ""),
+    )
+
+    if (passIds.length > 0) {
+      body.push("")
+      body.push(`// Wave ${waveNum}: ${passIds.join(", ")} (sub-workflow ports)`)
+      for (const id of passIds) body.push(...renderPassThrough(ctx, id))
+    }
 
     if (computeIds.length === 1) {
       body.push("")
@@ -319,10 +400,14 @@ function renderRun(
     if (returned) break
   }
 
-  if (!returned) {
+  if (!returned && trigger.kind !== "http") {
+    // A schedule has no caller to answer; finishing without a Response is normal.
+    body.push("")
+    body.push(`return { status: 200, headers: {}, body: null }`)
+  } else if (!returned) {
     // Every Response was skipped by its `when`: a missing branch, not a 200.
     const responses = [...sliceIds]
-      .filter((id) => workflow.nodes[id]?.uses === "@core/response")
+      .filter((id) => isHttpResponse(workflow.nodes[id]?.uses ?? ""))
       .sort()
     const message =
       responses.length > 0
@@ -332,9 +417,13 @@ function renderRun(
     body.push(`throw new Error(${JSON.stringify(message)})`)
   }
 
-  lines.push(`/** ${trigger.method} ${trigger.path} */`)
   lines.push(
-    `export async function ${runFnName(trigger.nodeId)}(trigger: HttpTrigger, services: unknown): Promise<WorkflowResult> {`,
+    trigger.kind === "http"
+      ? `/** ${trigger.method} ${trigger.path} */`
+      : `/** Schedule ${trigger.cron} (${trigger.timezone}) */`,
+  )
+  lines.push(
+    `export async function ${runFnName(trigger.nodeId)}(trigger: ${trigger.kind === "http" ? "HttpTrigger" : "ScheduleTrigger"}, services: unknown): Promise<WorkflowResult> {`,
   )
   if (checksRequest) {
     // A bad value from the request is the client's mistake: answer 400.
@@ -352,7 +441,7 @@ function renderRun(
 }
 
 /** The Hono route for one trigger: read the request, call its run function, send JSON. */
-function renderRoute(trigger: TriggerInfo, perRequest: boolean, guarded: boolean): string[] {
+function renderRoute(trigger: HttpTriggerInfo, perRequest: boolean, guarded: boolean): string[] {
   const lines: string[] = []
 
   // Hono runs every handler registered for a route in order, so the guards
@@ -431,6 +520,55 @@ function renderPreflight(
 }
 
 /**
+ * `schedules`: one entry per schedule trigger, each running the workflow in
+ * its own provider scope. Folder middleware is HTTP-only and doesn't run.
+ */
+function renderSchedules(
+  schedules: ScheduleTriggerInfo[],
+  workflowPath: string,
+  perRequest: boolean,
+): string[] {
+  const lines = [
+    `/** The schedules this workflow runs on; dist/index.ts starts them. */`,
+    `export const schedules: Array<{`,
+    `  id: string`,
+    `  cron: string`,
+    `  timezone: string`,
+    `  run: (scheduledAt: Date) => Promise<WorkflowResult>`,
+    `}> = [`,
+  ]
+  for (const s of schedules) {
+    const run = runFnName(s.nodeId)
+    lines.push(`  {`)
+    lines.push(`    id: ${JSON.stringify(`${workflowPath}#${s.nodeId}`)},`)
+    lines.push(`    cron: ${JSON.stringify(s.cron)},`)
+    lines.push(`    timezone: ${JSON.stringify(s.timezone)},`)
+    lines.push(`    run: async (scheduledAt) => {`)
+    lines.push(`      const runId = crypto.randomUUID()`)
+    lines.push(`      const trigger: ScheduleTrigger = {`)
+    lines.push(`        scheduledAt: scheduledAt.toISOString(),`)
+    lines.push(`        timestamp: scheduledAt.getTime(),`)
+    lines.push(`        manual: false,`)
+    lines.push(`        context: { runId },`)
+    lines.push(`      }`)
+    if (perRequest) {
+      lines.push(`      const scope = await openScope({ requestId: runId, timestamp: Date.now() })`)
+      lines.push(`      try {`)
+      lines.push(`        return await ${run}(trigger, scope.values)`)
+      lines.push(`      } finally {`)
+      lines.push(`        void scope.dispose()`)
+      lines.push(`      }`)
+    } else {
+      lines.push(`      return ${run}(trigger, singletons)`)
+    }
+    lines.push(`    },`)
+    lines.push(`  },`)
+  }
+  lines.push(`]`)
+  return lines
+}
+
+/**
  * `guards`: the Hono middleware every route in this file runs first. With
  * per-request providers, the first one opens the request's scope so
  * middleware and nodes share it.
@@ -475,13 +613,18 @@ interface RunContext {
   workflow: WorkflowFile
   usesToIdent: Map<string, string>
   triggerId: string
+  /** The trigger is an HTTP request, so a bad value from it is the client's mistake (400). */
+  fromRequest: boolean
   /** Nodes that may be skipped: they have a `when`, or read a node that may be. */
   conditional: Set<string>
 }
 
 /** `<schema>.parse(...)`, or `parseInput(...)` when some of the input comes from the request. */
 function renderParse(ctx: RunContext, nodeId: string, ident: string, inputExpr: string): string {
-  const sources = requestSources(ctx.workflow, nodeId, ctx.triggerId)
+  // Core nodes take any input; only user nodes' schemas can reject the request.
+  const core = ctx.workflow.nodes[nodeId]?.uses.startsWith("@core/")
+  const sources =
+    ctx.fromRequest && !core ? requestSources(ctx.workflow, nodeId, ctx.triggerId) : null
   return sources === null
     ? `${ident}.inputs.parse(${inputExpr})`
     : `parseInput(${ident}.inputs, ${inputExpr}, ${JSON.stringify(sources)})`
@@ -542,6 +685,20 @@ function renderSingleNodeCall(ctx: RunContext, nodeId: string): string[] {
   ]
 }
 
+/** A sub-workflow port: its outputs are its input, or nothing when it is skipped. */
+function renderPassThrough(ctx: RunContext, nodeId: string): string[] {
+  const inst = ctx.workflow.nodes[nodeId]!
+  const inputExpr = renderInputExpr(inst.in, inst.values)
+  if (!ctx.conditional.has(nodeId)) {
+    return [`const ${outputsVar(nodeId)} = ${inputExpr} as Record<string, unknown>`]
+  }
+  const ran = ranVar(nodeId)
+  return [
+    `const ${ran} = ${renderRanExpr(ctx, nodeId)}`,
+    `const ${outputsVar(nodeId)} = (${ran} ? ${inputExpr} : {}) as Record<string, unknown>`,
+  ]
+}
+
 function renderParallelWave(ctx: RunContext, nodeIds: string[]): string[] {
   const lines: string[] = []
   // Emit inputs.parse() for each node before the allSettled block.
@@ -563,8 +720,12 @@ function renderParallelWave(ctx: RunContext, nodeIds: string[]): string[] {
     lines.push(ctx.conditional.has(id) ? `  ${ranVar(id)} ? ${call} : {},` : `  ${call},`)
   }
   lines.push(`])`)
-  lines.push(`const _rejection = [${settledNames.join(", ")}].find((r) => r.status === "rejected")`)
-  lines.push(`if (_rejection) throw (_rejection as PromiseRejectedResult).reason`)
+  // Named per wave: two parallel waves in one run would otherwise redeclare it.
+  const rejection = `${settledNames[0]}_rejection`
+  lines.push(
+    `const ${rejection} = [${settledNames.join(", ")}].find((r) => r.status === "rejected")`,
+  )
+  lines.push(`if (${rejection}) throw (${rejection} as PromiseRejectedResult).reason`)
   for (const id of nodeIds) {
     lines.push(
       `const ${outputsVar(id)} = (${id}_settled as PromiseFulfilledResult<unknown>).value as Record<string, unknown>`,
@@ -674,12 +835,12 @@ function requestSources(
   const inst = workflow.nodes[nodeId]
   if (!inst || inst.in === undefined) return null
   if (typeof inst.in === "string") {
-    const ref = parseReference(inst.in)
+    const ref = referenceSource(workflow, inst.in)
     return ref?.nodeId === triggerId ? ref.path.join(".") : null
   }
   const out: Record<string, string> = {}
   for (const [field, raw] of Object.entries(inst.in)) {
-    const ref = parseReference(raw)
+    const ref = referenceSource(workflow, raw)
     if (ref?.nodeId === triggerId) out[field] = ref.path.join(".")
   }
   return Object.keys(out).length > 0 ? out : null
@@ -851,6 +1012,139 @@ function importIdentForUses(uses: string): string {
   return ident
 }
 
+function logicIdent(uses: string): string {
+  return `core_${uses.slice("@core/".length).replace(/[^a-zA-Z0-9_$]/g, "_")}`
+}
+
+/**
+ * The logic nodes as inline objects shaped like user nodes, so they run
+ * through the same call sites. Mirrors @darrylondil/lorien-runtime's
+ * core/logic (compare.ts and the node files); change both together.
+ */
+function renderLogicHelpers(logicIds: string[]): string {
+  const nodes: Record<string, string[]> = {
+    "@core/switch": [
+      `async run(i: CoreInput, _s?: unknown, _c?: unknown): Promise<Record<string, unknown>> {`,
+      `  const subject = corePick(i.value, i.field as string | undefined)`,
+      `  const out: Record<string, unknown> = { value: i.value }`,
+      `  let matched = false`,
+      `  ;((i.cases as unknown[] | undefined) ?? []).forEach((c, n) => {`,
+      `    const hit = !matched && coreEquals(subject, c)`,
+      `    if (hit) matched = true`,
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted as-is into generated code.
+      "    out[`case${n + 1}`] = hit",
+      `  })`,
+      `  out.default = !matched`,
+      `  return out`,
+      `},`,
+    ],
+    "@core/if": [
+      `async run(i: CoreInput, _s?: unknown, _c?: unknown): Promise<Record<string, unknown>> {`,
+      `  const holds = coreTest(corePick(i.value, i.field as string | undefined), i.operator as string | undefined, i.compare)`,
+      `  return { true: holds, false: !holds, value: i.value }`,
+      `},`,
+    ],
+    "@core/and": [
+      `async run(i: CoreInput, _s?: unknown, _c?: unknown): Promise<Record<string, unknown>> {`,
+      `  const result = Boolean(i.a) && Boolean(i.b)`,
+      `  return { result, true: result, false: !result }`,
+      `},`,
+    ],
+    "@core/or": [
+      `async run(i: CoreInput, _s?: unknown, _c?: unknown): Promise<Record<string, unknown>> {`,
+      `  const result = Boolean(i.a) || Boolean(i.b)`,
+      `  return { result, true: result, false: !result }`,
+      `},`,
+    ],
+    "@core/not": [
+      `async run(i: CoreInput, _s?: unknown, _c?: unknown): Promise<Record<string, unknown>> {`,
+      `  const result = !i.value`,
+      `  return { result, true: result, false: !result }`,
+      `},`,
+    ],
+  }
+  const lines = [
+    `// Built-in logic nodes.`,
+    `type CoreInput = Record<string, unknown>`,
+    `const coreInputs = { parse: (v: unknown): CoreInput => (v ?? {}) as CoreInput }`,
+    `const coreOutputs = { safeParse: (_v: unknown) => ({ success: true }) }`,
+    ``,
+    `function corePick(value: unknown, field: string | undefined): unknown {`,
+    `  if (!field) return value`,
+    `  let v: unknown = value`,
+    `  for (const seg of field.split(".")) {`,
+    `    if (seg === "") continue`,
+    `    v = v !== null && typeof v === "object" ? (v as Record<string, unknown>)[seg] : undefined`,
+    `  }`,
+    `  return v`,
+    `}`,
+    ``,
+    `function corePrimitive(v: unknown): boolean {`,
+    `  return typeof v === "string" || typeof v === "number" || typeof v === "boolean" || typeof v === "bigint"`,
+    `}`,
+    ``,
+    `function coreEquals(a: unknown, b: unknown): boolean {`,
+    `  if (a === b) return true`,
+    `  if (corePrimitive(a) && corePrimitive(b)) return String(a) === String(b)`,
+    `  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false`,
+    `  if (Array.isArray(a) !== Array.isArray(b)) return false`,
+    `  const ak = Object.keys(a)`,
+    `  if (ak.length !== Object.keys(b).length) return false`,
+    `  return ak.every((k) => coreEquals((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))`,
+    `}`,
+    ``,
+    `function coreEmpty(v: unknown): boolean {`,
+    `  if (v === undefined || v === null || v === "") return true`,
+    `  if (Array.isArray(v)) return v.length === 0`,
+    `  if (typeof v === "object") return Object.keys(v).length === 0`,
+    `  return false`,
+    `}`,
+    ``,
+    `function coreOrder(a: unknown, b: unknown): number {`,
+    `  const na = typeof a === "string" && a.trim() === "" ? Number.NaN : Number(a)`,
+    `  const nb = typeof b === "string" && b.trim() === "" ? Number.NaN : Number(b)`,
+    `  if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb`,
+    `  const sa = String(a)`,
+    `  const sb = String(b)`,
+    `  return sa < sb ? -1 : sa > sb ? 1 : 0`,
+    `}`,
+    ``,
+    `function coreTest(left: unknown, operator: string | undefined, right: unknown): boolean {`,
+    `  switch (operator) {`,
+    `    case "is falsy": return !left`,
+    `    case "==": return coreEquals(left, right)`,
+    `    case "!=": return !coreEquals(left, right)`,
+    `    case ">": return left != null && right != null && coreOrder(left, right) > 0`,
+    `    case ">=": return left != null && right != null && coreOrder(left, right) >= 0`,
+    `    case "<": return left != null && right != null && coreOrder(left, right) < 0`,
+    `    case "<=": return left != null && right != null && coreOrder(left, right) <= 0`,
+    `    case "contains":`,
+    `      if (typeof left === "string") return left.includes(String(right))`,
+    `      if (Array.isArray(left)) return left.some((item) => coreEquals(item, right))`,
+    `      if (left !== null && typeof left === "object") return String(right) in left`,
+    `      return false`,
+    `    case "starts with": return typeof left === "string" && left.startsWith(String(right))`,
+    `    case "ends with": return typeof left === "string" && left.endsWith(String(right))`,
+    `    case "is empty": return coreEmpty(left)`,
+    `    case "is not empty": return !coreEmpty(left)`,
+    `    case "exists": return left !== undefined && left !== null`,
+    `    default: return Boolean(left)`,
+    `  }`,
+    `}`,
+  ]
+  for (const uses of logicIds) {
+    const body = nodes[uses]
+    if (!body) throw new Error(`emit-workflow: no inline implementation for \`${uses}\``)
+    lines.push("")
+    lines.push(`const ${logicIdent(uses)} = {`)
+    lines.push(`  inputs: coreInputs,`)
+    lines.push(`  outputs: coreOutputs,`)
+    lines.push(...body.map((l) => `  ${l}`))
+    lines.push(`}`)
+  }
+  return lines.join("\n")
+}
+
 function runFnName(nodeId: string): string {
   return `run_${nodeId.replace(/[^a-zA-Z0-9_$]/g, "_")}`
 }
@@ -908,7 +1202,7 @@ function computeTriggerSlice(
     for (const d of deps) downstreamOf.get(d)?.add(id)
   }
 
-  const allTriggers = allIds.filter((id) => wf.nodes[id]?.uses === "@core/http-request")
+  const allTriggers = allIds.filter((id) => isTriggerUses(wf.nodes[id]?.uses ?? ""))
   const reachableFrom = new Map<string, Set<string>>()
   for (const tid of allTriggers) {
     const reach = new Set<string>([tid])
@@ -930,7 +1224,7 @@ function computeTriggerSlice(
 
   const myReach = reachableFrom.get(triggerNodeId) ?? new Set([triggerNodeId])
   const hasExplicitResponse = [...myReach].some(
-    (id) => id !== triggerNodeId && wf.nodes[id]?.uses === "@core/response",
+    (id) => id !== triggerNodeId && isHttpResponse(wf.nodes[id]?.uses ?? ""),
   )
 
   const included = new Set<string>()
@@ -938,7 +1232,7 @@ function computeTriggerSlice(
     if (myReach.has(id)) {
       included.add(id)
     } else if (!ownedByAny.has(id)) {
-      const isResponse = wf.nodes[id]?.uses === "@core/response"
+      const isResponse = isHttpResponse(wf.nodes[id]?.uses ?? "")
       if (!isResponse || !hasExplicitResponse) included.add(id)
     }
   }

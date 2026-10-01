@@ -3,6 +3,10 @@ import type { NodeSchemas, WorkflowFile } from "@/lib/api"
 import { diagnoseWorkflow, diagnosticsByNode, isValidNodeId } from "./diagnose"
 
 const schemas: Record<string, NodeSchemas> = {
+  "@core/schedule": {
+    inputs: { type: "object", properties: { cron: { type: "string", default: "0 9 * * *" } } },
+    outputs: { type: "object", properties: { scheduledAt: { type: "string" } } },
+  },
   "@core/http-request": {
     inputs: {
       type: "object",
@@ -14,7 +18,7 @@ const schemas: Record<string, NodeSchemas> = {
       properties: { body: { type: "object" }, params: { type: "object" } },
     },
   },
-  "@core/response": {
+  "@core/http-response": {
     inputs: {
       type: "object",
       properties: { status: { type: "number", default: 200 }, body: {} },
@@ -50,7 +54,7 @@ const good: WorkflowFile = {
       uses: "./nodes/save-user",
       in: { email: "request.body.email", password: "request.body.password" },
     },
-    response: { uses: "@core/response", in: { body: "save.user" } },
+    response: { uses: "@core/http-response", in: { body: "save.user" } },
   },
 }
 
@@ -100,7 +104,7 @@ describe("diagnoseWorkflow", () => {
           uses: "./nodes/save-user",
           in: { email: "ghost.email", password: "save.user" },
         },
-        response: { uses: "@core/response", in: "request.body.bad field" },
+        response: { uses: "@core/http-response", in: "request.body.bad field" },
       },
     }
     const m = messages(wf)
@@ -116,7 +120,7 @@ describe("diagnoseWorkflow", () => {
       ...good,
       nodes: {
         ...good.nodes,
-        response: { uses: "@core/response", in: { body: "request.body.x-api-key" } },
+        response: { uses: "@core/http-response", in: { body: "request.body.x-api-key" } },
       },
     }
     expect(messages(wf).filter((m) => m.includes("x-api-key"))).toEqual([])
@@ -127,7 +131,7 @@ describe("diagnoseWorkflow", () => {
       ...good,
       nodes: {
         ...good.nodes,
-        response: { uses: "@core/response", in: { body: "save.user.emial" } },
+        response: { uses: "@core/http-response", in: { body: "save.user.emial" } },
       },
     }
     const d = run(wf).find((x) => x.nodeId === "response")
@@ -196,15 +200,15 @@ describe("diagnoseWorkflow", () => {
         request: { uses: "@core/http-request" },
         a: { uses: "./nodes/save-user", in: { email: "b.user", password: "request.body" } },
         b: { uses: "./nodes/save-user", in: { email: "a.user", password: "request.body" } },
-        response: { uses: "@core/response", in: { body: "b.user" } },
+        response: { uses: "@core/http-response", in: { body: "b.user" } },
       },
     }
     expect(messages(wf).some((m) => m.startsWith("Cycle: "))).toBe(true)
   })
 
   it("warns about a missing trigger or a missing response", () => {
-    expect(messages({ lorien: 1, nodes: { r: { uses: "@core/response" } } })).toContain(
-      "No HTTP Request trigger: nothing can call this workflow.",
+    expect(messages({ lorien: 1, nodes: { r: { uses: "@core/http-response" } } })).toContain(
+      "No trigger (HTTP Request or Schedule): nothing starts this workflow.",
     )
     expect(messages({ lorien: 1, nodes: { q: { uses: "@core/http-request" } } })).toContain(
       "No Response node: requests will never get an answer.",
@@ -212,13 +216,50 @@ describe("diagnoseWorkflow", () => {
     expect(run({ lorien: 1, nodes: {} })).toEqual([])
   })
 
+  it("checks a schedule's cron and time zone, and wants no Response", () => {
+    const sched = (values: Record<string, unknown>): WorkflowFile => ({
+      lorien: 1,
+      nodes: { Nightly: { uses: "@core/schedule", values } },
+    })
+    expect(messages(sched({ cron: "0 9 * * 1-5", timezone: "Europe/Paris" }))).toEqual([])
+    expect(messages(sched({ cron: "0 25 * * *" }))).toEqual([
+      "Schedule: Hour: 25 is out of range (0-23).",
+    ])
+    expect(messages(sched({ cron: "0 9 * * *", timezone: "Mars/Base" }))).toEqual([
+      'Unknown time zone "Mars/Base".',
+    ])
+  })
+
   it("groups diagnostics by node", () => {
     const wf: WorkflowFile = {
       lorien: 1,
-      nodes: { r: { uses: "@core/response", in: { body: "x.y" } } },
+      nodes: { r: { uses: "@core/http-response", in: { body: "x.y" } } },
     }
     const grouped = diagnosticsByNode(run(wf))
     expect(grouped.get("r")).toHaveLength(1)
     expect(grouped.has("*")).toBe(false)
+  })
+  it("checks a switch's case branches against its cases", () => {
+    const withSwitch = {
+      ...schemas,
+      "@core/switch": {
+        inputs: { type: "object", properties: { value: {}, cases: { type: "array" } } },
+        outputs: { type: "object", properties: { default: { type: "boolean" }, value: {} } },
+      },
+    }
+    const wf: WorkflowFile = {
+      lorien: 1,
+      nodes: {
+        q: { uses: "@core/http-request" },
+        k: { uses: "@core/switch", in: { value: "q.body" }, values: { cases: ["a", "b"] } },
+        a: { uses: "@core/http-response", when: "k.case2", values: { status: 200 } },
+        b: { uses: "@core/http-response", when: "k.case3", values: { status: 200 } },
+        c: { uses: "@core/http-response", when: "k.default", values: { status: 200 } },
+      },
+    }
+    const found = diagnoseWorkflow(wf, withSwitch, { schemasLoaded: true }).map(
+      (d) => `${d.nodeId}: ${d.message}`,
+    )
+    expect(found).toEqual(['b: "k.case3": "case3" is not an output of k.'])
   })
 })

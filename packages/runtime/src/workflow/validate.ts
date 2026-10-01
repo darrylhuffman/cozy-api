@@ -1,5 +1,6 @@
 import { parseWhen } from "./dependencies.js"
 import { parseReference } from "./reference.js"
+import { scheduleProblems } from "./schedules.js"
 import type { WorkflowFile } from "./types.js"
 
 export interface ValidationError {
@@ -94,6 +95,10 @@ export function validateWorkflow(wf: WorkflowFile): ValidationResult {
       } else {
         deps.add(when.ref.nodeId)
       }
+    }
+
+    for (const [field, message] of scheduleProblems(wf, nodeId)) {
+      errors.push({ nodeId, field, message })
     }
 
     // After constraints
