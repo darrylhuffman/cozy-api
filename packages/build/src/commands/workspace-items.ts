@@ -2,12 +2,14 @@ import { access, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs
 import { dirname, join, relative, resolve, sep } from "node:path"
 
 /**
- * Renaming and deleting workflows and nodes from the IDE's explorer.
+ * Renaming and deleting workflows, nodes and sub-workflows from the IDE's
+ * explorer.
  *
  * A workflow travels with its saved requests (`add.workflow` →
- * `add.requests.json`) and a node with its test cases (`add-pet.ts` →
- * `add-pet.cases.json`). Renaming a node also rewrites every workflow's
- * `uses: "./nodes/…"` that points at it, so nothing is left dangling.
+ * `add.requests.json`), and a node or sub-workflow with its test cases
+ * (`add-pet.ts` → `add-pet.cases.json`). Renaming a node or sub-workflow also
+ * rewrites every `uses: "./nodes/…"` that points at it, in workflows and in
+ * other sub-workflows, so nothing is left dangling.
  */
 
 export class WorkspaceItemError extends Error {
@@ -19,7 +21,7 @@ export class WorkspaceItemError extends Error {
   }
 }
 
-type ItemKind = "workflow" | "node"
+type ItemKind = "workflow" | "node" | "subworkflow"
 
 export interface RenameResult {
   /** Every file moved, as [from, to] workspace-relative paths. */
@@ -33,17 +35,18 @@ export interface DeleteResult {
 }
 
 export interface ItemUsage {
-  /** Workflows that use this node (always empty for a workflow). */
+  /** Workflows and sub-workflows that use this node (always empty for a workflow). */
   usedBy: string[]
 }
 
 function kindOf(path: string): ItemKind {
   if (path.startsWith("workflows/") && path.endsWith(".workflow")) return "workflow"
+  if (path.startsWith("nodes/") && path.endsWith(".workflow")) return "subworkflow"
   if (path.startsWith("nodes/") && /\.ts$/.test(path) && !/\.(test|spec|d)\.ts$/.test(path)) {
     return "node"
   }
   throw new WorkspaceItemError(
-    "Only .workflow files under workflows/ and node .ts files under nodes/ can be renamed or deleted",
+    "Only .workflow files and node .ts files under workflows/ and nodes/ can be renamed or deleted",
     400,
   )
 }
@@ -51,12 +54,12 @@ function kindOf(path: string): ItemKind {
 function companionOf(path: string, kind: ItemKind): string {
   return kind === "workflow"
     ? path.replace(/\.workflow$/, ".requests.json")
-    : path.replace(/\.ts$/, ".cases.json")
+    : path.replace(/\.(ts|workflow)$/, ".cases.json")
 }
 
-/** `nodes/pets/add-pet.ts` → `./nodes/pets/add-pet` */
+/** `nodes/pets/add-pet.ts` (or `.workflow`) → `./nodes/pets/add-pet` */
 function usesOf(nodePath: string): string {
-  return `./${nodePath.replace(/\.ts$/, "")}`
+  return `./${nodePath.replace(/\.(ts|workflow)$/, "")}`
 }
 
 function inside(root: string, rel: string): string {
@@ -104,7 +107,8 @@ export async function renameWorkspaceItem(
   await mkdir(dirname(toAbs), { recursive: true })
   for (const [a, b] of pairs) await rename(inside(root, a), inside(root, b))
 
-  const updatedWorkflows = kind === "node" ? await rewriteUses(root, usesOf(from), usesOf(to)) : []
+  const updatedWorkflows =
+    kind === "workflow" ? [] : await rewriteUses(root, usesOf(from), usesOf(to))
   return { moved: pairs, updatedWorkflows }
 }
 
@@ -125,10 +129,11 @@ export async function deleteWorkspaceItem(root: string, raw: string): Promise<De
 
 export async function workspaceItemUsage(root: string, raw: string): Promise<ItemUsage> {
   const path = normalize(raw)
-  if (kindOf(path) !== "node") return { usedBy: [] }
+  if (kindOf(path) === "workflow") return { usedBy: [] }
   const uses = usesOf(path)
   const usedBy: string[] = []
   for (const wf of await workflowFiles(root)) {
+    if (wf === path) continue
     const parsed = await readWorkflow(root, wf)
     if (parsed && Object.values(parsed.nodes).some((n) => n.uses === uses)) usedBy.push(wf)
   }
@@ -186,6 +191,8 @@ async function workflowFiles(root: string): Promise<string[]> {
       else if (e.name.endsWith(".workflow")) out.push(relative(root, abs).replace(/\\/g, "/"))
     }
   }
+  // Sub-workflows under nodes/ use nodes too.
   await walk(join(root, "workflows"))
+  await walk(join(root, "nodes"))
   return out.sort()
 }

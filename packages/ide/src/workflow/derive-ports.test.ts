@@ -35,6 +35,19 @@ const rootBranch = (children: ReturnType<typeof leaf>[]) => ({
   isLeaf: false,
 })
 
+describe("derivePorts — sub-workflow Input", () => {
+  it("has no inputs and one output per field, even when nothing reads it", () => {
+    const ports = derivePorts(
+      baseWorkflow({
+        Input: { uses: "@core/input", values: { fields: { id: "string", qty: "number" } } },
+        Find: { uses: "./nodes/find", in: { id: "Input.id" } },
+      }),
+    ).get("Input")
+    expect(ports?.inputs).toEqual(emptyRoot)
+    expect(ports?.outputs).toEqual([leaf("id"), leaf("qty")])
+  })
+})
+
 describe("derivePorts (no schemas — legacy reference inference)", () => {
   it("returns empty inputs and outputs for a standalone trigger node", () => {
     const wf = baseWorkflow({

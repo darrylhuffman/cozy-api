@@ -32,6 +32,8 @@ export interface ThemePalette {
   warning: string
   info: string
   ai: string
+  /** Sub-workflows. Optional: themes without one get a rose that suits their mode. */
+  flow?: string
   canvasDot: string
 }
 
@@ -481,6 +483,7 @@ export function themeCssVars(t: ThemeDef): Record<string, string> {
     "--warning": p.warning,
     "--info": p.info,
     "--ai": p.ai,
+    "--flow": p.flow ?? (t.mode === "dark" ? "#f29cc8" : "#b23c7a"),
     "--canvas-dot": p.canvasDot,
     "--sidebar": p.card,
     "--sidebar-foreground": p.foreground,

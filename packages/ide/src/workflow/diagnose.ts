@@ -1,5 +1,6 @@
 import { cronProblem, isValidTimeZone } from "@darrylondil/lorien-runtime/schedule"
 import type { JsonSchema, NodeSchemas, WorkflowFile } from "@/lib/api"
+import { SUBWORKFLOW_INPUT } from "./subworkflow"
 
 export type Severity = "error" | "warning"
 
@@ -205,7 +206,8 @@ export function diagnoseWorkflow(
 
   if (ids.length > 0) {
     const uses = ids.map((id) => wf.nodes[id]!.uses)
-    const hasTrigger = uses.some((u) => TRIGGERS.has(u))
+    // A sub-workflow starts at its Input; its caller's trigger runs it.
+    const hasTrigger = uses.some((u) => TRIGGERS.has(u) || u === SUBWORKFLOW_INPUT)
     if (!hasTrigger) {
       push({
         severity: "warning",

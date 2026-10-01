@@ -43,6 +43,7 @@
   --color-warning: var(--warning);
   --color-info: var(--info);
   --color-ai: var(--ai);
+  --color-flow: var(--flow);
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -72,6 +73,7 @@
   --warning: #a8560c;
   --info: #1e5fc9;
   --ai: #6b46d6;
+  --flow: #b23c7a;
   --canvas-dot: #d2dcd5;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -116,6 +118,7 @@
   --warning: #f2b45a;
   --info: #74adff;
   --ai: #bba2ff;
+  --flow: #f29cc8;
   --canvas-dot: #222b25;
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);

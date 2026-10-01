@@ -10,7 +10,10 @@ vi.mock("@xyflow/react", () => ({
   useConnection: () => false,
 }))
 
+vi.mock("@/lib/open-subworkflow", () => ({ openSubworkflow: vi.fn() }))
+
 import type { NodeInstance } from "@/lib/api"
+import { openSubworkflow } from "@/lib/open-subworkflow"
 import { resetProvidersStore, useProvidersStore } from "@/store/providers"
 import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
@@ -975,5 +978,61 @@ describe("WorkflowNode conditions", () => {
       />,
     )
     expect(screen.queryByTestId("handle-target-$when")).not.toBeInTheDocument()
+  })
+})
+
+describe("WorkflowNode — sub-workflow", () => {
+  const instance: NodeInstance = { uses: "./nodes/orders/reserve-seats" }
+  const subworkflow = {
+    path: "nodes/orders/reserve-seats.workflow",
+    respondsWith: [404, 409],
+    nodeCount: 4,
+  }
+  const ports: NodePorts = { inputs: inputRoot([leaf("eventId")]), outputs: [leaf("event")] }
+
+  it("wears the FLOW badge, the statuses it can answer with and its size", () => {
+    render(
+      <WorkflowNode
+        data={makeData("Reserve", instance, ports, {
+          schemaName: "Reserve seats",
+          subworkflow,
+          workflowPath: "workflows/orders/create.workflow",
+        })}
+      />,
+    )
+    expect(screen.getByText("flow")).toBeTruthy()
+    expect(screen.getByText("Reserve seats")).toBeTruthy()
+    const responds = screen.getByTestId("node-responds")
+    expect(within(responds).getByText("404")).toBeTruthy()
+    expect(within(responds).getByText("409")).toBeTruthy()
+    expect(screen.getByTestId("node-footer").textContent).toContain("4 nodes")
+  })
+
+  it("opens the sub-workflow from its header, remembering the caller", () => {
+    render(
+      <WorkflowNode
+        data={makeData("Reserve", instance, ports, {
+          schemaName: "Reserve seats",
+          subworkflow,
+          workflowPath: "workflows/orders/create.workflow",
+        })}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Open Reserve seats" }))
+    expect(openSubworkflow).toHaveBeenCalledWith(
+      "nodes/orders/reserve-seats.workflow",
+      "workflows/orders/create.workflow",
+    )
+  })
+
+  it("leaves the responds row off when nothing inside responds", () => {
+    render(
+      <WorkflowNode
+        data={makeData("Reserve", instance, ports, {
+          subworkflow: { ...subworkflow, respondsWith: [] },
+        })}
+      />,
+    )
+    expect(screen.queryByTestId("node-responds")).toBeNull()
   })
 })

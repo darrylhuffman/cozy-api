@@ -34,6 +34,7 @@ import {
 } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
 import { openCodeFile } from "@/lib/open-code-file"
+import { openSubworkflow } from "@/lib/open-subworkflow"
 import { useCommands } from "@/store/commands"
 import { confirmAction } from "@/store/confirm"
 import { type NodeStatus, useDebugSessionStore } from "@/store/debug-session"
@@ -83,6 +84,15 @@ import { PathEdge, type PathMapping } from "./path-edge"
 import { resetNodeConnections } from "./reset-node-connections"
 import { SelectionToolbar } from "./selection-toolbar"
 import { ShortcutsDialog } from "./shortcuts-dialog"
+import {
+  addOutput,
+  isSubworkflowPath,
+  outputNames,
+  SUBWORKFLOW_INPUT,
+  SUBWORKFLOW_OUTPUT,
+} from "./subworkflow"
+import { SubworkflowBanner } from "./subworkflow-banner"
+import { SubworkflowIoNode } from "./subworkflow-io-node"
 import { VariableNode } from "./variable-node"
 import {
   extractVariable,
@@ -115,6 +125,7 @@ interface Props {
 /** Delete or Backspace removes the selected nodes and edges. */
 function minimapTint(node: RFNode): string {
   const data = node.data as Partial<WorkflowNodeData>
+  if (node.type === "io" || data.subworkflow) return "var(--flow)"
   return data.instance ? nodeTint(data.instance.uses, data.color) : "var(--muted-foreground)"
 }
 /** Minimap nodes wear their card colour: a soft fill with a solid outline. */
@@ -133,6 +144,7 @@ function markFor(state: NodeDiffState | undefined): "added" | "changed" | undefi
 const nodeTypes: NodeTypes = {
   workflow: WorkflowNode as NodeTypes[string],
   variable: VariableNode as NodeTypes[string],
+  io: SubworkflowIoNode as NodeTypes[string],
 }
 const edgeTypes: EdgeTypes = {
   path: PathEdge as EdgeTypes[string],
@@ -317,6 +329,17 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       useWorkflowDrafts.getState().apply(tabId, next, opts)
     },
     [tabId],
+  )
+
+  /** Applies an edit computed from the current workflow; null or no change records nothing. */
+  const editWorkflow = useCallback(
+    (edit: (wf: WorkflowFile) => WorkflowFile | null) => {
+      const wf = workflowRef.current
+      if (!wf) return
+      const next = edit(wf)
+      if (next && next !== wf) applyWorkflow(next)
+    },
+    [applyWorkflow],
   )
 
   const undo = useCallback(() => {
@@ -717,6 +740,19 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     return derivePorts(workflow, schemas)
   }, [workflow, schemas])
 
+  // What Add node offers: Input and Output only inside a sub-workflow, and
+  // never the sub-workflow being edited (it can't use itself).
+  const paletteSchemas = useMemo(() => {
+    const inSub = isSubworkflowPath(path)
+    return Object.fromEntries(
+      Object.entries(schemas).filter(([uses, schema]) =>
+        uses === SUBWORKFLOW_INPUT || uses === SUBWORKFLOW_OUTPUT
+          ? inSub
+          : schema.subworkflow?.path !== path,
+      ),
+    )
+  }, [schemas, path])
+
   // Initialise nodes whenever workflow OR schemas change
   useEffect(() => {
     if (!workflow) return
@@ -760,6 +796,23 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       // expanded/collapsed state back to empty sets.
       const existingExp = expansionRef.current.get(id)
       const bp = breakpointDataFor(breakpointsRef.current, path, id)
+      if (instance.uses === SUBWORKFLOW_INPUT || instance.uses === SUBWORKFLOW_OUTPUT) {
+        return {
+          id,
+          type: "io",
+          selected: selectedIds.has(id),
+          position: view ?? autoPosition(i),
+          dragHandle: ".node-drag-handle",
+          data: {
+            id,
+            instance,
+            onEdit: editWorkflow,
+            nodeStatus: nodeStatusesRef.current.get(id),
+            issues: issuesByNode.get(id),
+            gitChange: markFor(changeMarksRef.current[id]),
+          },
+        }
+      }
       if (instance.uses === VARIABLE_USES) {
         return {
           id,
@@ -791,6 +844,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
           ports: np,
           color,
           schemaName,
+          subworkflow: schema?.subworkflow ?? null,
           workflowPath: path,
           expandedInputs: existingExp?.inputs ?? new Set<string>(),
           expandedOutputs: existingExp?.outputs ?? new Set<string>(),
@@ -818,6 +872,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     onTogglePort,
     onInputValueChange,
     onClearCondition,
+    editWorkflow,
     path,
   ])
 
@@ -1011,7 +1066,15 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     const visibleOutputsByNode = new Map<string, ReadonlySet<string>>()
     for (const [nodeId, np] of portsByNode) {
       const exp = expansion.get(nodeId)
-      visibleInputsByNode.set(nodeId, computeVisibleInputPaths(np.inputs, exp?.inputs ?? new Set()))
+      if (workflow.nodes[nodeId]?.uses === SUBWORKFLOW_OUTPUT) {
+        // The Output card always shows a row per output.
+        visibleInputsByNode.set(nodeId, new Set(["", ...outputNames(workflow.nodes[nodeId])]))
+      } else {
+        visibleInputsByNode.set(
+          nodeId,
+          computeVisibleInputPaths(np.inputs, exp?.inputs ?? new Set()),
+        )
+      }
       visibleOutputsByNode.set(
         nodeId,
         computeVisibleOutputPaths(np.outputs, exp?.outputs ?? new Set()),
@@ -1109,6 +1172,8 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     // into its condition handle, labelled with the branch it takes.
     const conditionEdges: Edge[] = []
     for (const [nodeId, instance] of Object.entries(workflow.nodes)) {
+      // Input and Output cards have no condition handle to land on.
+      if (instance.uses === SUBWORKFLOW_INPUT || instance.uses === SUBWORKFLOW_OUTPUT) continue
       const c = parseCondition(instance.when)
       if (!c || c.nodeId === nodeId || !workflow.nodes[c.nodeId]) continue
       const outputs = portsByNode.get(c.nodeId)?.outputs ?? []
@@ -1327,6 +1392,13 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
         return
       }
 
+      // Dropped on a sub-workflow Output's last row: a new output.
+      if (targetNode.uses === SUBWORKFLOW_OUTPUT && targetHandle === ROOT_HANDLE_ID) {
+        const added = addOutput(wf, target, refString)
+        if (added) applyWorkflow(added.workflow)
+        return
+      }
+
       let nextIn: string | Record<string, string>
       // Fields whose literal values must be cleared from `values:` because a
       // reference is taking over. The connection wins over the literal.
@@ -1436,6 +1508,16 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
   connectRef.current = connect
   const onConnect = useCallback((conn: Connection) => connect(conn), [connect])
 
+  /** Double-clicking a sub-workflow node opens it in its own tab. */
+  const onNodeDoubleClick = useCallback(
+    (_e: ReactMouseEvent, n: RFNode) => {
+      const uses = workflowRef.current?.nodes[n.id]?.uses
+      const sub = uses ? schemas[uses]?.subworkflow : undefined
+      if (sub) openSubworkflow(sub.path, path)
+    },
+    [schemas, path],
+  )
+
   /**
    * An input's handle let go over empty canvas becomes a variable: typed from
    * that input's schema, placed where it was dropped and wired to the input.
@@ -1449,6 +1531,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       const target = from.nodeId
       const node = wf?.nodes[target]
       if (!wf || !node || node.uses === VARIABLE_USES) return
+      if (node.uses === SUBWORKFLOW_OUTPUT) return
       const portId = from.id === ROOT_HANDLE_ID ? "" : (from.id ?? "")
       // A whole-input variable would replace every binding the node has.
       const bound = typeof node.in === "string" || Object.keys(node.in ?? {}).length > 0
@@ -1549,6 +1632,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
         onAskAi={askAboutWorkflow}
         selectedNodeId={selectedNodeId}
       />
+      {isSubworkflowPath(path) && <SubworkflowBanner path={path} />}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: drop target for nodes dragged from the file tree */}
       <div className="relative min-h-0 w-full flex-1" onDragOver={onDragOver} onDrop={onDrop}>
         <div ref={reactFlowRef} className="h-full w-full">
@@ -1568,6 +1652,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
             onReconnect={onReconnect}
             onReconnectEnd={onReconnectEnd}
             onNodeClick={onNodeClick}
+            onNodeDoubleClick={onNodeDoubleClick}
             onSelectionChange={onSelectionChange}
             selectionKeyCode="Shift"
             multiSelectionKeyCode={MULTI_SELECT_KEYS}
@@ -1685,7 +1770,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
           )}
         </div>
         <CommandPalette
-          schemas={schemas}
+          schemas={paletteSchemas}
           open={paletteOpen}
           onOpenChange={setPaletteOpen}
           onPick={(uses) => {
@@ -1698,7 +1783,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
           onOpenChange={(o) => setMenu((m) => ({ ...m, open: o }))}
           x={menu.x}
           y={menu.y}
-          schemas={schemas}
+          schemas={paletteSchemas}
           onPick={(uses) => addNodeAt(uses, menu.flowX, menu.flowY)}
           onNewCustomNode={() => setNewNodeOpen(true)}
         />

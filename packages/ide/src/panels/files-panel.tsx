@@ -19,6 +19,7 @@ import { fetchWorkspaceTree } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
 import { openAppMap } from "@/lib/open-app-map"
 import { openCodeFile } from "@/lib/open-code-file"
+import { openWorkspaceFile } from "@/lib/open-file"
 import { cn } from "@/lib/utils"
 import { deleteItem, type WorkspaceItem } from "@/lib/workspace-items"
 import { useCommands } from "@/store/commands"
@@ -33,6 +34,7 @@ import { NewNodeDialog } from "@/workflow/new-node-dialog"
 import { NewProviderDialog } from "@/workflow/new-provider-dialog"
 import { NewWorkflowDialog } from "@/workflow/new-workflow-dialog"
 import { RenameItemDialog } from "@/workflow/rename-item-dialog"
+import { SubworkflowIcon } from "@/workflow/subworkflow-icon"
 import { resolveAccentColor } from "@/workflow/tailwind-colors"
 import { TreeContextMenu } from "./tree-context-menu"
 
@@ -68,6 +70,7 @@ type DialogKind =
   | "new-folder"
   | "new-workflow"
   | "new-node"
+  | "new-subworkflow"
   | "new-provider"
   | "new-middleware"
   | "new-lib-file"
@@ -165,6 +168,10 @@ export function FilesPanel() {
         },
         "file.newNode": {
           run: () => openRootDialogRef.current("nodes", "new-node"),
+          enabled: ready,
+        },
+        "file.newSubworkflow": {
+          run: () => openRootDialogRef.current("nodes", "new-subworkflow"),
           enabled: ready,
         },
         "file.newMiddleware": {
@@ -279,6 +286,7 @@ export function FilesPanel() {
         tree={menu.tree}
         onNewFolder={() => setDialog("new-folder")}
         {...(menu.tree === "workflows" && { onNewMiddleware: () => setDialog("new-middleware") })}
+        {...(menu.tree === "nodes" && { onNewSubworkflow: () => setDialog("new-subworkflow") })}
         onNewItem={() => setDialog(NEW_ITEM_DIALOG[menu.tree])}
         item={menu.item && { name: menu.item.path.split("/").pop() ?? menu.item.path }}
         onRename={() => setRenaming(menu.item ?? null)}
@@ -319,6 +327,17 @@ export function FilesPanel() {
         }}
         defaultFolder={menu.folder}
         nodesTree={nodes}
+      />
+      <NewWorkflowDialog
+        subworkflow
+        open={dialog === "new-subworkflow"}
+        onOpenChange={(o) => !o && setDialog("none")}
+        onCreated={(path) => {
+          refreshTree()
+          openWorkspaceFile(path)
+        }}
+        defaultFolder={menu.tree === "nodes" ? menu.folder : "nodes"}
+        workflowsTree={nodes}
       />
       <NewMiddlewareDialog
         open={dialog === "new-middleware"}
@@ -559,12 +578,19 @@ function Leaf({
 }) {
   const openTab = useTabsStore((s) => s.openTab)
   const activeId = useTabsStore((s) => s.activeId)
-  const isCode = node.kind !== "workflow" && node.path !== undefined
-  const tabId = isCode ? (node.path ?? node.id) : node.id
+  const isSub = node.kind === "subworkflow"
+  const isCode = node.kind !== "workflow" && !isSub && node.path !== undefined
+  const tabId = isCode || isSub ? (node.path ?? node.id) : node.id
   const isActive = activeId === tabId
+  // Sub-workflows drag onto a canvas like TypeScript nodes.
+  const dragUses =
+    treeKind === "nodes" && node.path && (node.path.endsWith(".ts") || isSub)
+      ? `./${node.path.replace(/\.(ts|workflow)$/, "")}`
+      : null
 
-  const Icon =
-    node.kind === "workflow"
+  const Icon = isSub
+    ? SubworkflowIcon
+    : node.kind === "workflow"
       ? Workflow
       : node.kind === "provider"
         ? Plug
@@ -575,14 +601,14 @@ function Leaf({
   return (
     <button
       type="button"
-      draggable={treeKind === "nodes" && node.path?.endsWith(".ts")}
+      draggable={dragUses !== null}
       onDragStart={(e) => {
-        if (treeKind === "nodes" && node.path?.endsWith(".ts")) {
-          const uses = `./${node.path.replace(/\.ts$/, "")}`
-          e.dataTransfer.setData("application/lorien-node", uses)
+        if (dragUses) {
+          e.dataTransfer.setData("application/lorien-node", dragUses)
           e.dataTransfer.effectAllowed = "copy"
         }
       }}
+      title={isSub ? "Sub-workflow: drag it onto a canvas to use it" : undefined}
       onContextMenu={(e) => {
         // Target = the file's parent folder. Derive from node.path when available
         // (most accurate); fall back to parentPath threaded through TreeNode.
@@ -590,14 +616,18 @@ function Leaf({
           ? node.path.split("/").slice(0, -1).join("/") || parentPath
           : parentPath
         const item: WorkspaceItem | undefined =
-          node.path && (node.kind === "workflow" || node.kind === "node")
-            ? { path: node.path, kind: node.kind }
+          node.path && (node.kind === "workflow" || node.kind === "node" || isSub)
+            ? { path: node.path, kind: node.kind as WorkspaceItem["kind"] }
             : undefined
         onContextMenu(e, treeKind, folder, item)
       }}
       onClick={() => {
         if (isCode && node.path) {
           openCodeFile(node.path)
+          return
+        }
+        if (isSub && node.path) {
+          openWorkspaceFile(node.path)
           return
         }
         const tab: Parameters<typeof openTab>[0] = {
@@ -622,11 +652,13 @@ function Leaf({
       <Icon
         className={cn(
           "h-3.5 w-3.5 shrink-0",
-          node.kind === "workflow"
-            ? "text-primary"
-            : node.kind === "node"
-              ? "text-info"
-              : "text-muted-foreground",
+          isSub
+            ? "text-flow"
+            : node.kind === "workflow"
+              ? "text-primary"
+              : node.kind === "node"
+                ? "text-info"
+                : "text-muted-foreground",
         )}
       />
       <span className="min-w-0 flex-1 truncate">{node.name}</span>

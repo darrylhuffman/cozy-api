@@ -12,6 +12,8 @@ interface Props {
   onNewItem: () => void
   /** Workflows only: adds a `_middleware.ts` to the folder. */
   onNewMiddleware?: (() => void) | undefined
+  /** Nodes only: adds a sub-workflow to the folder. */
+  onNewSubworkflow?: (() => void) | undefined
   /** Set when the menu was opened on a workflow or node file. */
   item?: { name: string } | undefined
   onRename?: () => void
@@ -31,6 +33,7 @@ export function TreeContextMenu({
   onNewFolder,
   onNewItem,
   onNewMiddleware,
+  onNewSubworkflow,
   item,
   onRename,
   onDelete,
@@ -60,6 +63,16 @@ export function TreeContextMenu({
         >
           {itemLabel}
         </MenuItem>
+        {onNewSubworkflow && (
+          <MenuItem
+            onClick={() => {
+              onOpenChange(false)
+              onNewSubworkflow()
+            }}
+          >
+            New sub-workflow…
+          </MenuItem>
+        )}
         {onNewMiddleware && (
           <MenuItem
             onClick={() => {

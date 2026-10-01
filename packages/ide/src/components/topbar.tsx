@@ -107,6 +107,7 @@ export function Topbar() {
             <MenubarContent>
               <CommandItem id="file.newWorkflow">New workflow…</CommandItem>
               <CommandItem id="file.newNode">New node…</CommandItem>
+              <CommandItem id="file.newSubworkflow">New sub-workflow…</CommandItem>
               <CommandItem id="file.newProvider">New provider…</CommandItem>
               <CommandItem id="file.newMiddleware">New middleware…</CommandItem>
               <CommandItem id="file.newFolder">New folder…</CommandItem>

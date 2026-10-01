@@ -214,6 +214,13 @@ describe("diagnoseWorkflow", () => {
       "No Response node: requests will never get an answer.",
     )
     expect(run({ lorien: 1, nodes: {} })).toEqual([])
+    // A sub-workflow starts at its Input.
+    expect(
+      messages({
+        lorien: 1,
+        nodes: { Input: { uses: "@core/input" }, Output: { uses: "@core/output" } },
+      }),
+    ).not.toContain("No trigger (HTTP Request or Schedule): nothing starts this workflow.")
   })
 
   it("checks a schedule's cron and time zone, and wants no Response", () => {

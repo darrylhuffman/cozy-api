@@ -8,7 +8,7 @@ import { useWorkflowDrafts } from "@/store/workflow-drafts"
 export interface WorkspaceItem {
   /** Workspace-relative path, e.g. "workflows/pets/add.workflow". */
   path: string
-  kind: "workflow" | "node"
+  kind: "workflow" | "node" | "subworkflow"
 }
 
 /** "add-pet.ts" → { stem: "add-pet", ext: ".ts" } */
@@ -96,7 +96,7 @@ export async function deleteItem(item: WorkspaceItem): Promise<boolean> {
       ? `Its saved requests (${stem}.requests.json) are deleted too, if it has any.`
       : `Its test cases (${stem}.cases.json) are deleted too, if it has any.`,
   ]
-  if (item.kind === "node") {
+  if (item.kind !== "workflow") {
     const { usedBy } = await fetchItemUsage(item.path).catch(() => ({ usedBy: [] as string[] }))
     if (usedBy.length > 0) {
       const names = usedBy.map((p) => p.replace(/^workflows\//, ""))

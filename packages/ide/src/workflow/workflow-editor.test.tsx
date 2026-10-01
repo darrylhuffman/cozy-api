@@ -16,6 +16,7 @@ let capturedOnReconnectEnd:
 let capturedOnNodeClick: ((event: unknown, node: { id: string }) => void) | null = null
 let capturedOnPaneClick: (() => void) | null = null
 let capturedOnSelectionChange: ((sel: { nodes: { id: string }[] }) => void) | null = null
+let capturedOnNodeDoubleClick: ((event: unknown, node: { id: string }) => void) | null = null
 let capturedOnNodeContextMenu:
   | ((
       event: { preventDefault: () => void; clientX: number; clientY: number },
@@ -60,8 +61,10 @@ vi.mock("@xyflow/react", () => ({
     onPaneClick,
     onNodeContextMenu,
     onSelectionChange,
+    onNodeDoubleClick,
     children,
   }: {
+    onNodeDoubleClick?: (event: unknown, node: { id: string }) => void
     children?: React.ReactNode
     nodes: { id: string; type?: string; data: Record<string, unknown> }[]
     edges?: CapturedEdge[]
@@ -98,6 +101,7 @@ vi.mock("@xyflow/react", () => ({
     capturedOnNodeClick = onNodeClick ?? null
     capturedOnPaneClick = onPaneClick ?? null
     capturedOnSelectionChange = onSelectionChange ?? null
+    capturedOnNodeDoubleClick = onNodeDoubleClick ?? null
     capturedOnNodeContextMenu = onNodeContextMenu ?? null
     capturedEdges = edges ?? null
     capturedEdgeTypes = edgeTypes ?? null
@@ -215,7 +219,13 @@ vi.mock("@/lib/api", async (importOriginal) => {
     fetchWorkflowFile: vi.fn(),
     fetchWorkspaceSchemas: vi.fn().mockResolvedValue({}),
     saveFile: vi.fn().mockResolvedValue({ path: "workflows/users/create.workflow", bytes: 100 }),
+    fetchItemUsage: vi.fn().mockResolvedValue({ usedBy: ["workflows/orders/create.workflow"] }),
   }
+})
+
+vi.mock("@/lib/open-subworkflow", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/open-subworkflow")>()
+  return { ...actual, openSubworkflow: vi.fn() }
 })
 
 // Mock events module — SSE isn't available in jsdom
@@ -225,6 +235,7 @@ vi.mock("@/lib/events", () => ({
 
 import { ApiError, fetchWorkflowFile, fetchWorkspaceSchemas, saveFile } from "@/lib/api"
 import { type FileEvent, subscribeToFileEvents } from "@/lib/events"
+import { openSubworkflow } from "@/lib/open-subworkflow"
 import { useConfirmStore } from "@/store/confirm"
 import { useDebugSessionStore } from "@/store/debug-session"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
@@ -290,6 +301,7 @@ beforeEach(() => {
   capturedOnNodeClick = null
   capturedOnPaneClick = null
   capturedOnSelectionChange = null
+  capturedOnNodeDoubleClick = null
   capturedOnNodeContextMenu = null
   _capturedNodeMenuProps = null
   capturedEdges = null
@@ -1460,6 +1472,103 @@ describe("WorkflowEditor", () => {
       })
       fireEvent.click(screen.getByRole("button", { name: "Clear the selection" }))
       expect(selected().selectedNodeIds).toEqual([])
+    })
+  })
+
+  describe("sub-workflows", () => {
+    const reserveSchema = {
+      name: "Reserve seats",
+      inputs: { type: "object", properties: { eventId: { type: "string" } } },
+      outputs: { type: "object", properties: { event: {} } },
+      subworkflow: {
+        path: "nodes/orders/reserve-seats.workflow",
+        respondsWith: [404],
+        nodeCount: 3,
+      },
+    }
+    const subFile: WorkflowFile = {
+      lorien: 1,
+      nodes: {
+        Input: { uses: "@core/input", values: { fields: { eventId: "string" } } },
+        Find: { uses: "./nodes/events/find", in: { id: "Input.eventId" } },
+        Output: { uses: "@core/output", in: { event: "Find.event" } },
+      },
+    }
+
+    async function renderSub() {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(subFile)
+      useTabsStore.getState().openTab({
+        id: "sub-tab",
+        title: "reserve-seats.workflow",
+        kind: "workflow",
+        path: "nodes/orders/reserve-seats.workflow",
+      })
+      render(<WorkflowEditor path="nodes/orders/reserve-seats.workflow" tabId="sub-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+    }
+
+    it("draws the Input and Output as their own cards, under a banner", async () => {
+      await renderSub()
+      const types = Object.fromEntries((capturedNodes ?? []).map((n) => [n.id, n.type]))
+      expect(types).toEqual({ Input: "io", Find: "workflow", Output: "io" })
+      expect(await screen.findByText(/used by/)).toBeDefined()
+      expect(screen.getByTestId("subworkflow-banner").textContent).toContain("1 workflow")
+    })
+
+    it("wires the Output's outputs and the Input's fields as edges", async () => {
+      await renderSub()
+      const pairs = (capturedEdges ?? []).map(
+        (e) => `${e.source}.${e.sourceHandle}->${e.target}.${e.targetHandle}`,
+      )
+      expect(pairs).toContain("Input.eventId->Find.id")
+      expect(pairs).toContain("Find.event->Output.event")
+    })
+
+    it("dropping a value on the Output's last row adds an output", async () => {
+      await renderSub()
+      act(() => {
+        capturedOnConnect?.({
+          source: "Find",
+          sourceHandle: "total",
+          target: "Output",
+          targetHandle: "$root",
+        })
+      })
+      fireEvent.keyDown(window, { key: "s", ctrlKey: true })
+      await waitFor(() => expect(vi.mocked(saveFile)).toHaveBeenCalledOnce())
+      const saved = JSON.parse(vi.mocked(saveFile).mock.calls[0]![1]) as WorkflowFile
+      expect(saved.nodes.Output?.in).toEqual({ event: "Find.event", total: "Find.total" })
+    })
+
+    it("double-clicking a sub-workflow node opens it, remembering where from", async () => {
+      vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
+        "./nodes/orders/reserve-seats": reserveSchema,
+      } as never)
+      vi.mocked(fetchWorkflowFile).mockResolvedValue({
+        lorien: 1,
+        nodes: {
+          Request: { uses: "@core/http-request" },
+          Reserve: { uses: "./nodes/orders/reserve-seats", in: { eventId: "Request.params.id" } },
+        },
+      })
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        const data = capturedNodes?.find((n) => n.id === "Reserve")?.data
+        expect(data?.subworkflow).toEqual(reserveSchema.subworkflow)
+      })
+      act(() => {
+        capturedOnNodeDoubleClick?.({}, { id: "Reserve" })
+      })
+      expect(openSubworkflow).toHaveBeenCalledWith(
+        "nodes/orders/reserve-seats.workflow",
+        "workflows/users/create.workflow",
+      )
+      act(() => {
+        capturedOnNodeDoubleClick?.({}, { id: "Request" })
+      })
+      expect(openSubworkflow).toHaveBeenCalledOnce()
     })
   })
 

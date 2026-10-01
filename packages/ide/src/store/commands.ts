@@ -8,6 +8,7 @@ import { create } from "zustand"
 export type CommandId =
   | "file.newWorkflow"
   | "file.newNode"
+  | "file.newSubworkflow"
   | "file.newProvider"
   | "file.newMiddleware"
   | "file.newFolder"
