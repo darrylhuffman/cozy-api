@@ -1,11 +1,13 @@
 import {
   dataDependencies,
+  isTriggerUses,
   nodeDependencies,
   parseReference,
   parseWhen,
   referenceSource,
   type WorkflowFile,
   workflowRoutes,
+  workflowSchedules,
 } from "@darrylondil/lorien-runtime"
 
 /**
@@ -16,6 +18,8 @@ export interface EmitWorkflowResult {
   source: string
   /** The user node `uses` strings imported by this workflow (e.g. "./nodes/foo"). */
   importedNodes: string[]
+  /** True when the module exports `schedules` (it has `@core/schedule` triggers). */
+  hasSchedules: boolean
 }
 
 /**
@@ -48,9 +52,11 @@ export interface EmitWorkflowOptions {
 
 /**
  * Given a parsed workflow, emit the .gen.ts source string. It exports one
- * `run_<trigger>(trigger, services)` per @core/http-request trigger, holding
- * the workflow's logic with no Hono in it, and `register(app: Hono)`, which
- * mounts a thin route per trigger that calls it.
+ * `run_<trigger>(trigger, services)` per trigger, holding the workflow's
+ * logic with no Hono in it, and `register(app: Hono)`, which mounts a thin
+ * route per @core/http-request trigger that calls it. A workflow with
+ * @core/schedule triggers also exports `schedules`, which dist/index.ts
+ * starts.
  *
  * The emitted code has zero @darrylondil/lorien-runtime imports. Only hono and the
  * user's own node modules are imported.
@@ -79,7 +85,15 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   // Find all http-request triggers in this workflow.
   // `method` and `path` are literals under `values:`; the route is fixed at
   // build time. A missing path defaults to the workflow's folder.
-  const triggers: TriggerInfo[] = workflowRoutes(workflow, `workflows/${relativePath}.workflow`)
+  const routes: HttpTriggerInfo[] = workflowRoutes(
+    workflow,
+    `workflows/${relativePath}.workflow`,
+  ).map((r) => ({ kind: "http", ...r }))
+  const schedules: ScheduleTriggerInfo[] = workflowSchedules(workflow).map((s) => ({
+    kind: "schedule",
+    ...s,
+  }))
+  const triggers: TriggerInfo[] = [...routes, ...schedules]
 
   // Build a stable map from `uses` to local identifier.
   const sortedUses = [...userUses].sort()
@@ -118,12 +132,12 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
     lines.push(`import mw${i} from "${upPrefix}${path.replace(/\.([mc]?)ts$/, ".$1js")}"`)
   })
   lines.push("")
-  lines.push(renderTypes())
+  lines.push(renderTypes(schedules.length > 0))
   lines.push("")
   lines.push(renderReadJsonBodyHelper())
   lines.push("")
   lines.push(renderCheckOutputHelper())
-  if (triggers.some((t) => requestSourcedNodes(workflow, t.nodeId).size > 0)) {
+  if (routes.some((t) => requestSourcedNodes(workflow, t.nodeId).size > 0)) {
     lines.push("")
     lines.push(renderParseInputHelper())
   }
@@ -137,18 +151,23 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   lines.push(`export function register(app: Hono): void {`)
   if (guarded) lines.push(...renderGuards(middleware.length, perRequest))
 
-  for (let i = 0; i < triggers.length; i++) {
-    const trigger = triggers[i]!
+  for (let i = 0; i < routes.length; i++) {
+    const trigger = routes[i]!
     if (i > 0) lines.push("")
     lines.push(...renderRoute(trigger, perRequest, guarded))
   }
 
   lines.push(`}`)
+  if (schedules.length > 0) {
+    lines.push("")
+    lines.push(...renderSchedules(schedules, `workflows/${relativePath}.workflow`, perRequest))
+  }
   lines.push("")
 
   return {
     source: lines.join("\n"),
     importedNodes: sortedUses,
+    hasSchedules: schedules.length > 0,
   }
 }
 
@@ -159,11 +178,21 @@ const VARIABLE = "@core/variable"
  */
 const PASS_THROUGH = new Set(["@core/input", "@core/output"])
 
-interface TriggerInfo {
+interface HttpTriggerInfo {
+  kind: "http"
   nodeId: string
   path: string
   method: string
 }
+
+interface ScheduleTriggerInfo {
+  kind: "schedule"
+  nodeId: string
+  cron: string
+  timezone: string
+}
+
+type TriggerInfo = HttpTriggerInfo | ScheduleTriggerInfo
 
 function renderReadJsonBodyHelper(): string {
   return [
@@ -213,7 +242,19 @@ function renderCheckOutputHelper(): string {
   ].join("\n")
 }
 
-function renderTypes(): string {
+function renderTypes(withSchedule: boolean): string {
+  const schedule = withSchedule
+    ? [
+        ``,
+        `/** What a schedule trigger hands the workflow: the time it was due. */`,
+        `export interface ScheduleTrigger {`,
+        `  scheduledAt: string`,
+        `  timestamp: number`,
+        `  manual: boolean`,
+        `  context: { runId: string }`,
+        `}`,
+      ]
+    : []
   return [
     `/** What an HTTP trigger hands the workflow: the parsed request. */`,
     `export interface HttpTrigger {`,
@@ -223,6 +264,8 @@ function renderTypes(): string {
     `  headers: Record<string, string>`,
     `  context: { requestId: string; timestamp: number }`,
     `}`,
+    ``,
+    ...schedule,
     ``,
     `/** A workflow's result; the HTTP route turns it into a JSON Response. */`,
     `export interface WorkflowResult {`,
@@ -261,9 +304,11 @@ function renderRun(
     workflow,
     usesToIdent,
     triggerId: trigger.nodeId,
+    fromRequest: trigger.kind === "http",
     conditional: conditionalNodes(workflow, waves, trigger.nodeId),
   }
-  const checksRequest = requestSourcedNodes(workflow, trigger.nodeId).size > 0
+  const checksRequest =
+    trigger.kind === "http" && requestSourcedNodes(workflow, trigger.nodeId).size > 0
 
   const body: string[] = []
   body.push(`const ${outputsVar(trigger.nodeId)} = trigger`)
@@ -329,9 +374,13 @@ function renderRun(
     body.push(`return { status: 200, headers: {}, body: null }`)
   }
 
-  lines.push(`/** ${trigger.method} ${trigger.path} */`)
   lines.push(
-    `export async function ${runFnName(trigger.nodeId)}(trigger: HttpTrigger, services: unknown): Promise<WorkflowResult> {`,
+    trigger.kind === "http"
+      ? `/** ${trigger.method} ${trigger.path} */`
+      : `/** Schedule ${trigger.cron} (${trigger.timezone}) */`,
+  )
+  lines.push(
+    `export async function ${runFnName(trigger.nodeId)}(trigger: ${trigger.kind === "http" ? "HttpTrigger" : "ScheduleTrigger"}, services: unknown): Promise<WorkflowResult> {`,
   )
   if (checksRequest) {
     // A bad value from the request is the client's mistake: answer 400.
@@ -349,7 +398,7 @@ function renderRun(
 }
 
 /** The Hono route for one trigger: read the request, call its run function, send JSON. */
-function renderRoute(trigger: TriggerInfo, perRequest: boolean, guarded: boolean): string[] {
+function renderRoute(trigger: HttpTriggerInfo, perRequest: boolean, guarded: boolean): string[] {
   const lines: string[] = []
 
   // Hono runs every handler registered for a route in order, so the guards
@@ -409,6 +458,55 @@ function renderRoute(trigger: TriggerInfo, perRequest: boolean, guarded: boolean
 }
 
 /**
+ * `schedules`: one entry per schedule trigger, each running the workflow in
+ * its own provider scope. Folder middleware is HTTP-only and doesn't run.
+ */
+function renderSchedules(
+  schedules: ScheduleTriggerInfo[],
+  workflowPath: string,
+  perRequest: boolean,
+): string[] {
+  const lines = [
+    `/** The schedules this workflow runs on; dist/index.ts starts them. */`,
+    `export const schedules: Array<{`,
+    `  id: string`,
+    `  cron: string`,
+    `  timezone: string`,
+    `  run: (scheduledAt: Date) => Promise<WorkflowResult>`,
+    `}> = [`,
+  ]
+  for (const s of schedules) {
+    const run = runFnName(s.nodeId)
+    lines.push(`  {`)
+    lines.push(`    id: ${JSON.stringify(`${workflowPath}#${s.nodeId}`)},`)
+    lines.push(`    cron: ${JSON.stringify(s.cron)},`)
+    lines.push(`    timezone: ${JSON.stringify(s.timezone)},`)
+    lines.push(`    run: async (scheduledAt) => {`)
+    lines.push(`      const runId = crypto.randomUUID()`)
+    lines.push(`      const trigger: ScheduleTrigger = {`)
+    lines.push(`        scheduledAt: scheduledAt.toISOString(),`)
+    lines.push(`        timestamp: scheduledAt.getTime(),`)
+    lines.push(`        manual: false,`)
+    lines.push(`        context: { runId },`)
+    lines.push(`      }`)
+    if (perRequest) {
+      lines.push(`      const scope = await openScope({ requestId: runId, timestamp: Date.now() })`)
+      lines.push(`      try {`)
+      lines.push(`        return await ${run}(trigger, scope.values)`)
+      lines.push(`      } finally {`)
+      lines.push(`        void scope.dispose()`)
+      lines.push(`      }`)
+    } else {
+      lines.push(`      return ${run}(trigger, singletons)`)
+    }
+    lines.push(`    },`)
+    lines.push(`  },`)
+  }
+  lines.push(`]`)
+  return lines
+}
+
+/**
  * `guards`: the Hono middleware every route in this file runs first. With
  * per-request providers, the first one opens the request's scope so
  * middleware and nodes share it.
@@ -453,13 +551,15 @@ interface RunContext {
   workflow: WorkflowFile
   usesToIdent: Map<string, string>
   triggerId: string
+  /** The trigger is an HTTP request, so a bad value from it is the client's mistake (400). */
+  fromRequest: boolean
   /** Nodes that may be skipped: they have a `when`, or read a node that may be. */
   conditional: Set<string>
 }
 
 /** `<schema>.parse(...)`, or `parseInput(...)` when some of the input comes from the request. */
 function renderParse(ctx: RunContext, nodeId: string, ident: string, inputExpr: string): string {
-  const sources = requestSources(ctx.workflow, nodeId, ctx.triggerId)
+  const sources = ctx.fromRequest ? requestSources(ctx.workflow, nodeId, ctx.triggerId) : null
   return sources === null
     ? `${ident}.inputs.parse(${inputExpr})`
     : `parseInput(${ident}.inputs, ${inputExpr}, ${JSON.stringify(sources)})`
@@ -900,7 +1000,7 @@ function computeTriggerSlice(
     for (const d of deps) downstreamOf.get(d)?.add(id)
   }
 
-  const allTriggers = allIds.filter((id) => wf.nodes[id]?.uses === "@core/http-request")
+  const allTriggers = allIds.filter((id) => isTriggerUses(wf.nodes[id]?.uses ?? ""))
   const reachableFrom = new Map<string, Set<string>>()
   for (const tid of allTriggers) {
     const reach = new Set<string>([tid])

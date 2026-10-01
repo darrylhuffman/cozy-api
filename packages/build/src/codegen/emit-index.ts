@@ -17,6 +17,11 @@ export interface EmitIndexOptions {
   workflowPaths: string[]
   /** Dispose provider singletons on SIGINT/SIGTERM (dist/providers.gen.ts). */
   disposeOnExit?: boolean
+  /**
+   * The workflowPaths whose module exports `schedules`. The server starts
+   * them with dist/schedule.gen.js, which the build copies in.
+   */
+  scheduledPaths?: string[]
 }
 
 /**
@@ -32,8 +37,11 @@ export function emitIndex(opts: EmitIndexOptions): EmitIndexResult {
   lines.push(`import { Hono } from "hono"`)
   lines.push(`import { serve } from "@hono/node-server"`)
   if (opts.disposeOnExit) lines.push(`import { disposeSingletons } from "./providers.gen.js"`)
+  const scheduled = new Set(opts.scheduledPaths ?? [])
+  if (scheduled.size > 0) lines.push(`import { startSchedule } from "./schedule.gen.js"`)
 
   const idents: string[] = []
+  const scheduleIdents: string[] = []
   const seen = new Set<string>()
   for (const path of sorted) {
     let ident = `register_${slugIdentifier(path)}`
@@ -45,7 +53,15 @@ export function emitIndex(opts: EmitIndexOptions): EmitIndexResult {
     seen.add(ident)
     idents.push(ident)
     const importPath = `./workflows/${slugifyPath(path)}.gen.js`
-    lines.push(`import { register as ${ident} } from "${importPath}"`)
+    if (scheduled.has(path)) {
+      const schedulesIdent = ident.replace(/^register_/, "schedules_")
+      scheduleIdents.push(schedulesIdent)
+      lines.push(
+        `import { register as ${ident}, schedules as ${schedulesIdent} } from "${importPath}"`,
+      )
+    } else {
+      lines.push(`import { register as ${ident} } from "${importPath}"`)
+    }
   }
 
   lines.push("")
@@ -85,6 +101,25 @@ export function emitIndex(opts: EmitIndexOptions): EmitIndexResult {
   lines.push('  return new RegExp(`^${segments.join("/")}/?$`)')
   lines.push(`}`)
   lines.push("")
+  if (scheduleIdents.length > 0) {
+    // A failed run is logged and the schedule carries on.
+    lines.push(`for (const s of [${scheduleIdents.map((i) => `...${i}`).join(", ")}]) {`)
+    lines.push(`  startSchedule(`)
+    lines.push(`    { cron: s.cron, timeZone: s.timezone, run: s.run },`)
+    lines.push(`    {`)
+    lines.push(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted as-is into generated code.
+      "      onError: (err, at) => console.error(`[lorien] ${s.id}: run scheduled for ${at.toISOString()} failed:`, err),",
+    )
+    lines.push(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted as-is into generated code.
+      "      onSkip: (at) => console.warn(`[lorien] ${s.id}: skipped the run for ${at.toISOString()}; the previous one is still going`),",
+    )
+    lines.push(`    },`)
+    lines.push(`  )`)
+    lines.push(`}`)
+    lines.push("")
+  }
   lines.push(`const port = Number(process.env.PORT) || 3000`)
   lines.push(
     `${opts.disposeOnExit ? "const server = " : ""}serve({ fetch: app.fetch, port }, ({ port }) => {`,

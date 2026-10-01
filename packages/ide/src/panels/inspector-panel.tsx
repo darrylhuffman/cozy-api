@@ -26,6 +26,8 @@ import { conditionColor } from "@/workflow/condition-edge"
 import { conditionOptions, parseCondition, setCondition } from "@/workflow/conditions"
 import { isValidNodeId, TRIGGERS } from "@/workflow/diagnose"
 import { renameNode } from "@/workflow/graph-ops"
+import { SCHEDULE_USES } from "@/workflow/schedule"
+import { ScheduleEditor } from "@/workflow/schedule-editor"
 import { expandTemplate } from "@/workflow/template"
 import { VARIABLE_USES } from "@/workflow/variables"
 import { RunTab } from "./run-tab"
@@ -192,6 +194,17 @@ function InspectContent() {
           </button>
         </div>
       </Section>
+      {instance.uses === SCHEDULE_USES && (
+        <Section label="Schedule">
+          <ScheduleEditor
+            key={selectedId}
+            nodeId={selectedId}
+            instance={instance}
+            tabId={liveTabId}
+            workflowPath={workflowPath}
+          />
+        </Section>
+      )}
       {workflow && instance.uses !== VARIABLE_USES && !TRIGGERS.has(instance.uses) && (
         <Section label="Runs">
           <ConditionField id={selectedId} tabId={liveTabId} workflow={workflow} schemas={schemas} />
@@ -204,13 +217,15 @@ function InspectContent() {
           </p>
         </Section>
       )}
-      <Section label="Inputs" gap="tight">
-        <SchemaTree
-          {...(schema?.inputs ? { schema: schema.inputs } : {})}
-          instance={instance}
-          workflowPath={workflowPath}
-        />
-      </Section>
+      {instance.uses !== SCHEDULE_USES && (
+        <Section label="Inputs" gap="tight">
+          <SchemaTree
+            {...(schema?.inputs ? { schema: schema.inputs } : {})}
+            instance={instance}
+            workflowPath={workflowPath}
+          />
+        </Section>
+      )}
       <Section label="Outputs" gap="tight">
         <SchemaTree {...(schema?.outputs ? { schema: schema.outputs } : {})} />
       </Section>

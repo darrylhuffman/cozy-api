@@ -726,3 +726,54 @@ describe("emitWorkflow — when and request validation", () => {
     }
   })
 })
+
+describe("emitWorkflow — schedules", () => {
+  const scheduled = wf({
+    lorien: 1,
+    nodes: {
+      Nightly: { uses: "@core/schedule", values: { cron: "0 3 * * *", timezone: "Europe/Paris" } },
+      cleanup: { uses: "./nodes/cleanup", in: { before: "Nightly.scheduledAt" } },
+    },
+  })
+
+  it("exports a run function and a `schedules` entry per schedule trigger", () => {
+    const { source, hasSchedules } = emitWorkflow({ workflow: scheduled, relativePath: "nightly" })
+    expect(hasSchedules).toBe(true)
+    expect(source).toMatch(/export interface ScheduleTrigger \{/)
+    expect(source).toContain("/** Schedule 0 3 * * * (Europe/Paris) */")
+    expect(source).toContain(
+      "export async function run_Nightly(trigger: ScheduleTrigger, services: unknown): Promise<WorkflowResult> {",
+    )
+    expect(source).toContain('id: "workflows/nightly.workflow#Nightly",')
+    expect(source).toContain('cron: "0 3 * * *",')
+    expect(source).toContain('timezone: "Europe/Paris",')
+    expect(source).toContain("return run_Nightly(trigger, singletons)")
+    // No route, and a value from the schedule isn't treated as a client error.
+    expect(source).not.toMatch(/app\.on\(/)
+    expect(source).not.toMatch(/parseInput|InvalidRequest/)
+  })
+
+  it("opens a provider scope per run when providers are per request", () => {
+    const { source } = emitWorkflow({
+      workflow: scheduled,
+      relativePath: "nightly",
+      perRequestProviders: true,
+    })
+    expect(source).toContain(
+      "const scope = await openScope({ requestId: runId, timestamp: Date.now() })",
+    )
+    expect(source).toContain("return await run_Nightly(trigger, scope.values)")
+  })
+
+  it("leaves HTTP-only workflows without `schedules`", () => {
+    const { source, hasSchedules } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: { req: { uses: "@core/http-request", values: { path: "/", method: "GET" } } },
+      }),
+      relativePath: "ping",
+    })
+    expect(hasSchedules).toBe(false)
+    expect(source).not.toMatch(/schedules|ScheduleTrigger/)
+  })
+})
