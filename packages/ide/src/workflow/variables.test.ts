@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest"
 import type { JsonSchema, WorkflowFile } from "@/lib/api"
 import {
+  checkValue,
   convertValue,
   declaredType,
-  checkValue,
   describeVariable,
   extractVariable,
   scaffoldValue,
