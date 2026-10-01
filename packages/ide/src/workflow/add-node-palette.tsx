@@ -9,7 +9,10 @@ interface Props {
 
 export function AddNodePalette({ schemas, onPick }: Props) {
   const [query, setQuery] = useState("")
-  const items = Object.keys(schemas).sort(coreFirst)
+  // Old names of renamed core nodes still load, but aren't offered.
+  const items = Object.keys(schemas)
+    .filter((k) => !schemas[k]?.renamedTo)
+    .sort(coreFirst)
   const filtered = query
     ? items.filter((k) => k.toLowerCase().includes(query.toLowerCase()))
     : items

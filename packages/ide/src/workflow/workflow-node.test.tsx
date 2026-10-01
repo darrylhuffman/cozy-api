@@ -895,7 +895,7 @@ describe("nodeTint", () => {
     const { nodeTint } = await import("./workflow-node")
     expect(nodeTint("./nodes/pets/add-pet", "#ff0000")).toBe("#ff0000")
     expect(nodeTint("./nodes/pets/add-pet")).toBe("var(--ai)")
-    expect(nodeTint("@core/response", null)).toBe("var(--info)")
+    expect(nodeTint("@core/http-response", null)).toBe("var(--info)")
     expect(nodeTint("some-package/node")).toBe("var(--muted-foreground)")
   })
 })
@@ -948,7 +948,7 @@ describe("WorkflowNode conditions", () => {
 
   it("shows the branch a node runs on, with the condition handle on that row", () => {
     const onClearCondition = vi.fn()
-    const data = makeData("missing", { uses: "@core/response", when: "!find.found" }, ports, {
+    const data = makeData("missing", { uses: "@core/http-response", when: "!find.found" }, ports, {
       onClearCondition,
     })
     render(<WorkflowNode data={data} />)
@@ -961,7 +961,7 @@ describe("WorkflowNode conditions", () => {
   })
 
   it("still offers a condition handle when there is no condition, except on triggers", () => {
-    render(<WorkflowNode data={makeData("ok", { uses: "@core/response" }, ports)} />)
+    render(<WorkflowNode data={makeData("ok", { uses: "@core/http-response" }, ports)} />)
     expect(screen.queryByTestId("node-condition")).not.toBeInTheDocument()
     expect(screen.getByTestId("handle-target-$when")).toBeInTheDocument()
     cleanup()
@@ -975,5 +975,48 @@ describe("WorkflowNode conditions", () => {
       />,
     )
     expect(screen.queryByTestId("handle-target-$when")).not.toBeInTheDocument()
+  })
+})
+
+describe("WorkflowNode — switch cases", () => {
+  const instance: NodeInstance = {
+    uses: "@core/switch",
+    in: { value: "Request.query" },
+    values: { field: "kind", cases: ["cat", "dog"] },
+  }
+  const ports: NodePorts = {
+    inputs: inputRoot([leaf("value"), leaf("field")]),
+    outputs: [
+      { ...leaf("cat", "case1"), branch: true },
+      { ...leaf("dog", "case2"), branch: true },
+      { ...leaf("default"), branch: true },
+      leaf("value"),
+    ],
+  }
+
+  it("draws a row and a branch handle per case, then default and value", () => {
+    render(<WorkflowNode data={makeData("Kind", instance, ports)} />)
+    expect(screen.getByTestId("switch-case-1")).toHaveValue("cat")
+    expect(screen.getByTestId("switch-case-2")).toHaveValue("dog")
+    expect(screen.getByTestId("handle-source-case1")).toBeInTheDocument()
+    expect(screen.getByTestId("handle-source-case2")).toBeInTheDocument()
+    expect(screen.getByTestId("handle-source-default")).toBeInTheDocument()
+    expect(screen.getByTestId("handle-source-value")).toBeInTheDocument()
+  })
+
+  it("adds, edits and removes cases", () => {
+    const onSwitchCasesChange = vi.fn()
+    render(<WorkflowNode data={makeData("Kind", instance, ports, { onSwitchCasesChange })} />)
+
+    fireEvent.click(screen.getByTestId("switch-add-case"))
+    expect(onSwitchCasesChange).toHaveBeenLastCalledWith(["cat", "dog", ""])
+
+    const input = screen.getByTestId("switch-case-2")
+    fireEvent.change(input, { target: { value: "bird" } })
+    fireEvent.blur(input)
+    expect(onSwitchCasesChange).toHaveBeenLastCalledWith(["cat", "bird"])
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove case 1" }))
+    expect(onSwitchCasesChange).toHaveBeenLastCalledWith(["cat", "dog"], 0)
   })
 })

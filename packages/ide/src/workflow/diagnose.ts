@@ -1,5 +1,6 @@
 import { cronProblem, isValidTimeZone } from "@darrylondil/lorien-runtime/schedule"
 import type { JsonSchema, NodeSchemas, WorkflowFile } from "@/lib/api"
+import { isHttpResponse, SWITCH_USES, switchOutputSchema } from "./core-nodes"
 
 export type Severity = "error" | "warning"
 
@@ -19,7 +20,6 @@ const IDENT = /^[a-zA-Z_$][\w$]*$/
 const SEGMENT = /^[a-zA-Z_$][\w$-]*$/
 /** Node types that start a run. They always run, so they take no `when`. */
 export const TRIGGERS = new Set(["@core/http-request", "@core/schedule"])
-const RESPONSE = "@core/response"
 const HTTP_REQUEST = "@core/http-request"
 const SCHEDULE = "@core/schedule"
 
@@ -111,9 +111,15 @@ export function diagnoseWorkflow(
         return
       }
       nodeDeps.add(sourceId)
-      const sourceSchema = schemas[wf.nodes[sourceId]!.uses]
+      const source = wf.nodes[sourceId]!
+      const sourceSchema = schemas[source.uses]
       if (opts.schemasLoaded && sourceSchema) {
-        const missing = missingPathSegment(sourceSchema.outputs, path)
+        // A switch has one output per case on top of its schema's.
+        const outputs =
+          source.uses === SWITCH_USES
+            ? switchOutputSchema(source, sourceSchema.outputs)
+            : sourceSchema.outputs
+        const missing = missingPathSegment(outputs, path)
         if (missing) {
           push({
             severity: "warning",
@@ -212,7 +218,7 @@ export function diagnoseWorkflow(
         nodeId: null,
         message: "No trigger (HTTP Request or Schedule): nothing starts this workflow.",
       })
-    } else if (uses.includes(HTTP_REQUEST) && !uses.includes(RESPONSE)) {
+    } else if (uses.includes(HTTP_REQUEST) && !uses.some(isHttpResponse)) {
       push({
         severity: "warning",
         nodeId: null,

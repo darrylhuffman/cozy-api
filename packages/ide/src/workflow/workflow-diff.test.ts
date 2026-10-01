@@ -14,7 +14,7 @@ const before: WorkflowFile = {
       values: { role: "member" },
     },
     LegacyAudit: { uses: "./nodes/legacy-audit", in: { user: "SaveUser.user" } },
-    Response: { uses: "@core/response", in: { body: "SaveUser.user" } },
+    Response: { uses: "@core/http-response", in: { body: "SaveUser.user" } },
   },
   view: { Request: { x: 0, y: 0 }, SaveUser: { x: 300, y: 0 }, Response: { x: 600, y: 0 } },
 }
@@ -28,7 +28,7 @@ const after: WorkflowFile = {
       values: { role: "admin" },
     },
     SendWelcome: { uses: "./nodes/mail/send-welcome", in: { user: "SaveUser.user" } },
-    Response: { uses: "@core/response", in: { body: "SaveUser.user" } },
+    Response: { uses: "@core/http-response", in: { body: "SaveUser.user" } },
   },
   view: { Request: { x: 0, y: 0 }, SaveUser: { x: 320, y: 0 }, Response: { x: 600, y: 0 } },
 }
@@ -106,16 +106,16 @@ describe("when conditions", () => {
     lorien: 1,
     nodes: {
       Find: { uses: "./nodes/find" },
-      NotFound: { uses: "@core/response", when: "!Find.found" },
-      Ok: { uses: "@core/response" },
+      NotFound: { uses: "@core/http-response", when: "!Find.found" },
+      Ok: { uses: "@core/http-response" },
     },
   }
   const next: WorkflowFile = {
     lorien: 1,
     nodes: {
       Find: { uses: "./nodes/find" },
-      NotFound: { uses: "@core/response" },
-      Ok: { uses: "@core/response", when: "Find.found" },
+      NotFound: { uses: "@core/http-response" },
+      Ok: { uses: "@core/http-response", when: "Find.found" },
     },
   }
 

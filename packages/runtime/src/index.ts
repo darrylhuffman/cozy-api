@@ -1,9 +1,22 @@
 // Helpers
 
+export {
+  IF_OPERATORS,
+  type IfOperator,
+  looseEquals,
+  pickField,
+  switchBranches,
+  testCondition,
+} from "./core/logic/compare.js"
 // Built-ins
 export {
   CORE_NODE_IDS,
+  type CoreCategory,
+  canonicalCoreId,
+  coreCategory,
+  HTTP_RESPONSE,
   isCoreReference,
+  isHttpResponse,
   resolveCoreNode,
 } from "./core/registry.js"
 export { defineConfig } from "./define-config.js"

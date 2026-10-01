@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { defineNode } from "../define-node.js"
+import { defineNode } from "../../define-node.js"
 
 const bag = z.looseObject({})
 

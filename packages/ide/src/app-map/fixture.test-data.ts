@@ -17,7 +17,7 @@ const wf = (method: string, nodes: Record<string, string>): WorkflowFile => ({
   nodes: {
     trigger: { uses: "@core/http-request", values: { method } },
     ...Object.fromEntries(Object.entries(nodes).map(([id, uses]) => [id, { uses }])),
-    respond: { uses: "@core/response" },
+    respond: { uses: "@core/http-response" },
   },
 })
 

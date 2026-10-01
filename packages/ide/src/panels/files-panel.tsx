@@ -1,6 +1,8 @@
 import {
+  Box,
   ChevronDown,
   ChevronRight,
+  CornerDownLeft,
   FileCode,
   Folder,
   FolderOpen,
@@ -9,13 +11,16 @@ import {
   Plug,
   Plus,
   ShieldCheck,
+  Split,
+  Variable,
   WifiOff,
   Workflow,
+  Zap,
 } from "lucide-react"
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { type FileFolder, type FileNode, mockNodes, mockWorkflows } from "@/data/mock-files"
-import { fetchWorkspaceTree } from "@/lib/api"
+import { fetchWorkspaceTree, type NodeSchemas } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
 import { openAppMap } from "@/lib/open-app-map"
 import { openCodeFile } from "@/lib/open-code-file"
@@ -26,6 +31,7 @@ import { useDockviewApi } from "@/store/dockview-api"
 import { fileChange, GIT_LABEL, useGitStore } from "@/store/git"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
 import { useProvidersStore, useWorkspaceProviders } from "@/store/providers"
+import { useSchemas } from "@/store/schemas"
 import { useTabsStore } from "@/store/tabs"
 import { NewFolderDialog } from "@/workflow/new-folder-dialog"
 import { NewMiddlewareDialog } from "@/workflow/new-middleware-dialog"
@@ -236,6 +242,7 @@ export function FilesPanel() {
                 title="NODES"
                 treeKind="nodes"
                 tree={nodes}
+                prepend={<CoreNodesFolder autoExpand={loadState === "ready"} />}
                 onContextMenu={openMenu}
                 autoExpand={loadState === "ready"}
                 {...(ready && {
@@ -368,6 +375,7 @@ function Section({
   onNewItem,
   onNewFolder,
   emptyHint,
+  prepend,
 }: {
   title: string
   treeKind: TreeKind
@@ -378,6 +386,8 @@ function Section({
   onNewFolder?: () => void
   /** Shown instead of the tree when the folder is empty or missing. */
   emptyHint?: string
+  /** Rendered above the folder's own entries (the Nodes section's built-ins). */
+  prepend?: React.ReactNode
 }) {
   const rootPath = tree.type === "folder" ? tree.name : treeKind
   // Render children of the root folder directly (the section header IS the root label).
@@ -400,6 +410,7 @@ function Section({
           </SectionAction>
         )}
       </div>
+      {prepend}
       {children.length === 0 && emptyHint && (
         <div className="px-2 pb-1 text-[11.5px] text-muted-foreground">{emptyHint}</div>
       )}
@@ -634,6 +645,113 @@ function Leaf({
       {node.kind === "node" && node.path && <NodeTestCount nodeFile={node.path} />}
       {node.path && <GitBadge path={node.path} />}
     </button>
+  )
+}
+
+/** Folder order for core nodes; unknown categories follow, alphabetically. */
+const CORE_FOLDERS = ["triggers", "logic", "data", "responses"]
+
+const CORE_ICON: Record<string, typeof FileCode> = {
+  triggers: Zap,
+  logic: Split,
+  data: Variable,
+  responses: CornerDownLeft,
+}
+
+/**
+ * The built-in nodes, above the project's own: a "core" folder with one
+ * subfolder per category. They're drawn lighter than project nodes since
+ * they aren't files you own; drag one onto the canvas to add it.
+ */
+function CoreNodesFolder({ autoExpand }: { autoExpand: boolean }) {
+  const schemas = useSchemas()
+  const byCategory = new Map<string, { uses: string; schema: NodeSchemas }[]>()
+  for (const [uses, schema] of Object.entries(schemas)) {
+    if (!uses.startsWith("@core/") || !schema.category || schema.renamedTo) continue
+    const list = byCategory.get(schema.category) ?? []
+    list.push({ uses, schema })
+    byCategory.set(schema.category, list)
+  }
+  if (byCategory.size === 0) return null
+  const rank = (c: string) => {
+    const i = CORE_FOLDERS.indexOf(c)
+    return i === -1 ? CORE_FOLDERS.length : i
+  }
+  const categories = [...byCategory.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+  return (
+    <CoreFolder name="core" depth={0} defaultOpen={autoExpand} testId="core-nodes">
+      {categories.map((category) => (
+        <CoreFolder key={category} name={category} depth={1} defaultOpen={false}>
+          {byCategory.get(category)!.map(({ uses, schema }) => (
+            <CoreLeaf key={uses} uses={uses} schema={schema} category={category} />
+          ))}
+        </CoreFolder>
+      ))}
+    </CoreFolder>
+  )
+}
+
+function CoreFolder({
+  name,
+  depth,
+  defaultOpen,
+  testId,
+  children,
+}: {
+  name: string
+  depth: number
+  defaultOpen: boolean
+  testId?: string
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  const Chevron = open ? ChevronDown : ChevronRight
+  const Icon = open ? FolderOpen : Folder
+  return (
+    <div data-testid={testId}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        onContextMenu={(e) => e.stopPropagation()}
+        className="flex h-[26px] w-full items-center gap-1.5 rounded-md px-1 text-left text-[13px] text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        style={{ paddingLeft: depth * 12 + 4 }}
+      >
+        <Chevron className="h-3 w-3 text-muted-foreground/70" />
+        <Icon className="h-3.5 w-3.5 text-muted-foreground/70" />
+        <span className="truncate">{name}</span>
+      </button>
+      {open && <div>{children}</div>}
+    </div>
+  )
+}
+
+function CoreLeaf({
+  uses,
+  schema,
+  category,
+}: {
+  uses: string
+  schema: NodeSchemas
+  category: string
+}) {
+  const Icon = CORE_ICON[category] ?? Box
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: a drag source only; the canvas's add-node palette is the keyboard path
+    <div
+      draggable
+      data-testid={`core-node-${uses}`}
+      title={`${uses}${schema.description ? `\n\n${schema.description}` : ""}\n\nDrag onto a workflow to add it.`}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("application/lorien-node", uses)
+        e.dataTransfer.effectAllowed = "copy"
+      }}
+      onContextMenu={(e) => e.stopPropagation()}
+      className="flex h-[26px] w-full cursor-grab items-center gap-2 rounded-md px-1 text-[13px] text-muted-foreground hover:bg-accent hover:text-accent-foreground active:cursor-grabbing"
+      style={{ paddingLeft: 2 * 12 + 16 }}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0 text-info/55" />
+      <span className="min-w-0 flex-1 truncate">{schema.name ?? uses.slice("@core/".length)}</span>
+    </div>
   )
 }
 

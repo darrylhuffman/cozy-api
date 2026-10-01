@@ -24,7 +24,7 @@ afterEach(() => {
   cleanup()
 })
 
-const schemas = { "@core/response": { color: null, inputs: {}, outputs: {} } }
+const schemas = { "@core/http-response": { color: null, inputs: {}, outputs: {} } }
 
 describe("CanvasContextMenu", () => {
   it("initial render shows action menu items but NOT the palette search input", () => {
@@ -59,7 +59,7 @@ describe("CanvasContextMenu", () => {
     )
     fireEvent.click(screen.getByText(/Add existing node/))
     expect(screen.getByPlaceholderText(/Search node types/)).toBeInTheDocument()
-    expect(screen.getByText("@core/response")).toBeInTheDocument()
+    expect(screen.getByText("@core/http-response")).toBeInTheDocument()
   })
 
   it("calls onPick and closes when picking from the palette", () => {
@@ -78,8 +78,8 @@ describe("CanvasContextMenu", () => {
     )
     // Navigate to palette first
     fireEvent.click(screen.getByText(/Add existing node/))
-    fireEvent.click(screen.getByText("@core/response"))
-    expect(onPick).toHaveBeenCalledWith("@core/response")
+    fireEvent.click(screen.getByText("@core/http-response"))
+    expect(onPick).toHaveBeenCalledWith("@core/http-response")
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 

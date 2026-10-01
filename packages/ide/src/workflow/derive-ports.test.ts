@@ -123,7 +123,7 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
     const wf = baseWorkflow({
       request: { uses: "@core/http-request" },
       response: {
-        uses: "@core/response",
+        uses: "@core/http-response",
         in: { body: "request.body" },
         values: { status: 201 },
       },
@@ -151,10 +151,10 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
     expect(ports.has("nonexistent")).toBe(false)
   })
 
-  it("terminal node (@core/response) gets no outputs", () => {
+  it("terminal node (@core/http-response) gets no outputs", () => {
     const wf = baseWorkflow({
       save: { uses: "./nodes/save" },
-      response: { uses: "@core/response", in: { body: "save.user" } },
+      response: { uses: "@core/http-response", in: { body: "save.user" } },
     })
     const ports = derivePorts(wf)
     expect(ports.get("response")!.outputs).toEqual([])
@@ -174,7 +174,7 @@ describe("derivePorts (no schemas — legacy reference inference)", () => {
         },
       },
       response: {
-        uses: "@core/response",
+        uses: "@core/http-response",
         in: { body: "save.user" },
         values: { status: 201 },
       },
@@ -514,5 +514,100 @@ describe("derivePorts (with schemas)", () => {
     expect(out[0]!.children[0]!.id).toBe("body.user")
     expect(out[0]!.children[0]!.children[0]!.id).toBe("body.user.name")
     expect(out[0]!.children[0]!.children[0]!.isLeaf).toBe(true)
+  })
+})
+
+describe("derivePorts — logic nodes", () => {
+  const schemas: Record<string, NodeSchemas> = {
+    "./nodes/find-user": {
+      inputs: { type: "object", properties: {} },
+      outputs: {
+        type: "object",
+        properties: {
+          user: {
+            type: "object",
+            properties: {
+              role: { type: "string" },
+              profile: { type: "object", properties: { plan: { type: "string" } } },
+            },
+          },
+        },
+      },
+    },
+    "@core/switch": {
+      inputs: {
+        type: "object",
+        properties: { value: {}, field: { type: "string" }, cases: { type: "array" } },
+      },
+      outputs: { type: "object", properties: { default: { type: "boolean" }, value: {} } },
+    },
+    "@core/if": {
+      inputs: { type: "object", properties: { value: {} } },
+      outputs: {
+        type: "object",
+        properties: { true: { type: "boolean" }, false: { type: "boolean" }, value: {} },
+      },
+    },
+  }
+  const wf = baseWorkflow({
+    Find: { uses: "./nodes/find-user" },
+    Role: {
+      uses: "@core/switch",
+      in: { value: "Find.user" },
+      values: { field: "role", cases: ["admin", 2] },
+    },
+    Check: { uses: "@core/if", in: { value: "Find.user.role" } },
+  })
+
+  it("gives a switch one branch per case, then default and value", () => {
+    const ports = derivePorts(wf, schemas).get("Role")!
+    expect(ports.outputs.map((p) => [p.id, p.label, p.branch ?? false])).toEqual([
+      ["case1", "admin", true],
+      ["case2", "2", true],
+      ["default", "default", true],
+      ["value", "value", false],
+    ])
+    // Cases are edited on the output rows, not as an input.
+    expect(ports.inputs.children.map((p) => p.id)).toEqual(["value", "field"])
+  })
+
+  it("offers the attributes of the wired value for field", () => {
+    const field = derivePorts(wf, schemas)
+      .get("Role")!
+      .inputs.children.find((p) => p.id === "field")
+    expect(field?.schema?.enum).toEqual(["role", "profile", "profile.plan"])
+  })
+
+  it("marks an if's true and false as branches", () => {
+    const ports = derivePorts(wf, schemas).get("Check")!
+    expect(ports.outputs.filter((p) => p.branch).map((p) => p.id)).toEqual(["true", "false"])
+  })
+  it("offers attributes from every option of a union", () => {
+    const union: Record<string, NodeSchemas> = {
+      ...schemas,
+      "./nodes/find-pet": {
+        inputs: { type: "object", properties: {} },
+        outputs: {
+          type: "object",
+          properties: {
+            body: {
+              anyOf: [
+                { type: "object", properties: { id: {}, species: { type: "string" } } },
+                { type: "object", properties: { error: { type: "string" } } },
+              ],
+            },
+          },
+        },
+      },
+    }
+    const ports = derivePorts(
+      baseWorkflow({
+        Find: { uses: "./nodes/find-pet" },
+        Kind: { uses: "@core/switch", in: { value: "Find.body" } },
+      }),
+      union,
+    )
+    const field = ports.get("Kind")!.inputs.children.find((p) => p.id === "field")
+    expect(field?.schema?.enum).toEqual(["id", "species", "error"])
   })
 })

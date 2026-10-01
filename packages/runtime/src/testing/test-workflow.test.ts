@@ -18,7 +18,7 @@ describe("testWorkflow", () => {
       nodes: {
         req: { uses: "@core/http-request", values: { path: "/add", method: "POST" } },
         add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
-        res: { uses: "@core/response", in: { body: "add.sum" }, values: { status: 200 } },
+        res: { uses: "@core/http-response", in: { body: "add.sum" }, values: { status: 200 } },
       },
     })
     const res = await testWorkflow(wf, {
@@ -43,7 +43,7 @@ describe("testWorkflow", () => {
       nodes: {
         req: { uses: "@core/http-request", values: { path: "/", method: "GET" } },
         n: { uses: "./n", in: {} },
-        r: { uses: "@core/response", in: { body: "n.msg" } },
+        r: { uses: "@core/http-response", in: { body: "n.msg" } },
       },
     })
     const res = await testWorkflow(wf, {
@@ -69,7 +69,7 @@ describe("traceWorkflow", () => {
       nodes: {
         req: { uses: "@core/http-request", values: { path: "/", method: "GET" } },
         u: { uses: "./u", in: { s: "req.body" } },
-        r: { uses: "@core/response", in: { body: "u.out" } },
+        r: { uses: "@core/http-response", in: { body: "u.out" } },
       },
     })
     const trace = await traceWorkflow(wf, {

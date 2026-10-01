@@ -45,12 +45,12 @@ const workflow = parseWorkflow({
     Request: { uses: "@core/http-request", values: { path: "/rooms/:id/book", method: "POST" } },
     FindRoom: { uses: "./find-room", in: { id: "Request.params.id" } },
     NotFound: {
-      uses: "@core/response",
+      uses: "@core/http-response",
       when: "!FindRoom.found",
       values: { status: 404, body: { error: "room not found" } },
     },
     Book: { uses: "./book", when: "FindRoom.found", in: { room: "FindRoom.room" } },
-    Booked: { uses: "@core/response", in: { body: "Book" }, values: { status: 201 } },
+    Booked: { uses: "@core/http-response", in: { body: "Book" }, values: { status: 201 } },
   },
 })
 
@@ -97,8 +97,8 @@ describe("when", () => {
     const bad = parseWorkflow({
       lorien: 1,
       nodes: {
-        a: { uses: "@core/response", when: "not a ref" },
-        b: { uses: "@core/response", when: "!Missing.ok" },
+        a: { uses: "@core/http-response", when: "not a ref" },
+        b: { uses: "@core/http-response", when: "!Missing.ok" },
       },
     })
     expect(validateWorkflow(bad).errors.map((e) => `${e.nodeId}.${e.field}`)).toEqual([
@@ -124,7 +124,7 @@ describe("request validation", () => {
       Request: { uses: "@core/http-request", values: { path: "/rooms", method: "GET" } },
       Capacity: { uses: "./capacity", in: { min: "Request.query.minCapacity" } },
       Again: { uses: "./capacity", in: { min: "Capacity.min" }, values: {} },
-      Response: { uses: "@core/response", in: { body: "Again.min" } },
+      Response: { uses: "@core/http-response", in: { body: "Again.min" } },
     },
   })
   const exec = (query: Record<string, string>) => {
