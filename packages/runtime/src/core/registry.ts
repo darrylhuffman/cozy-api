@@ -1,6 +1,7 @@
 import type { AnyNodeOrTrigger } from "../types.js"
 import httpRequest from "./http-request.js"
 import response from "./response.js"
+import { subworkflowInput, subworkflowOutput } from "./subworkflow-io.js"
 import schedule from "./triggers/schedule.js"
 import variable from "./variable.js"
 
@@ -9,6 +10,8 @@ const CORE_REGISTRY: Record<string, AnyNodeOrTrigger> = {
   "@core/response": response,
   "@core/schedule": schedule,
   "@core/variable": variable,
+  "@core/input": subworkflowInput,
+  "@core/output": subworkflowOutput,
 }
 
 export function resolveCoreNode(uses: string): AnyNodeOrTrigger | null {
