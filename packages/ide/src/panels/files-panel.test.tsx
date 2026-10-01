@@ -59,6 +59,10 @@ describe("FilesPanel core nodes", () => {
   it("lists built-in nodes in a core folder, one subfolder per category", async () => {
     render(<FilesPanel />)
     await waitFor(() => expect(screen.getByText("NODES")).toBeInTheDocument())
+    // Below the project's own nodes (the demo tree's "shared" folder).
+    expect(screen.getByText("shared").compareDocumentPosition(screen.getByText("core"))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
     fireEvent.click(screen.getByText("core"))
     const folders = ["triggers", "logic", "responses"]
     for (const f of folders) expect(screen.getByText(f)).toBeInTheDocument()
