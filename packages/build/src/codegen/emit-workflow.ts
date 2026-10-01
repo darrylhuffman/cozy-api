@@ -50,6 +50,12 @@ export interface EmitWorkflowOptions {
    * Hono middleware before the workflow.
    */
   middleware?: string[]
+  /**
+   * OPTIONS routes this file registers so middleware can answer a CORS
+   * preflight (see `preflightRoutes`). `depth` is how many of `middleware`,
+   * from the outermost, every workflow on the path shares.
+   */
+  preflight?: Array<{ path: string; methods: string[]; depth: number }>
 }
 
 /**
@@ -174,6 +180,12 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
     const trigger = routes[i]!
     if (i > 0) lines.push("")
     lines.push(...renderRoute(trigger, perRequest, guarded))
+  }
+  if (guarded) {
+    for (const pre of opts.preflight ?? []) {
+      lines.push("")
+      lines.push(...renderPreflight(pre, perRequest))
+    }
   }
 
   lines.push(`}`)
@@ -388,9 +400,21 @@ function renderRun(
     if (returned) break
   }
 
-  if (!returned) {
+  if (!returned && trigger.kind !== "http") {
+    // A schedule has no caller to answer; finishing without a Response is normal.
     body.push("")
     body.push(`return { status: 200, headers: {}, body: null }`)
+  } else if (!returned) {
+    // Every Response was skipped by its `when`: a missing branch, not a 200.
+    const responses = [...sliceIds]
+      .filter((id) => isHttpResponse(workflow.nodes[id]?.uses ?? ""))
+      .sort()
+    const message =
+      responses.length > 0
+        ? `no Response node ran (skipped: ${responses.join(", ")}); add a Response for this case`
+        : "the workflow has no Response node"
+    body.push("")
+    body.push(`throw new Error(${JSON.stringify(message)})`)
   }
 
   lines.push(
@@ -474,6 +498,25 @@ function renderRoute(trigger: HttpTriggerInfo, perRequest: boolean, guarded: boo
   lines.push(`    )`)
   lines.push(`  })`)
   return lines
+}
+
+/**
+ * OPTIONS on a path no workflow serves under OPTIONS: run the middleware every
+ * workflow on the path shares (so a CORS middleware can answer the preflight),
+ * then answer 405 like an unmatched method would.
+ */
+function renderPreflight(
+  pre: { path: string; methods: string[]; depth: number },
+  perRequest: boolean,
+): string[] {
+  const shared = Array.from({ length: pre.depth }, (_, i) => `mw${i}`).join(", ")
+  const count = `${perRequest ? "1 + " : ""}[${shared}].flat().length`
+  return [
+    `  // OPTIONS ${pre.path}: shared middleware (a CORS preflight), then 405`,
+    `  app.on("OPTIONS", "${pre.path}", ...guards.slice(0, ${count}), (c: Context) =>`,
+    `    c.json({ error: "Method Not Allowed" }, 405, { Allow: "${pre.methods.join(", ")}" }),`,
+    `  )`,
+  ]
 }
 
 /**

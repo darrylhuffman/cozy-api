@@ -13,6 +13,7 @@ import type { Services } from "../types.js"
 import { parseWorkflow } from "../workflow/parse.js"
 import { defineMiddleware, isMiddleware } from "./define-middleware.js"
 import { findMiddlewareFiles, importMiddleware, middlewareChain } from "./load.js"
+import { preflightRoutes } from "./preflight.js"
 
 const route = (relativePath: string, path: string): LoadedWorkflow => ({
   absolutePath: `/fake/${relativePath}`,
@@ -133,6 +134,28 @@ describe("mountWorkflows with middleware", () => {
     expect((await app.request("/open")).status).toBe(200)
   })
 
+  it("runs shared middleware on an OPTIONS preflight, then answers 405", async () => {
+    const cors = defineMiddleware({
+      async run(c, next) {
+        if (c.req.method === "OPTIONS" && c.req.header("origin"))
+          return c.body(null, 204, { "access-control-allow-origin": "*" })
+        await next()
+      },
+    })
+    const app = mount({ workflows: [cors], "workflows/admin": [logMw("admin")] })
+    const preflight = await app.request("/admin/stats", {
+      method: "OPTIONS",
+      headers: { origin: "http://localhost:5173" },
+    })
+    expect(preflight.status).toBe(204)
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*")
+
+    // Middleware let it through: still a 405 naming the served methods.
+    const plain = await app.request("/admin/stats", { method: "OPTIONS" })
+    expect(plain.status).toBe(405)
+    expect(plain.headers.get("allow")).toBe("GET")
+  })
+
   it("passes a fixed services bag when there is no provider container", async () => {
     const app = new Hono()
     const services = { log: ["from-services"] } as unknown as Services
@@ -178,5 +201,45 @@ describe("findMiddlewareFiles / importMiddleware", () => {
         message: "default export must be defineMiddleware(...) or an array of them",
       },
     ])
+  })
+})
+
+describe("preflightRoutes", () => {
+  const wf = (relativePath: string, path: string, method = "GET") => ({
+    relativePath,
+    file: parseWorkflow({
+      lorien: 1,
+      nodes: { req: { uses: "@core/http-request", values: { path, method } } },
+    }),
+  })
+
+  it("runs only the middleware every workflow on a path shares", () => {
+    const routes = preflightRoutes(
+      [
+        wf("workflows/orders/get.workflow", "/orders/:id"),
+        wf("workflows/orders/admin/delete.workflow", "/orders/:orderId", "DELETE"),
+        wf("workflows/open.workflow", "/open"),
+      ],
+      ["workflows", "workflows/orders", "workflows/orders/admin"],
+    )
+    expect(routes).toEqual([
+      { path: "/open", methods: ["GET"], owner: "workflows/open.workflow", dirs: ["workflows"] },
+      {
+        path: "/orders/:orderId",
+        methods: ["DELETE", "GET"],
+        owner: "workflows/orders/admin/delete.workflow",
+        dirs: ["workflows", "workflows/orders"],
+      },
+    ])
+  })
+
+  it("skips paths with an OPTIONS workflow or no middleware", () => {
+    expect(
+      preflightRoutes(
+        [wf("workflows/a.workflow", "/a"), wf("workflows/b.workflow", "/a", "OPTIONS")],
+        ["workflows"],
+      ),
+    ).toEqual([])
+    expect(preflightRoutes([wf("workflows/a.workflow", "/a")], ["workflows/other"])).toEqual([])
   })
 })

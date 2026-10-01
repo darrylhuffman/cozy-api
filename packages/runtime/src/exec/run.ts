@@ -4,8 +4,14 @@ import type { AnyNodeOrTrigger, Node, Services } from "../types.js"
 import { dataDependencies, nodeDependencies, parseWhen } from "../workflow/dependencies.js"
 import { referenceSource } from "../workflow/flatten.js"
 import { parseReference } from "../workflow/reference.js"
+import { HTTP_TRIGGER } from "../workflow/schedules.js"
 import type { NodeInstance, WorkflowFile } from "../workflow/types.js"
-import { NodeRunError, type RequestIssue, RequestValidationError } from "./errors.js"
+import {
+  NodeRunError,
+  NoResponseError,
+  type RequestIssue,
+  RequestValidationError,
+} from "./errors.js"
 import type { LifecycleEmitter } from "./lifecycle.js"
 import type { ExecutionPlan } from "./topology.js"
 
@@ -190,7 +196,12 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<WorkflowRun
   lifecycle?.emit({ type: "complete", totalMs: Date.now() - startedAt })
 
   if (responseResult) return responseResult
-  return { status: 200, body: null, headers: {} }
+  // Only an HTTP caller is owed an answer; a schedule may finish without one.
+  if (workflow.nodes[triggerNodeId]?.uses !== HTTP_TRIGGER)
+    return { status: 200, body: null, headers: {} }
+  throw new NoResponseError(
+    [...execSet].filter((id) => isHttpResponse(workflow.nodes[id]?.uses ?? "")).sort(),
+  )
 }
 
 /**

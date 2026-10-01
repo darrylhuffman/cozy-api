@@ -17,7 +17,7 @@ describe("emitOperationNode", () => {
     expect(source).toContain(OPENAPI_GENERATED_MARKER)
     expect(source).toContain(`import { defineNode } from "@darrylondil/lorien-runtime"`)
     expect(source).toContain(`import { z } from "zod"`)
-    expect(source).toContain(`import { baseUrl, buildHeaders } from "./_client.js"`)
+    expect(source).not.toContain("_client")
     expect(source).toContain(`export default defineNode(`)
   })
 
@@ -74,7 +74,28 @@ describe("emitOperationNode", () => {
       "/ping",
       "get",
     )
-    expect(source).toMatch(/outputs:\s*z\.object\(\{ data:\s*z\.unknown\(\)/)
+    expect(source).toContain(`const Data = z.unknown()`)
+    expect(source).toContain(`outputs: z.object({ data: Data })`)
+  })
+
+  it("reads the client provider and appends the path to its base URL", () => {
+    const { source } = emitOperationNode(
+      spec(),
+      {
+        operationId: "getPet",
+        parameters: [{ name: "petId", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "200": { description: "ok" } },
+      } as never,
+      "/pets/{petId}",
+      "get",
+      "petstore",
+    )
+    expect(source).toContain(`async run(input, { petstore }) {`)
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the generated code's template literal.
+    expect(source).toContain("const url = new URL(`${petstore.baseUrl}/pets/${pathParams.petId}`)")
+    expect(source).toContain(`headers: petstore.headers()`)
+    // Typed, so the generated node passes tsc against its own outputs.
+    expect(source).toContain(`return { data: (await res.json()) as z.infer<typeof Data> }`)
   })
 
   it("uses operation summary as the friendly name when present", () => {

@@ -75,7 +75,7 @@ describe("scaffold", () => {
     const skill = readFileSync(join(target, ".claude/skills/lorien-api/SKILL.md"), "utf-8")
     expect(skill.startsWith("---\nname: lorien-api\n")).toBe(true)
     expect(skill).toMatch(/# lorien project guide/)
-    expect(skill).toMatch(/<!-- lorien-skill-version: 9 -->/)
+    expect(skill).toMatch(/<!-- lorien-skill-version: 10 -->/)
   })
 
   it("writes AGENTS.md without frontmatter (just the canonical body)", async () => {
@@ -84,6 +84,6 @@ describe("scaffold", () => {
     const agents = readFileSync(join(target, "AGENTS.md"), "utf-8")
     expect(agents.startsWith("---")).toBe(false)
     expect(agents).toMatch(/# lorien project guide/)
-    expect(agents).toMatch(/<!-- lorien-skill-version: 9 -->/)
+    expect(agents).toMatch(/<!-- lorien-skill-version: 10 -->/)
   })
 })

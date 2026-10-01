@@ -21,16 +21,16 @@ describe("writeGeneratedFiles", () => {
     source: "// lorien-openapi: generated from operation `getPet`.\nexport default {}\n",
   }
   const clientFile: GeneratedFile = {
-    relativePath: "_client.ts",
-    source:
-      "// lorien-openapi: generated _client helper.\nexport function baseUrl() { return '' }\n",
+    relativePath: "petstore.ts",
+    source: "// lorien-openapi: generated client provider.\nexport default {}\n",
+    keepOnReimport: true,
   }
 
   it("writes files when they don't exist", async () => {
     const result = await writeGeneratedFiles([operationFile, clientFile], dir, {
       quiet: true,
     })
-    expect(result.written).toEqual(["get-pet.ts", "_client.ts"])
+    expect(result.written).toEqual(["get-pet.ts", "petstore.ts"])
     expect(result.preserved).toEqual([])
     expect(readFileSync(join(dir, "get-pet.ts"), "utf-8")).toContain("lorien-openapi: generated")
   })
@@ -59,22 +59,22 @@ describe("writeGeneratedFiles", () => {
 
   it("--force overwrites everything", async () => {
     writeFileSync(join(dir, "get-pet.ts"), "// hand-written\n")
-    writeFileSync(join(dir, "_client.ts"), "// custom client\n")
+    writeFileSync(join(dir, "petstore.ts"), "// custom client\n")
     const result = await writeGeneratedFiles([operationFile, clientFile], dir, {
       force: true,
       quiet: true,
     })
-    expect(result.written).toEqual(["get-pet.ts", "_client.ts"])
+    expect(result.written).toEqual(["get-pet.ts", "petstore.ts"])
     expect(result.preserved).toEqual([])
   })
 
-  it("preserves _client.ts on re-import regardless of marker", async () => {
-    writeFileSync(join(dir, "_client.ts"), "// user customized\n")
+  it("preserves the client provider on re-import, even with the marker", async () => {
+    writeFileSync(join(dir, "petstore.ts"), "// lorien-openapi: generated\n// user customized\n")
     const result = await writeGeneratedFiles([clientFile], dir, {
       quiet: true,
     })
-    expect(result.preserved).toEqual(["_client.ts"])
-    expect(readFileSync(join(dir, "_client.ts"), "utf-8")).toContain("user customized")
+    expect(result.preserved).toEqual(["petstore.ts"])
+    expect(readFileSync(join(dir, "petstore.ts"), "utf-8")).toContain("user customized")
   })
 
   it("creates parent directories as needed", async () => {

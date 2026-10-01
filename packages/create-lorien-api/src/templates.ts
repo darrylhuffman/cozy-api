@@ -24,7 +24,7 @@ const LORIEN_RANGE = lorienRange(
  * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
  * (with frontmatter wrapper). Single source of truth — both renderers must use this.
  */
-export const SKILL_BODY = `<!-- lorien-skill-version: 9 -->
+export const SKILL_BODY = `<!-- lorien-skill-version: 10 -->
 
 # lorien project guide
 
@@ -202,7 +202,7 @@ A node can also compute its own status and pass it on: wire \`"status": "Node.st
 
 What lorien answers for you:
 - **400** when a value that came straight from the request fails a node's input schema: \`{ "error": "Invalid request", "issues": [{ "path": "query.minCapacity", "message": "..." }] }\`.
-- **500** when a node throws, or returns something that doesn't match its \`outputs\` schema: \`{ "error": "Internal Server Error" }\`, with the error logged. \`lorien dev\` adds the message as \`detail\`.
+- **500** when a node throws, returns something that doesn't match its \`outputs\` schema, or no Response runs (every Response was skipped by its \`when\`; give each outcome one): \`{ "error": "Internal Server Error" }\`, with the error logged. \`lorien dev\` adds the message as \`detail\`.
 - **405** with an \`Allow\` header when the path exists under other methods, **404** otherwise, both as JSON: \`{ "error": "Method Not Allowed" }\`, \`{ "error": "Not Found" }\`.
 
 ## Providers (db, logger, cache, API client)
@@ -252,6 +252,8 @@ export default defineMiddleware({
 
 Use middleware for checks that stop a request before any node runs; use \`when\` for outcomes that depend on what nodes found.
 
+A CORS preflight (\`OPTIONS\`) on a path your workflows serve runs the middleware those workflows share, so a CORS middleware can answer it: \`if (c.req.method === "OPTIONS") return c.body(null, 204, { ... })\`. If middleware lets it through, it gets 405.
+
 ## Where things go
 
 | You're adding | Put it in |
@@ -266,7 +268,7 @@ Don't create new top-level folders.
 
 After changing providers, nodes or middleware, run \`npx lorien check\` (\`lorien test\` and \`lorien build\` run it too). It flags a node importing a database driver or reading \`process.env\`, a provider exporting business functions, and bad selectors or lifetimes, and each finding says where the code should live. Fix every finding before you finish.
 
-**Add an OpenAPI-typed HTTP client**: \`npx lorien import-openapi <spec.json>\` (a local OpenAPI 3.x JSON file; \`--out\`, \`--api-slug\`, \`--base-url\`). Generated client nodes appear under \`nodes/<api>/\`; use them like any other node.
+**Add an OpenAPI-typed HTTP client**: \`npx lorien import-openapi <spec.json>\` (a local OpenAPI 3.x JSON file; \`--out\`, \`--api-slug\`, \`--base-url\`). It writes one node per operation under \`nodes/<api>/\`, used like any other node, and a client provider \`providers/<api>.ts\` whose env var sets the base URL (defaulting to the spec's server URL). Add auth headers in that provider's \`headers()\`; re-imports keep your edits.
 
 ## Tests
 

@@ -376,7 +376,7 @@ describe("emitWorkflow — response", () => {
     expect(source).toMatch(/"content-type": "application\/json"/)
   })
 
-  it("emits a default 200 null Response when no @core/http-response is wired", () => {
+  it("throws instead of answering 200 null when no @core/http-response is wired", () => {
     const { source } = emitWorkflow({
       workflow: wf({
         lorien: 1,
@@ -390,7 +390,25 @@ describe("emitWorkflow — response", () => {
       }),
       relativePath: "x",
     })
-    expect(source).toMatch(/return \{ status: 200, headers: \{\}, body: null \}/)
+    expect(source).toContain(`throw new Error("the workflow has no Response node")`)
+    expect(source).not.toContain("body: null }")
+  })
+
+  it("throws, naming the skipped Responses, when every Response has a false `when`", () => {
+    const { source } = emitWorkflow({
+      workflow: wf({
+        lorien: 1,
+        nodes: {
+          req: { uses: "@core/http-request", values: { path: "/x/:id", method: "GET" } },
+          find: { uses: "./nodes/find", in: { id: "req.params.id" } },
+          Ok: { uses: "@core/response", when: "find.found", in: { body: "find" } },
+        },
+      }),
+      relativePath: "x",
+    })
+    expect(source).toContain(
+      `throw new Error("no Response node ran (skipped: Ok); add a Response for this case")`,
+    )
   })
 })
 
@@ -591,6 +609,7 @@ export async function openScope(ctx) { return { values: { tag: "scoped:" + ctx.r
           relativePath: "admin/ping",
           perRequestProviders: perRequest,
           middleware: ["workflows/_middleware.ts", "workflows/admin/_middleware.ts"],
+          preflight: [{ path: "/admin/ping", methods: ["GET"], depth: 1 }],
         })
         const genPath = join(dir, "dist", "workflows", "admin", "ping.gen.ts")
         writeFileSync(genPath, source)
@@ -610,6 +629,13 @@ export async function openScope(ctx) { return { values: { tag: "scoped:" + ctx.r
         const denied = await app.request("/admin/ping?deny=1")
         expect(denied.status).toBe(403)
         expect(await denied.json()).toEqual({ denied: true })
+
+        // OPTIONS runs only the shared (root) middleware, then answers 405.
+        const preflight = await app.request("/admin/ping", { method: "OPTIONS" })
+        expect(preflight.status).toBe(405)
+        expect(preflight.headers.get("allow")).toBe("GET")
+        expect(preflight.headers.get("x-root")).toMatch(perRequest ? /^scoped:/ : /^single$/)
+        expect(preflight.headers.get("x-admin")).toBeNull()
       } finally {
         rmSync(dir, { recursive: true, force: true })
       }
