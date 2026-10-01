@@ -1079,3 +1079,60 @@ describe("WorkflowNode — switch cases", () => {
     expect(onSwitchCasesChange).toHaveBeenLastCalledWith(["cat", "dog"], 0)
   })
 })
+
+describe("WorkflowNode — field picker", () => {
+  const userSchema = {
+    type: "object",
+    properties: {
+      role: { type: "string" },
+      profile: { type: "object", properties: { plan: { type: "string" } } },
+    },
+  }
+  const instance: NodeInstance = {
+    uses: "@core/switch",
+    in: { value: "Find.user" },
+    values: { field: "profile.plan", cases: [] },
+  }
+  const ports: NodePorts = {
+    inputs: inputRoot([leaf("value"), { ...leaf("field"), fieldsOf: userSchema }]),
+    outputs: [{ ...leaf("default"), branch: true }],
+  }
+
+  it("shows the picked path and picks a nested field from the value's type", () => {
+    const onInputValueChange = vi.fn()
+    render(
+      <WorkflowNode
+        data={makeData("Kind", instance, ports, {
+          onInputValueChange,
+          expandedInputs: new Set([""]),
+        })}
+      />,
+    )
+    const chip = screen.getByTestId("field-picker")
+    expect(chip).toHaveTextContent("profileplan")
+    fireEvent.click(chip)
+    const rows = screen.getByTestId("field-picker-rows")
+    // The path to the current pick starts open.
+    expect(within(rows).getByRole("button", { name: /^plan/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    fireEvent.click(within(rows).getByRole("button", { name: /^role/ }))
+    expect(onInputValueChange).toHaveBeenLastCalledWith("field", "role")
+  })
+
+  it("clears the field to compare the whole value", () => {
+    const onInputValueChange = vi.fn()
+    render(
+      <WorkflowNode
+        data={makeData("Kind", instance, ports, {
+          onInputValueChange,
+          expandedInputs: new Set([""]),
+        })}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("field-picker"))
+    fireEvent.click(screen.getByRole("button", { name: /whole value/ }))
+    expect(onInputValueChange).toHaveBeenLastCalledWith("field", undefined)
+  })
+})
