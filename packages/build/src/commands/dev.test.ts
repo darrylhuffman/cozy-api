@@ -157,13 +157,15 @@ describe("devServerArgs", () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it("watches workflows and .env, and loads .env even if it's created later", async () => {
+  it("watches workflows, sub-workflows and .env, and loads .env even if it's created later", async () => {
     const args = await devServerArgs(dir, "src/server.ts", new Set(["--env-file-if-exists"]))
     expect(args).toEqual([
       "watch",
       "--clear-screen=false",
       "--include",
       "workflows/**/*.workflow",
+      "--include",
+      "nodes/**/*.workflow",
       "--include",
       ".env",
       "--env-file-if-exists=.env",

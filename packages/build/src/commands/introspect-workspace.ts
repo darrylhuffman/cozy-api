@@ -3,6 +3,14 @@ import { readdir, readFile, stat } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { dirname, join, resolve as resolvePath } from "node:path"
 import { fileURLToPath } from "node:url"
+import {
+  loadSubworkflows,
+  parseReference,
+  SUBWORKFLOW_INPUT,
+  SUBWORKFLOW_OUTPUT,
+  type SubworkflowMap,
+  subworkflowPorts,
+} from "@darrylondil/lorien-runtime"
 
 export interface JsonSchema {
   type?: string
@@ -22,6 +30,17 @@ export interface NodeSchemas {
   color?: string | null
   /** Leading TSDoc/JSDoc extracted from the node source file. Null when absent. */
   description?: string | null
+  /** Set when the node is a sub-workflow (a `.workflow` file under nodes/). */
+  subworkflow?: SubworkflowInfo
+}
+
+export interface SubworkflowInfo {
+  /** Project-relative file, e.g. "nodes/orders/reserve-seats.workflow". */
+  path: string
+  /** Statuses its Response nodes can answer with, e.g. [404, 409]. */
+  respondsWith: number[]
+  /** Nodes inside, not counting its Input and Output. */
+  nodeCount: number
 }
 
 /** Built-in @core/* node schemas, hardcoded — they don't ship as user files. */
@@ -75,6 +94,22 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
         headers: { type: "object", additionalProperties: { type: "string" } },
       },
     },
+    outputs: { type: "object", properties: {} },
+  },
+  "@core/input": {
+    name: "Input",
+    color: null,
+    description:
+      "Where a sub-workflow starts. Each field under `values.fields` (name: type) is an input on the sub-workflow's card; nodes inside read it as `<id>.<field>`.",
+    inputs: { type: "object", properties: {} },
+    outputs: { type: "object", additionalProperties: true },
+  },
+  "@core/output": {
+    name: "Output",
+    color: null,
+    description:
+      "Where a sub-workflow ends. Each wired input is an output on the sub-workflow's card. If this node is skipped, so is everything reading the sub-workflow.",
+    inputs: { type: "object", additionalProperties: true },
     outputs: { type: "object", properties: {} },
   },
   "@core/variable": {
@@ -133,6 +168,85 @@ export interface IntrospectResult {
  * cache covers every .ts file we find.
  */
 export async function introspectWorkspace(workspaceRoot: string): Promise<IntrospectResult> {
+  const result = await introspectNodeFiles(workspaceRoot)
+  const errors: Array<{ path: string; message: string }> = []
+  const subworkflows = await loadSubworkflows(workspaceRoot, errors)
+  for (const e of errors) result.warnings.push(`${e.path}: ${e.message}`)
+  Object.assign(result.schemas, subworkflowSchemas(subworkflows, result.schemas))
+  return result
+}
+
+/** A sub-workflow Input field's type: a type name ("string") or a JSON Schema. */
+function fieldSchema(type: unknown): JsonSchema {
+  if (type && typeof type === "object" && !Array.isArray(type)) return type as JsonSchema
+  if (type === "json") return { type: "object" }
+  return typeof type === "string" && type !== "" ? { type } : {}
+}
+
+/**
+ * Schemas for sub-workflows, so the IDE draws their ports like any node's:
+ * inputs from the Input node's fields, outputs typed from what the Output
+ * node reads (through nested sub-workflows too).
+ */
+export function subworkflowSchemas(
+  subworkflows: SubworkflowMap,
+  nodeSchemas: Record<string, NodeSchemas>,
+): Record<string, NodeSchemas> {
+  const out: Record<string, NodeSchemas> = {}
+  const visiting = new Set<string>()
+  const schemaFor = (uses: string): NodeSchemas | undefined => {
+    if (out[uses] || nodeSchemas[uses]) return out[uses] ?? nodeSchemas[uses]
+    const sub = subworkflows[uses]
+    if (!sub || visiting.has(uses)) return undefined
+    visiting.add(uses)
+    const { file } = sub
+    const ports = subworkflowPorts(file)
+    const inputs: Record<string, JsonSchema> = {}
+    for (const [name, type] of Object.entries(ports.inputs)) inputs[name] = fieldSchema(type)
+    const outputs: Record<string, JsonSchema> = {}
+    const outMap = ports.outputId ? file.nodes[ports.outputId]?.in : undefined
+    for (const [name, raw] of Object.entries(typeof outMap === "object" ? outMap : {})) {
+      const ref = parseReference(raw)
+      const source = ref ? file.nodes[ref.nodeId] : undefined
+      let schema: JsonSchema | undefined
+      if (ref && source?.uses === SUBWORKFLOW_INPUT) {
+        schema = ref.path[0] !== undefined ? inputs[ref.path[0]] : undefined
+        for (const seg of ref.path.slice(1)) schema = schema?.properties?.[seg]
+      } else if (ref && source) {
+        schema = schemaFor(source.uses)?.outputs
+        for (const seg of ref.path) schema = schema?.properties?.[seg]
+      }
+      outputs[name] = schema ?? {}
+    }
+    const respondsWith = Object.values(file.nodes)
+      .filter((n) => n.uses === "@core/response")
+      .map((n) =>
+        n.in && typeof n.in === "object" && "status" in n.in ? null : (n.values?.status ?? 200),
+      )
+      .filter((s): s is number => typeof s === "number")
+    const base = uses.split("/").pop() ?? uses
+    out[uses] = {
+      name: file.label ?? base.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase()),
+      color: null,
+      description: null,
+      inputs: { type: "object", properties: inputs },
+      outputs: { type: "object", properties: outputs },
+      subworkflow: {
+        path: sub.relativePath,
+        respondsWith: [...new Set(respondsWith)].sort((a, b) => a - b),
+        nodeCount: Object.values(file.nodes).filter(
+          (n) => n.uses !== SUBWORKFLOW_INPUT && n.uses !== SUBWORKFLOW_OUTPUT,
+        ).length,
+      },
+    }
+    visiting.delete(uses)
+    return out[uses]
+  }
+  for (const uses of Object.keys(subworkflows)) schemaFor(uses)
+  return out
+}
+
+async function introspectNodeFiles(workspaceRoot: string): Promise<IntrospectResult> {
   const warnings: string[] = []
 
   const result: Record<string, NodeSchemas> = { ...CORE_SCHEMAS }

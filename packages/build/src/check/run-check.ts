@@ -156,7 +156,22 @@ export async function runCheck(root: string): Promise<CheckResult> {
 
   // A renamed or moved node file leaves workflows pointing at nothing.
   const ws = await loadWorkspace(root)
-  for (const wf of ws.workflows) {
+  // A workflow file that doesn't parse, or a sub-workflow node that can't be
+  // flattened (unknown port, a sub-workflow that uses itself).
+  for (const e of ws.errors) {
+    findings.push({
+      rule: "workflow-load",
+      severity: "error",
+      file: relative(root, e.path).replaceAll("\\", "/"),
+      message: e.message,
+      fix: "Fix the file; the dev server and lorien build skip it until then.",
+    })
+  }
+  const files = [
+    ...ws.workflows.map((wf) => ({ relativePath: wf.relativePath, file: wf.source ?? wf.file })),
+    ...Object.values(ws.subworkflows),
+  ]
+  for (const wf of files) {
     for (const [id, inst] of Object.entries(wf.file.nodes)) {
       if (inst.uses.startsWith("@") || (await nodeFileExists(root, inst.uses))) continue
       findings.push({
@@ -240,7 +255,7 @@ function exportedFunctions(source: string, fileName: string): { name: string; li
 }
 
 async function nodeFileExists(root: string, uses: string): Promise<boolean> {
-  for (const ext of [".ts", ".mts", ".js", ".mjs"]) {
+  for (const ext of [".ts", ".mts", ".js", ".mjs", ".workflow"]) {
     try {
       if ((await stat(join(root, `${uses}${ext}`))).isFile()) return true
     } catch {
