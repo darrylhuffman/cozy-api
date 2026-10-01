@@ -116,11 +116,16 @@ const EMPTY_STATE = "rounded-md bg-muted/40 px-3 py-2.5 text-[13px] text-muted-f
 
 function InspectContent() {
   const selectedId = useSelectionStore((s) => s.selectedNodeId)
+  const selectedIds = useSelectionStore((s) => s.selectedNodeIds)
   const workflow = useLiveWorkflowStore((s) => s.workflow)
   const liveTabId = useLiveWorkflowStore((s) => s.tabId)
   const tabs = useTabsStore((s) => s.tabs)
   const workflowPath = tabs.find((t) => t.id === liveTabId)?.path ?? ""
   const schemas = useSchemas()
+
+  if (selectedIds.length > 1 && workflow) {
+    return <MultiSelection ids={selectedIds} workflow={workflow} schemas={schemas} />
+  }
 
   if (!selectedId) {
     return <div className={EMPTY_STATE}>No node selected.</div>
@@ -228,6 +233,49 @@ function InspectContent() {
       )}
       <Section label="Outputs" gap="tight">
         <SchemaTree {...(schema?.outputs ? { schema: schema.outputs } : {})} />
+      </Section>
+    </div>
+  )
+}
+
+/** Several nodes selected: which ones, each a click away from inspecting it alone. */
+function MultiSelection({
+  ids,
+  workflow,
+  schemas,
+}: {
+  ids: string[]
+  workflow: WorkflowFile
+  schemas: Record<string, NodeSchemas>
+}) {
+  const present = ids.filter((id) => workflow.nodes[id])
+  return (
+    <div className="flex flex-col gap-5 text-[13px]">
+      <Section label={`${present.length} nodes selected`}>
+        <ul className="flex flex-col gap-0.5">
+          {present.map((id) => {
+            const uses = workflow.nodes[id]?.uses ?? ""
+            return (
+              <li key={id}>
+                <button
+                  type="button"
+                  onClick={() => useSelectionStore.getState().setSelected(id)}
+                  title={`Inspect ${id} on its own`}
+                  className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent"
+                >
+                  <span className="truncate font-medium">{id}</span>
+                  <span className="ml-auto truncate font-mono text-[11px] text-muted-foreground">
+                    {schemas[uses]?.name ?? uses}
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+        <p className="text-xs text-muted-foreground">
+          Drag any of them to move the group. Delete removes them all, and Ctrl+Z puts them back.
+          Shift+click a node to add or remove it.
+        </p>
       </Section>
     </div>
   )

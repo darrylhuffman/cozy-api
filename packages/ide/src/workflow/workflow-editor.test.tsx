@@ -15,6 +15,7 @@ let capturedOnReconnectEnd:
   | null = null
 let capturedOnNodeClick: ((event: unknown, node: { id: string }) => void) | null = null
 let capturedOnPaneClick: (() => void) | null = null
+let capturedOnSelectionChange: ((sel: { nodes: { id: string }[] }) => void) | null = null
 let capturedOnNodeContextMenu:
   | ((
       event: { preventDefault: () => void; clientX: number; clientY: number },
@@ -58,7 +59,10 @@ vi.mock("@xyflow/react", () => ({
     onNodeClick,
     onPaneClick,
     onNodeContextMenu,
+    onSelectionChange,
+    children,
   }: {
+    children?: React.ReactNode
     nodes: { id: string; type?: string; data: Record<string, unknown> }[]
     edges?: CapturedEdge[]
     edgeTypes?: Record<string, unknown>
@@ -80,6 +84,7 @@ vi.mock("@xyflow/react", () => ({
     ) => void
     onNodeClick?: (event: unknown, node: { id: string }) => void
     onPaneClick?: () => void
+    onSelectionChange?: (sel: { nodes: { id: string }[] }) => void
     onNodeContextMenu?: (
       event: { preventDefault: () => void; clientX: number; clientY: number },
       node: { id: string },
@@ -92,6 +97,7 @@ vi.mock("@xyflow/react", () => ({
     capturedOnReconnectEnd = onReconnectEnd ?? null
     capturedOnNodeClick = onNodeClick ?? null
     capturedOnPaneClick = onPaneClick ?? null
+    capturedOnSelectionChange = onSelectionChange ?? null
     capturedOnNodeContextMenu = onNodeContextMenu ?? null
     capturedEdges = edges ?? null
     capturedEdgeTypes = edgeTypes ?? null
@@ -110,6 +116,7 @@ vi.mock("@xyflow/react", () => ({
             </div>
           )
         })}
+        {children}
       </div>
     )
   },
@@ -121,13 +128,20 @@ vi.mock("@xyflow/react", () => ({
       y: p.y - flowOffset.y,
     }),
     fitView: () => Promise.resolve(true),
+    deleteElements: async ({ nodes }: { nodes?: { id: string }[] }) => {
+      if (nodes?.length) capturedOnNodesDelete?.(nodes)
+      return { deletedNodes: nodes ?? [], deletedEdges: [] }
+    },
   }),
+  NodeToolbar: ({ children, isVisible }: { children: React.ReactNode; isVisible?: boolean }) =>
+    isVisible ? <div data-testid="rf-node-toolbar">{children}</div> : null,
+  SelectionMode: { Partial: "partial", Full: "full" },
   Background: () => <div data-testid="rf-background" />,
   BackgroundVariant: { Dots: "dots", Lines: "lines", Cross: "cross" },
   Controls: () => <div data-testid="rf-controls" />,
   MiniMap: () => <div data-testid="rf-minimap" />,
   Handle: () => null,
-  Position: { Left: "left", Right: "right" },
+  Position: { Left: "left", Right: "right", Top: "top", Bottom: "bottom" },
   useConnection: () => false,
   applyNodeChanges: (
     changes: { type: string; id: string; position?: { x: number; y: number } }[],
@@ -275,6 +289,7 @@ beforeEach(() => {
   capturedOnReconnectEnd = null
   capturedOnNodeClick = null
   capturedOnPaneClick = null
+  capturedOnSelectionChange = null
   capturedOnNodeContextMenu = null
   _capturedNodeMenuProps = null
   capturedEdges = null
@@ -297,7 +312,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   resetStore()
-  useSelectionStore.setState({ selectedNodeId: null })
+  useSelectionStore.setState({ selectedNodeId: null, selectedNodeIds: [] })
   useLiveWorkflowStore.setState({ workflow: null, tabId: null })
   useDebugSessionStore.setState({ breakpoints: [] })
 })
@@ -1355,6 +1370,96 @@ describe("WorkflowEditor", () => {
         capturedOnPaneClick?.()
       })
       expect(useSelectionStore.getState().selectedNodeId).toBeNull()
+    })
+  })
+
+  describe("multi-select", () => {
+    async function renderCreate() {
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(createWorkflow)
+      render(<WorkflowEditor path="workflows/users/create.workflow" tabId="test-tab" />)
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+    }
+    const selected = () => useSelectionStore.getState()
+
+    it("takes the box selection from React Flow and marks those nodes selected", async () => {
+      await renderCreate()
+      act(() => {
+        capturedOnSelectionChange?.({ nodes: [{ id: "save" }, { id: "response" }] })
+      })
+      expect(selected().selectedNodeIds).toEqual(["save", "response"])
+      expect(selected().selectedNodeId).toBe("response")
+      const flags = Object.fromEntries(
+        (capturedNodes ?? []).map((n) => [n.id, (n as { selected?: boolean }).selected]),
+      )
+      expect(flags).toEqual({ request: false, save: true, response: true })
+    })
+
+    it("a modifier click makes a selected node primary without dropping the others", async () => {
+      await renderCreate()
+      act(() => {
+        selected().setSelection(["save", "response"], "response")
+      })
+      act(() => {
+        capturedOnNodeClick?.({ shiftKey: true }, { id: "save" })
+      })
+      expect(selected().selectedNodeIds).toEqual(["save", "response"])
+      expect(selected().selectedNodeId).toBe("save")
+    })
+
+    it("a plain click selects only that node", async () => {
+      await renderCreate()
+      act(() => {
+        selected().setSelection(["save", "response"])
+      })
+      act(() => {
+        capturedOnNodeClick?.({}, { id: "request" })
+      })
+      expect(selected().selectedNodeIds).toEqual(["request"])
+    })
+
+    it("Ctrl+A selects every node and Esc clears the selection", async () => {
+      await renderCreate()
+      fireEvent.keyDown(window, { key: "a", ctrlKey: true })
+      expect(selected().selectedNodeIds).toEqual(["request", "save", "response"])
+      fireEvent.keyDown(window, { key: "Escape" })
+      expect(selected().selectedNodeIds).toEqual([])
+      expect(selected().selectedNodeId).toBeNull()
+    })
+
+    it("shows the selection toolbar at two nodes, and its Delete removes them in one undo step", async () => {
+      await renderCreate()
+      act(() => {
+        selected().setSelected("save")
+      })
+      expect(screen.queryByTestId("rf-node-toolbar")).toBeNull()
+      act(() => {
+        selected().setSelection(["save", "response"])
+      })
+      const toolbar = within(screen.getByTestId("rf-node-toolbar"))
+      expect(toolbar.getByText("2 selected")).toBeDefined()
+
+      fireEvent.click(toolbar.getByRole("button", { name: /Delete/ }))
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("1")
+      })
+      expect(selected().selectedNodeIds).toEqual([])
+      expect(screen.queryByTestId("rf-node-toolbar")).toBeNull()
+
+      fireEvent.keyDown(window, { key: "z", ctrlKey: true })
+      await waitFor(() => {
+        expect(screen.getByTestId("react-flow").dataset.nodecount).toBe("3")
+      })
+    })
+
+    it("the toolbar's clear button empties the selection", async () => {
+      await renderCreate()
+      act(() => {
+        selected().setSelection(["request", "save"])
+      })
+      fireEvent.click(screen.getByRole("button", { name: "Clear the selection" }))
+      expect(selected().selectedNodeIds).toEqual([])
     })
   })
 
