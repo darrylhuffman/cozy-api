@@ -3,6 +3,7 @@ import {
   nodeDependencies,
   parseReference,
   parseWhen,
+  referenceSource,
   type WorkflowFile,
   workflowRoutes,
 } from "@darrylondil/lorien-runtime"
@@ -152,6 +153,11 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
 }
 
 const VARIABLE = "@core/variable"
+/**
+ * A flattened sub-workflow's Input and Output: each passes its input straight
+ * on, so it compiles to a plain object rather than a node call.
+ */
+const PASS_THROUGH = new Set(["@core/input", "@core/output"])
 
 interface TriggerInfo {
   nodeId: string
@@ -280,7 +286,18 @@ function renderRun(
     waveNum++
 
     const responseIds = interesting.filter((id) => workflow.nodes[id]?.uses === "@core/response")
-    const computeIds = interesting.filter((id) => workflow.nodes[id]?.uses !== "@core/response")
+    const passIds = interesting.filter((id) => PASS_THROUGH.has(workflow.nodes[id]?.uses ?? ""))
+    const computeIds = interesting.filter(
+      (id) =>
+        workflow.nodes[id]?.uses !== "@core/response" &&
+        !PASS_THROUGH.has(workflow.nodes[id]?.uses ?? ""),
+    )
+
+    if (passIds.length > 0) {
+      body.push("")
+      body.push(`// Wave ${waveNum}: ${passIds.join(", ")} (sub-workflow ports)`)
+      for (const id of passIds) body.push(...renderPassThrough(ctx, id))
+    }
 
     if (computeIds.length === 1) {
       body.push("")
@@ -503,6 +520,20 @@ function renderSingleNodeCall(ctx: RunContext, nodeId: string): string[] {
   ]
 }
 
+/** A sub-workflow port: its outputs are its input, or nothing when it is skipped. */
+function renderPassThrough(ctx: RunContext, nodeId: string): string[] {
+  const inst = ctx.workflow.nodes[nodeId]!
+  const inputExpr = renderInputExpr(inst.in, inst.values)
+  if (!ctx.conditional.has(nodeId)) {
+    return [`const ${outputsVar(nodeId)} = ${inputExpr} as Record<string, unknown>`]
+  }
+  const ran = ranVar(nodeId)
+  return [
+    `const ${ran} = ${renderRanExpr(ctx, nodeId)}`,
+    `const ${outputsVar(nodeId)} = (${ran} ? ${inputExpr} : {}) as Record<string, unknown>`,
+  ]
+}
+
 function renderParallelWave(ctx: RunContext, nodeIds: string[]): string[] {
   const lines: string[] = []
   // Emit inputs.parse() for each node before the allSettled block.
@@ -635,12 +666,12 @@ function requestSources(
   const inst = workflow.nodes[nodeId]
   if (!inst || inst.in === undefined) return null
   if (typeof inst.in === "string") {
-    const ref = parseReference(inst.in)
+    const ref = referenceSource(workflow, inst.in)
     return ref?.nodeId === triggerId ? ref.path.join(".") : null
   }
   const out: Record<string, string> = {}
   for (const [field, raw] of Object.entries(inst.in)) {
-    const ref = parseReference(raw)
+    const ref = referenceSource(workflow, raw)
     if (ref?.nodeId === triggerId) out[field] = ref.path.join(".")
   }
   return Object.keys(out).length > 0 ? out : null

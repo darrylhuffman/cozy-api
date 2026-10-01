@@ -166,8 +166,8 @@ export async function runDevWithIde(opts: {
 
 /**
  * `tsx watch` restarts the server when a node, provider, middleware or
- * workflow file changes (workflows are read from disk, so they're included by
- * glob), and when `.env` changes. `.env` is loaded into the server's
+ * workflow file changes (workflows and sub-workflows are read from disk, so
+ * they're included by glob), and when `.env` changes. `.env` is loaded into the server's
  * environment; where Node supports it, a `.env` created after startup is
  * picked up on the next restart too.
  */
@@ -177,6 +177,8 @@ export async function devServerArgs(
   nodeFlags: ReadonlySet<string> = process.allowedNodeEnvironmentFlags,
 ): Promise<string[]> {
   const args = ["watch", "--clear-screen=false", "--include", "workflows/**/*.workflow"]
+  // Sub-workflows: flattened into the routes that use them.
+  args.push("--include", "nodes/**/*.workflow")
   args.push("--include", ".env")
   if (nodeFlags.has("--env-file-if-exists")) args.push("--env-file-if-exists=.env")
   else if (await fileExists(join(root, ".env"))) args.push("--env-file=.env")

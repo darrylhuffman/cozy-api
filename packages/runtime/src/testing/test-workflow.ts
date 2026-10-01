@@ -2,6 +2,8 @@ import { resolveCoreNode } from "../core/registry.js"
 import { runWorkflow, type WorkflowRunResult } from "../exec/run.js"
 import { computeExecutionPlan } from "../exec/topology.js"
 import type { AnyNodeOrTrigger, MockProviders, Services } from "../types.js"
+import type { SubworkflowMap } from "../workflow/flatten.js"
+import { flattenWorkflow } from "../workflow/flatten.js"
 import type { WorkflowFile } from "../workflow/types.js"
 import { validateWorkflow } from "../workflow/validate.js"
 
@@ -17,14 +19,20 @@ export interface TestWorkflowOptions {
   request: RequestInput
   nodes?: Record<string, AnyNodeOrTrigger>
   services?: MockProviders
+  /**
+   * The project's sub-workflows (`loadSubworkflows(root)`), when the workflow
+   * uses any. A file from `loadWorkflowFile` is already flattened and needs none.
+   */
+  subworkflows?: SubworkflowMap
   /** Specify which trigger node to fire when the workflow has multiple. Defaults to the first @core/http-request found. */
   trigger?: string
 }
 
 export async function testWorkflow(
-  wf: WorkflowFile,
+  source: WorkflowFile,
   opts: TestWorkflowOptions,
 ): Promise<WorkflowRunResult> {
+  const wf = opts.subworkflows ? flattenWorkflow(source, opts.subworkflows) : source
   const { errors, depsByNode } = validateWorkflow(wf)
   if (errors.length > 0) {
     throw new Error(

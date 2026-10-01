@@ -59,6 +59,41 @@ export default defineNode({ run: async (i, { db }) => db.query("select 1") })
     ])
   })
 
+  it("checks sub-workflows: their own uses, and nodes that wire them wrongly", async () => {
+    const root = project({
+      "nodes/books/find-book.ts": "export default defineNode({})\n",
+      "nodes/books/require-book.workflow": JSON.stringify({
+        lorien: 1,
+        nodes: {
+          Input: { uses: "@core/input", values: { fields: { id: "string" } } },
+          Find: { uses: "./nodes/books/find-book", in: { id: "Input.id" } },
+          Gone: { uses: "./nodes/books/gone", after: ["Find"] },
+          Output: { uses: "@core/output", in: { book: "Find.book" } },
+        },
+      }),
+      "workflows/books/get.workflow": JSON.stringify({
+        lorien: 1,
+        nodes: {
+          Request: { uses: "@core/http-request", values: { path: "/books/:id" } },
+          Require: { uses: "./nodes/books/require-book", in: { bookId: "Request.params.id" } },
+        },
+      }),
+    })
+    const { findings } = await runCheck(root)
+    expect(findings.map((f) => [f.rule, f.file, f.message])).toEqual([
+      [
+        "workflow-uses",
+        "nodes/books/require-book.workflow",
+        "Gone uses `./nodes/books/gone`, but there is no such node file.",
+      ],
+      [
+        "workflow-load",
+        "workflows/books/get.workflow",
+        "Require.in.bookId: Require (nodes/books/require-book.workflow) has no input `bookId` (inputs: id)",
+      ],
+    ])
+  })
+
   it("points a node's driver import at the provider that wraps it", async () => {
     const root = project({
       "providers/db.ts": DB,

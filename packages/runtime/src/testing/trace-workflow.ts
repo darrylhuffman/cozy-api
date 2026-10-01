@@ -3,6 +3,7 @@ import { LifecycleEmitter } from "../exec/lifecycle.js"
 import { runWorkflow, type WorkflowRunResult } from "../exec/run.js"
 import { computeExecutionPlan } from "../exec/topology.js"
 import type { Services } from "../types.js"
+import { flattenWorkflow } from "../workflow/flatten.js"
 import type { WorkflowFile } from "../workflow/types.js"
 import { validateWorkflow } from "../workflow/validate.js"
 import type { TestWorkflowOptions } from "./test-workflow.js"
@@ -22,9 +23,10 @@ export interface TraceResult {
 }
 
 export async function traceWorkflow(
-  wf: WorkflowFile,
+  source: WorkflowFile,
   opts: TestWorkflowOptions,
 ): Promise<TraceResult> {
+  const wf = opts.subworkflows ? flattenWorkflow(source, opts.subworkflows) : source
   const { errors, depsByNode } = validateWorkflow(wf)
   if (errors.length > 0) {
     throw new Error(
