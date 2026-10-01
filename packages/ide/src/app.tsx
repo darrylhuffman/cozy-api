@@ -1,3 +1,4 @@
+import { AppMapDialogHost } from "@/app-map/app-map-dialog"
 import { ConfirmDialogHost } from "@/components/confirm-dialog-host"
 import { SettingsDialogHost } from "@/components/settings-dialog"
 import { StatusBar } from "@/components/status-bar"
@@ -16,6 +17,7 @@ export function App() {
       <StatusBar />
       <ConfirmDialogHost />
       <SettingsDialogHost />
+      <AppMapDialogHost />
     </div>
   )
 }

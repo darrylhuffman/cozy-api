@@ -5,6 +5,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  Network,
   Plug,
   Plus,
   ShieldCheck,
@@ -16,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { type FileFolder, type FileNode, mockNodes, mockWorkflows } from "@/data/mock-files"
 import { fetchWorkspaceTree } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
+import { openAppMap } from "@/lib/open-app-map"
 import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
 import { deleteItem, type WorkspaceItem } from "@/lib/workspace-items"
@@ -200,6 +202,15 @@ export function FilesPanel() {
           </button>
         </div>
       )}
+      <button
+        type="button"
+        onClick={openAppMap}
+        title="See every route, node, middleware and provider and how they connect"
+        className="mx-2 mt-2 flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-border px-2 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground"
+      >
+        <Network className="h-3.5 w-3.5" />
+        Application map
+      </button>
       <ScrollArea className="flex-1">
         <div className="p-2 h-full">
           {loadState === "loading" ? (

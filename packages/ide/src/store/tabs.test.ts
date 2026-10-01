@@ -199,5 +199,28 @@ describe("useTabsStore", () => {
       expect(migrateResult.activeWorkflowId).toBeNull()
       expect(migrateResult.activeCodeId).toBeNull()
     })
+
+    it("drops the old Application map tab (it is a popup now)", () => {
+      const migrate = useTabsStore.persist.getOptions().migrate
+      const result = migrate?.(
+        {
+          tabs: [
+            {
+              id: "workflows/a.workflow",
+              title: "a.workflow",
+              kind: "workflow",
+              path: "workflows/a.workflow",
+            },
+            { id: "app-map", title: "Application map", kind: "map" },
+          ],
+          activeId: "app-map",
+          activeWorkflowId: "workflows/a.workflow",
+          activeCodeId: null,
+        },
+        5,
+      ) as { tabs: { id: string }[]; activeId: string | null }
+      expect(result.tabs.map((t) => t.id)).toEqual(["workflows/a.workflow"])
+      expect(result.activeId).toBe("workflows/a.workflow")
+    })
   })
 })
