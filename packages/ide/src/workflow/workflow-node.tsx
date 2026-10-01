@@ -1,6 +1,8 @@
+import { cronProblem, describeCron, nextCronTime } from "@darrylondil/lorien-runtime/schedule"
 import { Handle, Position, useConnection } from "@xyflow/react"
 import {
   AlertTriangle,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   FlaskConical,
@@ -15,6 +17,7 @@ import { ProviderChip } from "@/code/provider-card"
 import type { JsonSchema, NodeInstance } from "@/lib/api"
 import { openCodeFile } from "@/lib/open-code-file"
 import { cn } from "@/lib/utils"
+import { useInspectorTab } from "@/store/inspector-tab"
 import { middlewareFor, useProvidersStore } from "@/store/providers"
 import { useSelectionStore } from "@/store/selection"
 import { idFromUses } from "./add-node"
@@ -23,6 +26,7 @@ import { type Condition, parseCondition, WHEN_HANDLE_ID } from "./conditions"
 import { SWITCH_USES, switchCases } from "./core-nodes"
 import type { NodePorts, PortNode } from "./derive-ports"
 import { type Diagnostic, TRIGGERS } from "./diagnose"
+import { formatRun, SCHEDULE_USES, scheduleValues } from "./schedule"
 import { resolveAccentColor } from "./tailwind-colors"
 import { expandTemplate } from "./template"
 import { type ChipState, ValueChip } from "./value-chip"
@@ -133,7 +137,9 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
   const errorCount = issues?.filter((i) => i.severity === "error").length ?? 0
   const warningCount = (issues?.length ?? 0) - errorCount
 
-  const isSelected = useSelectionStore((s) => s.selectedNodeId === id)
+  const isSelected = useSelectionStore(
+    (s) => s.selectedNodeId === id || s.selectedNodeIds.includes(id),
+  )
   const isCore = instance.uses.startsWith("@core/")
   const isLocal = instance.uses.startsWith("./")
   const kindLabel = isCore ? "core" : isLocal ? "node" : "external"
@@ -154,10 +160,12 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
   // Triggers (and other nodes that take no input) shouldn't show the synthetic
   // root branch — it would be a dead-end leaf with no handle. We detect this
   // by an empty leaf root.
+  // A schedule's cron and time zone are edited in the inspector, not wired.
   const showInputRoot = !(
-    safePorts.inputs.id === "" &&
-    safePorts.inputs.isLeaf &&
-    safePorts.inputs.children.length === 0
+    instance.uses === SCHEDULE_USES ||
+    (safePorts.inputs.id === "" &&
+      safePorts.inputs.isLeaf &&
+      safePorts.inputs.children.length === 0)
   )
 
   const nodeStatus = (
@@ -247,6 +255,8 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
       {instance.uses === "@core/http-request" && workflowPath && (
         <GuardedBy workflowPath={workflowPath} />
       )}
+
+      {instance.uses === SCHEDULE_USES && <ScheduleStrip id={id} instance={instance} />}
 
       <div className="flex flex-col pt-1.5 pb-1">
         {showInputRoot && (
@@ -527,6 +537,40 @@ function GuardedBy({ workflowPath }: { workflowPath: string }) {
         )),
       )}
     </div>
+  )
+}
+
+/**
+ * What a schedule node runs on, in words, and when it runs next. Clicking it
+ * opens the schedule editor in the inspector.
+ */
+function ScheduleStrip({ id, instance }: { id: string; instance: NodeInstance }) {
+  const { cron, timezone } = scheduleValues(instance)
+  const problem = cronProblem(cron, timezone)
+  const next = problem ? null : nextCronTime(cron, new Date(), timezone)
+  return (
+    <button
+      type="button"
+      data-testid="node-schedule"
+      title="Edit the schedule"
+      onClick={() => {
+        useSelectionStore.getState().setSelected(id)
+        useInspectorTab.getState().setTab("inspect")
+      }}
+      className="nodrag flex w-full items-start gap-2 border-b border-border px-3 py-2 text-left hover:bg-accent/50"
+    >
+      <CalendarClock aria-hidden className="mt-px h-3.5 w-3.5 shrink-0 text-primary" />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span
+          className={cn("truncate text-[12px]", problem ? "text-destructive" : "text-foreground")}
+        >
+          {problem ? "Invalid schedule" : describeCron(cron)}
+        </span>
+        <span className="truncate text-[10.5px] text-muted-foreground">
+          {problem ?? (next ? `Next ${formatRun(next, timezone)} · ${timezone}` : timezone)}
+        </span>
+      </span>
+    </button>
   )
 }
 

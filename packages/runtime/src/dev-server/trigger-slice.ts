@@ -1,4 +1,5 @@
 import { isHttpResponse } from "../core/registry.js"
+import { isTriggerUses } from "../workflow/schedules.js"
 import type { WorkflowFile } from "../workflow/types.js"
 
 /**
@@ -32,7 +33,7 @@ export function buildTriggerSlice(
   }
 
   // BFS forward from all trigger nodes to compute each trigger's reachable set.
-  const allTriggerIds = allIds.filter((id) => wf.nodes[id]?.uses === "@core/http-request")
+  const allTriggerIds = allIds.filter((id) => isTriggerUses(wf.nodes[id]?.uses ?? ""))
 
   const reachableFrom = new Map<string, Set<string>>()
   for (const tid of allTriggerIds) {

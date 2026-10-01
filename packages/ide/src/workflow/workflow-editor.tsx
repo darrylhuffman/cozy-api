@@ -14,6 +14,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   type Node as RFNode,
+  SelectionMode,
   useReactFlow,
 } from "@xyflow/react"
 import type { DragEvent, MouseEvent as ReactMouseEvent } from "react"
@@ -82,6 +83,7 @@ import { NodeContextMenu } from "./node-context-menu"
 import { extractReferences } from "./parse-references"
 import { PathEdge, type PathMapping } from "./path-edge"
 import { resetNodeConnections } from "./reset-node-connections"
+import { SelectionToolbar } from "./selection-toolbar"
 import { ShortcutsDialog } from "./shortcuts-dialog"
 import { VariableNode } from "./variable-node"
 import {
@@ -122,6 +124,8 @@ const minimapFill = (node: RFNode) => `color-mix(in srgb, ${minimapTint(node)} 4
 const minimapStroke = (node: RFNode) => minimapTint(node)
 
 const DELETE_KEYS = ["Delete", "Backspace"]
+/** Shift-drag on empty canvas draws a selection box; Shift/Ctrl/Cmd+click adds or removes a node. */
+const MULTI_SELECT_KEYS = ["Shift", "Control", "Meta"]
 
 /** The header mark for a node that differs from the last commit. */
 function markFor(state: NodeDiffState | undefined): "added" | "changed" | undefined {
@@ -189,7 +193,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [externalError, setExternalError] = useState<string | null>(null)
   const [deletedOnDisk, setDeletedOnDisk] = useState(false)
-  const { screenToFlowPosition, fitView } = useReactFlow()
+  const { screenToFlowPosition, fitView, deleteElements } = useReactFlow()
   const [expansion, setExpansion] = useState<Map<string, NodeExpansion>>(() => new Map())
   const colorMode = useActiveTheme().mode
   const canvasBackground = useSettings((s) => s.canvasBackground)
@@ -233,11 +237,24 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
   const lastEventIdxRef = useRef<number>(-1)
 
   const onNodeClick = useCallback(
-    (_e: ReactMouseEvent, n: RFNode) => {
+    (e: ReactMouseEvent, n: RFNode) => {
+      // Shift/Ctrl/Cmd+click adds or removes the node; React Flow toggles it
+      // and onSelectionChange records the set. A clicked node that stays
+      // selected becomes the one the Inspector shows.
+      if (e.shiftKey || e.ctrlKey || e.metaKey) {
+        const { selectedNodeIds, setSelection } = useSelectionStore.getState()
+        if (selectedNodeIds.includes(n.id)) setSelection(selectedNodeIds, n.id)
+        return
+      }
       setSelected(n.id)
     },
     [setSelected],
   )
+
+  /** React Flow's selection (box select, modifier clicks) → the selection store. */
+  const onSelectionChange = useCallback(({ nodes: picked }: { nodes: RFNode[] }) => {
+    useSelectionStore.getState().setSelection(picked.map((n) => n.id))
+  }, [])
 
   const onPaneClick = useCallback(() => {
     setSelected(null)
@@ -342,14 +359,25 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
         next = deleteNode(next, n.id)
       }
       applyWorkflow(next)
-      // Clear selection if the deleted node was selected
-      const selected = useSelectionStore.getState().selectedNodeId
-      if (selected && deleted.some((n) => n.id === selected)) {
-        useSelectionStore.getState().setSelected(null)
+      // Drop the deleted nodes from the selection.
+      const { selectedNodeId, selectedNodeIds, setSelection } = useSelectionStore.getState()
+      const gone = new Set(deleted.map((n) => n.id))
+      if (
+        (selectedNodeId && gone.has(selectedNodeId)) ||
+        selectedNodeIds.some((id) => gone.has(id))
+      ) {
+        setSelection(selectedNodeIds.filter((id) => !gone.has(id)))
       }
     },
     [applyWorkflow],
   )
+
+  /** Deletes every selected node, as Delete does on the canvas. */
+  const deleteSelected = useCallback(() => {
+    const ids = new Set(useSelectionStore.getState().selectedNodeIds)
+    const picked = nodesRef.current.filter((n) => ids.has(n.id))
+    if (picked.length > 0) void deleteElements({ nodes: picked })
+  }, [deleteElements])
 
   const onEdgesDelete = useCallback(
     (deleted: Edge[]) => {
@@ -731,6 +759,8 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       return changed ? next : prev
     })
 
+    // Rebuilding the nodes would drop React Flow's selection; carry it over.
+    const selectedIds = new Set(useSelectionStore.getState().selectedNodeIds)
     const initial: RFNode[] = Object.entries(workflow.nodes).map(([id, instance], i) => {
       const view = workflow.view?.[id]
       const np = portsByNode.get(id) ?? {
@@ -749,6 +779,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
         return {
           id,
           type: "variable",
+          selected: selectedIds.has(id),
           position: view ?? autoPosition(i),
           dragHandle: ".node-drag-handle",
           data: {
@@ -766,6 +797,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       return {
         id,
         type: "workflow",
+        selected: selectedIds.has(id),
         position: view ?? autoPosition(i),
         dragHandle: ".node-drag-handle",
         data: {
@@ -806,6 +838,26 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     onSwitchCasesChange,
     path,
   ])
+
+  // The selection store → React Flow's own `selected` flags, so selecting from
+  // outside the canvas (Ctrl+A, the Inspector, a new node) drags and deletes
+  // as a group too.
+  const selectedNodeIds = useSelectionStore((s) => s.selectedNodeIds)
+  useEffect(() => {
+    const want = new Set(selectedNodeIds)
+    setNodes((curr) => {
+      let changed = false
+      const next = curr.map((n) => {
+        const selected = want.has(n.id)
+        if (Boolean(n.selected) === selected) return n
+        changed = true
+        return { ...n, selected }
+      })
+      if (!changed) return curr
+      nodesRef.current = next
+      return next
+    })
+  }, [selectedNodeIds])
 
   // Nodes added or changed since the last commit get a mark on their header.
   const gitStatus = useGitStore((s) => s.status)
@@ -1164,6 +1216,10 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
         if (e.key === "?") {
           e.preventDefault()
           setShortcutsOpen(true)
+        } else if (e.key === "Escape" && useSelectionStore.getState().selectedNodeIds.length > 0) {
+          // A dialog or menu closes on Escape first; with none open this clears the selection.
+          if (document.querySelector("[role=dialog], [role=menu]")) return
+          useSelectionStore.getState().setSelected(null)
         } else if (e.shiftKey && (e.key === "!" || e.code === "Digit1")) {
           e.preventDefault()
           void fitView({ padding: 0.2, duration: 250 })
@@ -1178,7 +1234,12 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
         return
       }
       if (isTextEntry(target)) return
-      if (key === "z" && !e.shiftKey) {
+      if (key === "a" && !e.shiftKey) {
+        const ids = Object.keys(workflowRef.current?.nodes ?? {})
+        if (ids.length === 0) return
+        e.preventDefault()
+        useSelectionStore.getState().setSelection(ids)
+      } else if (key === "z" && !e.shiftKey) {
         e.preventDefault()
         undo()
       } else if ((key === "z" && e.shiftKey) || key === "y") {
@@ -1528,6 +1589,10 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
             onReconnect={onReconnect}
             onReconnectEnd={onReconnectEnd}
             onNodeClick={onNodeClick}
+            onSelectionChange={onSelectionChange}
+            selectionKeyCode="Shift"
+            multiSelectionKeyCode={MULTI_SELECT_KEYS}
+            selectionMode={SelectionMode.Partial}
             onPaneClick={onPaneClick}
             onPaneContextMenu={onPaneContextMenu}
             onNodeContextMenu={onNodeContextMenu}
@@ -1549,6 +1614,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
                 color="var(--canvas-dot)"
               />
             )}
+            <SelectionToolbar onDelete={deleteSelected} />
             <Controls showFitView={false} />
             {!isEmpty && showMinimap && (
               <MiniMap

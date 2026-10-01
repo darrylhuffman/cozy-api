@@ -38,6 +38,11 @@ export const NodeViewSchema = z.object({
 // (`"config"` for `"values"`) would otherwise change what the node does.
 export const WorkflowFileSchema = z.object({
   lorien: z.literal(1),
+  /**
+   * Display name. Used by sub-workflows (`.workflow` files under `nodes/`),
+   * whose card shows it; route workflows are named by their method and path.
+   */
+  label: z.string().optional(),
   nodes: z.record(z.string(), NodeInstanceSchema),
   view: z.record(z.string(), NodeViewSchema).optional(),
 })

@@ -556,7 +556,7 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
     debug,
   })
 
-  // ── Hot-reload: watch <root>/workflows/**/*.workflow ──────────────────────
+  // ── Hot-reload: watch <root>/workflows/**/*.workflow and nodes/**/*.workflow ──────────────────────
   // On any change, reload the workspace and atomically swap currentApp so
   // subsequent requests hit the fresh workflow. Paused runs are aborted
   // (their pause-promise rejects with AbortError; the handler's catch block
@@ -598,12 +598,16 @@ export async function runIde(opts: IdeOptions): Promise<{ port: number; root: st
 
   const debouncedReload = debounce(reloadWorkspace, 100)
 
-  const workflowWatcher = chokidar.watch(join(workspaceRoot, "workflows"), {
-    ignoreInitial: true,
-    persistent: true,
-    usePolling: process.platform === "win32",
-    interval: 50,
-  })
+  // nodes/ too: a sub-workflow (nodes/**/*.workflow) is flattened into the routes that use it.
+  const workflowWatcher = chokidar.watch(
+    [join(workspaceRoot, "workflows"), join(workspaceRoot, "nodes")],
+    {
+      ignoreInitial: true,
+      persistent: true,
+      usePolling: process.platform === "win32",
+      interval: 50,
+    },
+  )
   workflowWatcher.on("all", (_event, filePath) => {
     if (
       typeof filePath === "string" &&

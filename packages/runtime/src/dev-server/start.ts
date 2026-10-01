@@ -7,6 +7,7 @@ import type { AnyNodeOrTrigger, Services } from "../types.js"
 import { importNodes } from "./import-nodes.js"
 import { loadWorkspace } from "./load.js"
 import { answerUnmatchedWithJson } from "./not-found.js"
+import { startWorkflowSchedules } from "./schedules.js"
 import { mountWorkflows } from "./server.js"
 
 export interface StartServerOptions {
@@ -23,6 +24,11 @@ export interface StartServerOptions {
    * `lorien test` turns this on; leave it off for a deployed server.
    */
   testHooks?: boolean
+  /**
+   * Run `@core/schedule` workflows on their schedules (default true). Pass
+   * false for tests, or when another process owns the schedules.
+   */
+  schedules?: boolean
   /** Default true; if false, errors throw instead of being logged + skipped. */
   lenient?: boolean
 }
@@ -76,5 +82,8 @@ export async function startLorienServer(opts: StartServerOptions = {}): Promise<
     ...(opts.testHooks ? { testHooks: true } : {}),
   })
   answerUnmatchedWithJson(app)
+
+  // 6. Start the schedules. Their timers don't hold the process open; the HTTP server does.
+  if (opts.schedules !== false) startWorkflowSchedules(ws.workflows, { nodes, providers })
   return app
 }

@@ -3,6 +3,10 @@ import type { NodeSchemas, WorkflowFile } from "@/lib/api"
 import { diagnoseWorkflow, diagnosticsByNode, isValidNodeId } from "./diagnose"
 
 const schemas: Record<string, NodeSchemas> = {
+  "@core/schedule": {
+    inputs: { type: "object", properties: { cron: { type: "string", default: "0 9 * * *" } } },
+    outputs: { type: "object", properties: { scheduledAt: { type: "string" } } },
+  },
   "@core/http-request": {
     inputs: {
       type: "object",
@@ -204,12 +208,26 @@ describe("diagnoseWorkflow", () => {
 
   it("warns about a missing trigger or a missing response", () => {
     expect(messages({ lorien: 1, nodes: { r: { uses: "@core/http-response" } } })).toContain(
-      "No HTTP Request trigger: nothing can call this workflow.",
+      "No trigger (HTTP Request or Schedule): nothing starts this workflow.",
     )
     expect(messages({ lorien: 1, nodes: { q: { uses: "@core/http-request" } } })).toContain(
       "No Response node: requests will never get an answer.",
     )
     expect(run({ lorien: 1, nodes: {} })).toEqual([])
+  })
+
+  it("checks a schedule's cron and time zone, and wants no Response", () => {
+    const sched = (values: Record<string, unknown>): WorkflowFile => ({
+      lorien: 1,
+      nodes: { Nightly: { uses: "@core/schedule", values } },
+    })
+    expect(messages(sched({ cron: "0 9 * * 1-5", timezone: "Europe/Paris" }))).toEqual([])
+    expect(messages(sched({ cron: "0 25 * * *" }))).toEqual([
+      "Schedule: Hour: 25 is out of range (0-23).",
+    ])
+    expect(messages(sched({ cron: "0 9 * * *", timezone: "Mars/Base" }))).toEqual([
+      'Unknown time zone "Mars/Base".',
+    ])
   })
 
   it("groups diagnostics by node", () => {

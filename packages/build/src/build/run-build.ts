@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process"
-import { mkdir, rm, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import {
   checkWiring,
@@ -163,6 +164,7 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
 
   // Codegen each workflow
   const successfulPaths: string[] = []
+  const scheduledPaths: string[] = []
   for (const wf of ws.workflows) {
     const { errors: shapeErrors } = validateWorkflow(wf.file)
     // Wiring needs the shape to be valid first; skip it when a node failed to import.
@@ -183,7 +185,7 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
     // Strip ".workflow" extension and the leading "workflows/" prefix (relativePath
     // is workspace-root-relative; codegen output is rooted at <outDir>/workflows/).
     const basePath = wf.relativePath.replace(/^workflows\//, "").replace(/\.workflow$/, "")
-    const { source } = emitWorkflow({
+    const { source, hasSchedules } = emitWorkflow({
       workflow: wf.file,
       relativePath: basePath,
       perRequestProviders: providersGen.perRequest,
@@ -197,6 +199,12 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
     await writeFile(outPath, source, "utf-8")
     console.log(`✓ ${wf.relativePath} → ${outPath}`)
     successfulPaths.push(basePath)
+    if (hasSchedules) scheduledPaths.push(basePath)
+  }
+
+  if (scheduledPaths.length > 0) {
+    await copyScheduleModule(outDir)
+    console.log(`✓ dist/schedule.gen.js (${scheduledPaths.length} scheduled workflow(s))`)
   }
 
   // Emit dist/index.ts
@@ -204,6 +212,7 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
     const { source: indexSource } = emitIndex({
       workflowPaths: successfulPaths,
       disposeOnExit: providerInfos.some((p) => p.lifetime === "singleton" && p.hasDispose),
+      scheduledPaths,
     })
     const indexPath = join(outDir, "index.ts")
     await writeFile(indexPath, indexSource, "utf-8")
@@ -233,6 +242,22 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
     workflowsBuilt: successfulPaths.length,
     errors,
   }
+}
+
+/**
+ * Copies the runtime's compiled cron scheduler (it imports nothing) into the
+ * build, so the server runs schedules without the runtime package.
+ */
+async function copyScheduleModule(outDir: string): Promise<void> {
+  const js = createRequire(import.meta.url).resolve("@darrylondil/lorien-runtime/schedule")
+  const strip = (s: string) => s.replace(/\n\/\/# sourceMappingURL=.*\s*$/, "\n")
+  const header =
+    "// Copied from @darrylondil/lorien-runtime/schedule by lorien build. Do not edit.\n"
+  await writeFile(join(outDir, "schedule.gen.js"), header + strip(await readFile(js, "utf-8")))
+  await writeFile(
+    join(outDir, "schedule.gen.d.ts"),
+    header + (await readFile(js.replace(/\.js$/, ".d.ts"), "utf-8")),
+  )
 }
 
 /** Mirror the codegen's directory-segment slugification: [id] -> _id_ */

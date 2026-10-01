@@ -2,6 +2,7 @@ import { isHttpResponse } from "../core/registry.js"
 import type { NodeMock } from "../requests/types.js"
 import type { AnyNodeOrTrigger, Node, Services } from "../types.js"
 import { dataDependencies, nodeDependencies, parseWhen } from "../workflow/dependencies.js"
+import { referenceSource } from "../workflow/flatten.js"
 import { parseReference } from "../workflow/reference.js"
 import type { NodeInstance, WorkflowFile } from "../workflow/types.js"
 import { NodeRunError, type RequestIssue, RequestValidationError } from "./errors.js"
@@ -219,6 +220,7 @@ function isSkipped(
  * failing becomes "query.minCapacity".
  */
 function requestIssues(
+  workflow: WorkflowFile,
   instance: NodeInstance,
   triggerNodeId: string,
   issues: Array<{ path: PropertyKey[]; message: string }>,
@@ -229,10 +231,10 @@ function requestIssues(
     let ref: ReturnType<typeof parseReference> = null
     let rest = path
     if (typeof instance.in === "string") {
-      ref = parseReference(instance.in)
+      ref = referenceSource(workflow, instance.in)
     } else {
       const raw = path[0] !== undefined ? instance.in?.[path[0]] : undefined
-      ref = raw !== undefined ? parseReference(raw) : null
+      ref = raw !== undefined ? referenceSource(workflow, raw) : null
       rest = path.slice(1)
     }
     if (ref?.nodeId !== triggerNodeId) continue
@@ -365,7 +367,12 @@ async function runOneNode(
   if (nodeDef.inputs) {
     const result = (nodeDef as Node).inputs.safeParse(input)
     if (!result.success) {
-      const fromRequest = requestIssues(instance, opts.triggerNodeId, result.error.issues)
+      const fromRequest = requestIssues(
+        opts.workflow,
+        instance,
+        opts.triggerNodeId,
+        result.error.issues,
+      )
       if (fromRequest.length > 0) throw new RequestValidationError(nodeId, fromRequest)
       const issue = result.error.issues[0]
       const path = issue?.path?.join(".") ?? "<root>"

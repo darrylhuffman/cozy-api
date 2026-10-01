@@ -9,13 +9,17 @@ import { EnvironmentPicker } from "./environment-picker"
 import { HistoryTable } from "./history-table"
 import { RequestBuilder } from "./request-builder"
 import { SavedRequests } from "./saved-requests"
-import { TriggerSelector } from "./trigger-selector"
+import { ScheduleRun } from "./schedule-run"
+import { SCHEDULE_METHOD, TriggerSelector } from "./trigger-selector"
 
 export function RunTab() {
   useDebugTransport()
   const connected = useDebugSessionStore((s) => s.connected)
   const liveTabId = useLiveWorkflowStore((s) => s.tabId)
   const workflowPath = useTabsStore((s) => s.tabs.find((t) => t.id === liveTabId)?.path ?? "")
+  const scheduleNodeId = useDebugSessionStore((s) =>
+    s.requestForm.method === SCHEDULE_METHOD ? s.requestForm.triggerNodeId : null,
+  )
   // A saved request belongs to one workflow; don't carry it into another.
   useEffect(() => {
     useRequestEditor.getState().bindWorkflow(workflowPath)
@@ -44,9 +48,17 @@ export function RunTab() {
           </span>
         </div>
       </div>
-      {workflowPath && <SavedRequests key={workflowPath} workflowPath={workflowPath} />}
-      <div className="h-px shrink-0 bg-border" />
-      {workflowPath && <RequestBuilder workflowPath={workflowPath} />}
+      {scheduleNodeId ? (
+        workflowPath && (
+          <ScheduleRun workflowPath={workflowPath} nodeId={scheduleNodeId} tabId={liveTabId} />
+        )
+      ) : (
+        <>
+          {workflowPath && <SavedRequests key={workflowPath} workflowPath={workflowPath} />}
+          <div className="h-px shrink-0 bg-border" />
+          {workflowPath && <RequestBuilder workflowPath={workflowPath} />}
+        </>
+      )}
       <div className="h-px shrink-0 bg-border" />
       <HistoryTable />
     </div>

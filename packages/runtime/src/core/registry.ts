@@ -6,13 +6,16 @@ import not from "./logic/not.js"
 import or from "./logic/or.js"
 import switchNode from "./logic/switch.js"
 import httpResponse from "./responses/http-response.js"
+import { subworkflowInput, subworkflowOutput } from "./subworkflows/io.js"
 import httpRequest from "./triggers/http-request.js"
+import schedule from "./triggers/schedule.js"
 
 /** The folder a core node is listed under in the IDE's Nodes panel. */
-export type CoreCategory = "triggers" | "logic" | "data" | "responses"
+export type CoreCategory = "triggers" | "logic" | "data" | "responses" | "subworkflows"
 
 const CORE_REGISTRY: Record<string, { node: AnyNodeOrTrigger; category: CoreCategory }> = {
   "@core/http-request": { node: httpRequest, category: "triggers" },
+  "@core/schedule": { node: schedule, category: "triggers" },
   "@core/if": { node: ifElse, category: "logic" },
   "@core/switch": { node: switchNode, category: "logic" },
   "@core/and": { node: and, category: "logic" },
@@ -20,6 +23,8 @@ const CORE_REGISTRY: Record<string, { node: AnyNodeOrTrigger; category: CoreCate
   "@core/not": { node: not, category: "logic" },
   "@core/variable": { node: variable, category: "data" },
   "@core/http-response": { node: httpResponse, category: "responses" },
+  "@core/input": { node: subworkflowInput, category: "subworkflows" },
+  "@core/output": { node: subworkflowOutput, category: "subworkflows" },
 }
 
 /** The canonical HTTP response node. */
