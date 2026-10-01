@@ -89,6 +89,8 @@ export async function fetchFile(path: string): Promise<WorkspaceFile> {
 
 export interface WorkflowFile {
   lorien: 1
+  /** A sub-workflow's display name, e.g. "Reserve seats". */
+  label?: string
   nodes: Record<string, NodeInstance>
   view?: Record<string, { x: number; y: number }>
 }
@@ -209,6 +211,8 @@ export interface SubworkflowInfo {
   path: string
   /** Statuses its Response nodes can answer with, ascending. */
   respondsWith: number[]
+  /** True when a Response inside it can answer the request (missing on older servers). */
+  responds?: boolean
   /** Nodes inside it, not counting its Input and Output. */
   nodeCount: number
 }

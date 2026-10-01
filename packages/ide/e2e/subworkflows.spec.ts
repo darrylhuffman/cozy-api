@@ -96,3 +96,80 @@ test("a sub-workflow node opens in its own tab, with a way back", async ({ ide }
     await ide.request.delete(`/api/workspace/file?path=${SUB}`)
   }
 })
+
+test("moves selected nodes into a new sub-workflow, and inlines them back", async ({ ide }) => {
+  const caller = "workflows/pets/scratch-extract.workflow"
+  const sub = "nodes/pets/load-pet.workflow"
+  await ide.request.put(`/api/workspace/file?path=${caller}&create=true`, {
+    data: json({
+      lorien: 1,
+      nodes: {
+        Request: { uses: "@core/http-request", values: { path: "/scratch/:id", method: "GET" } },
+        FindPet: { uses: "./nodes/pets/find-pet", in: { id: "Request.params.id" } },
+        Response: {
+          uses: "@core/http-response",
+          in: { body: "FindPet.body", status: "FindPet.status" },
+        },
+      },
+      view: {
+        Request: { x: 40, y: 40 },
+        FindPet: { x: 350, y: 40 },
+        Response: { x: 660, y: 40 },
+      },
+    }),
+  })
+  try {
+    await ide.getByRole("button", { name: "scratch-extract.workflow" }).click()
+    const headers = ide.getByTestId("node-header")
+    await expect(headers).toHaveCount(3)
+    // The node's schema name shows once schemas have loaded.
+    await expect(ide.getByTestId("node-card").filter({ hasText: "Find Pet" })).toBeVisible()
+    await headers.nth(1).click()
+    await headers.nth(2).click({ modifiers: ["Shift"] })
+    await ide
+      .getByRole("toolbar", { name: "2 nodes selected" })
+      .getByRole("button", { name: "Move to sub-workflow" })
+      .click()
+
+    const dialog = ide.getByTestId("extract-dialog")
+    // find-pet.ts is taken, so the suggestion steers clear of it.
+    await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue("Find pet flow")
+    await expect(dialog.getByLabel("Folder", { exact: true })).toHaveValue("pets")
+    await expect(dialog).toContainText("string from Request.params.id")
+    await dialog.getByLabel("Name", { exact: true }).fill("Load pet")
+    await expect(dialog).toContainText("nodes/pets/load-pet.workflow")
+    await dialog.getByRole("button", { name: "Move to sub-workflow" }).click()
+    await expect(dialog).toBeHidden()
+
+    const card = ide.getByTestId("node-card").filter({ hasText: "Load pet" })
+    await expect(card).toBeVisible()
+    await expect(headers).toHaveCount(2)
+    const written = await ide.request.get(`/api/workspace/file?path=${sub}`)
+    expect(JSON.parse((await written.json()).content).nodes).toMatchObject({
+      Input: { uses: "@core/input", values: { fields: { id: "string" } } },
+      FindPet: { uses: "./nodes/pets/find-pet", in: { id: "Input.id" } },
+      Response: { uses: "@core/http-response" },
+      Output: { uses: "@core/output" },
+    })
+
+    await ide.keyboard.press("Control+s")
+    await expect
+      .poll(async () => {
+        const res = await ide.request.get(`/api/workspace/file?path=${caller}`)
+        return JSON.parse((await res.json()).content ?? "{}").nodes
+      })
+      .toEqual({
+        Request: { uses: "@core/http-request", values: { path: "/scratch/:id", method: "GET" } },
+        LoadPet: { uses: "./nodes/pets/load-pet", in: { id: "Request.params.id" } },
+      })
+
+    // Inlining puts the same nodes back.
+    await card.getByTestId("node-header").click({ button: "right" })
+    await ide.getByRole("button", { name: /Inline sub-workflow/ }).click()
+    await expect(headers).toHaveCount(3)
+    await expect(ide.getByTestId("node-card").filter({ hasText: "Load pet" })).toHaveCount(0)
+  } finally {
+    await ide.request.delete(`/api/workspace/file?path=${caller}`)
+    await ide.request.delete(`/api/workspace/file?path=${sub}`)
+  }
+})

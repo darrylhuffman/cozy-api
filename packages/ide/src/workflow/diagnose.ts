@@ -220,7 +220,15 @@ export function diagnoseWorkflow(
         nodeId: null,
         message: "No trigger (HTTP Request or Schedule): nothing starts this workflow.",
       })
-    } else if (uses.includes(HTTP_REQUEST) && !uses.some(isHttpResponse)) {
+    } else if (
+      uses.includes(HTTP_REQUEST) &&
+      !uses.some(
+        (u) =>
+          isHttpResponse(u) ||
+          schemas[u]?.subworkflow?.responds ||
+          (schemas[u]?.subworkflow?.respondsWith.length ?? 0) > 0,
+      )
+    ) {
       push({
         severity: "warning",
         nodeId: null,

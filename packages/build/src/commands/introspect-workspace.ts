@@ -46,6 +46,8 @@ export interface SubworkflowInfo {
   path: string
   /** Statuses its Response nodes can answer with, e.g. [404, 409]. */
   respondsWith: number[]
+  /** True when a Response inside it (or in a sub-workflow it uses) can answer the request. */
+  responds: boolean
   /** Nodes inside, not counting its Input and Output. */
   nodeCount: number
 }
@@ -347,6 +349,14 @@ export function subworkflowSchemas(
         n.in && typeof n.in === "object" && "status" in n.in ? null : (n.values?.status ?? 200),
       )
       .filter((s): s is number => typeof s === "number")
+    // Responses in nested sub-workflows answer the request too.
+    const nested = Object.values(file.nodes)
+      .map((n) => (subworkflows[n.uses] ? schemaFor(n.uses)?.subworkflow : undefined))
+      .filter((info): info is SubworkflowInfo => !!info)
+    for (const info of nested) respondsWith.push(...info.respondsWith)
+    const responds =
+      Object.values(file.nodes).some((n) => isHttpResponse(n.uses)) ||
+      nested.some((info) => info.responds)
     const base = uses.split("/").pop() ?? uses
     out[uses] = {
       name: file.label ?? base.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase()),
@@ -357,6 +367,7 @@ export function subworkflowSchemas(
       subworkflow: {
         path: sub.relativePath,
         respondsWith: [...new Set(respondsWith)].sort((a, b) => a - b),
+        responds,
         nodeCount: Object.values(file.nodes).filter(
           (n) => n.uses !== SUBWORKFLOW_INPUT && n.uses !== SUBWORKFLOW_OUTPUT,
         ).length,

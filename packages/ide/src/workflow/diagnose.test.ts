@@ -223,6 +223,25 @@ describe("diagnoseWorkflow", () => {
     ).not.toContain("No trigger (HTTP Request or Schedule): nothing starts this workflow.")
   })
 
+  it("counts a sub-workflow that responds as the workflow's Response", () => {
+    const sub = (responds: boolean): Record<string, NodeSchemas> => ({
+      "./nodes/a/load": {
+        inputs: {},
+        outputs: {},
+        subworkflow: { path: "nodes/a/load.workflow", respondsWith: [], responds, nodeCount: 2 },
+      },
+    })
+    const wf: WorkflowFile = {
+      lorien: 1,
+      nodes: { q: { uses: "@core/http-request" }, Load: { uses: "./nodes/a/load" } },
+    }
+    const missing = "No Response node: requests will never get an answer."
+    const msgs = (responds: boolean) =>
+      diagnoseWorkflow(wf, sub(responds), { schemasLoaded: true }).map((d) => d.message)
+    expect(msgs(true)).not.toContain(missing)
+    expect(msgs(false)).toContain(missing)
+  })
+
   it("checks a schedule's cron and time zone, and wants no Response", () => {
     const sched = (values: Record<string, unknown>): WorkflowFile => ({
       lorien: 1,

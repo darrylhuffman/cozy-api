@@ -80,6 +80,7 @@ describe("subworkflowSchemas", () => {
       subworkflow: {
         path: "nodes/events/require-event.workflow",
         respondsWith: [404],
+        responds: true,
         nodeCount: 3,
       },
     })
@@ -89,5 +90,7 @@ describe("subworkflowSchemas", () => {
     const load = schemas["./nodes/events/load-event"]
     expect(load?.name).toBe("Load event")
     expect(load?.outputs.properties?.event).toEqual(findEvent.outputs.properties.event)
+    // Its nested sub-workflow's Response answers the request too.
+    expect(load?.subworkflow).toMatchObject({ respondsWith: [404], responds: true })
   })
 })

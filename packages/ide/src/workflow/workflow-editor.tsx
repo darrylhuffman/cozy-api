@@ -26,6 +26,7 @@ import { askAi } from "@/ai/ask"
 import { explainNode, fixProblems, freeform, generateCases } from "@/ai/prompts"
 import { EditorNotice } from "@/components/editor-notice"
 import {
+  createWorkspaceFile,
   fetchGitFile,
   fetchWorkflowFile,
   parseWorkflowContent,
@@ -77,6 +78,14 @@ import {
   computeVisibleOutputPaths,
   effectiveHandle,
 } from "./effective-handle"
+import { ExtractDialog } from "./extract-dialog"
+import {
+  analyzeExtraction,
+  type ExtractionPlan,
+  type ExtractOptions,
+  extractSubworkflow,
+  inlineSubworkflow,
+} from "./extract-subworkflow"
 import { duplicateNode, tidyLayout } from "./graph-ops"
 import { computeInitialExpansion } from "./initial-expansion"
 import { NewNodeDialog } from "./new-node-dialog"
@@ -92,8 +101,10 @@ import {
   outputNames,
   SUBWORKFLOW_INPUT,
   SUBWORKFLOW_OUTPUT,
+  subworkflowUses,
 } from "./subworkflow"
 import { SubworkflowBanner } from "./subworkflow-banner"
+import { SubworkflowIcon } from "./subworkflow-icon"
 import { SubworkflowIoNode } from "./subworkflow-io-node"
 import { VariableNode } from "./variable-node"
 import {
@@ -204,6 +215,9 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [externalError, setExternalError] = useState<string | null>(null)
+  // Moving nodes into, or out of, a sub-workflow.
+  const [extractPlan, setExtractPlan] = useState<ExtractionPlan | null>(null)
+  const [groupError, setGroupError] = useState<string | null>(null)
   const [deletedOnDisk, setDeletedOnDisk] = useState(false)
   const { screenToFlowPosition, fitView, deleteElements } = useReactFlow()
   const [expansion, setExpansion] = useState<Map<string, NodeExpansion>>(() => new Map())
@@ -647,6 +661,75 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
   const reloadSchemas = useCallback(() => {
     void useSchemasStore.getState().refresh()
   }, [])
+
+  /** Opens the extract dialog for `ids` (default: the selection). */
+  const startExtract = useCallback(
+    (ids?: string[]) => {
+      const wf = workflowRef.current
+      if (!wf) return
+      const { selectedNodeIds, selectedNodeId } = useSelectionStore.getState()
+      const picked =
+        ids ??
+        (selectedNodeIds.length > 0 ? selectedNodeIds : selectedNodeId ? [selectedNodeId] : [])
+      if (picked.length === 0) return
+      const schemas = useSchemasStore.getState().schemas
+      const exists = (p: string) => Boolean(schemas[subworkflowUses(p)])
+      setExtractPlan(analyzeExtraction(wf, picked, schemas, path, exists))
+    },
+    [path],
+  )
+
+  /** Writes the new sub-workflow, then swaps the nodes for it here (one undo step). */
+  const finishExtract = useCallback(
+    async (opts: ExtractOptions): Promise<string | null> => {
+      const wf = workflowRef.current
+      if (!wf || !extractPlan) return "The workflow isn't loaded"
+      const schemas = useSchemasStore.getState().schemas
+      const result = extractSubworkflow(wf, extractPlan, {
+        ...opts,
+        exists: (p) => Boolean(schemas[subworkflowUses(p)]),
+      })
+      try {
+        await createWorkspaceFile(result.path, `${JSON.stringify(result.sub, null, 2)}\n`)
+      } catch (e) {
+        return (e as Error).message
+      }
+      applyWorkflow(result.caller)
+      setSelected(result.nodeId)
+      setExtractPlan(null)
+      reloadSchemas()
+      return null
+    },
+    [extractPlan, applyWorkflow, setSelected, reloadSchemas],
+  )
+
+  /** Puts the nodes of sub-workflow node `id` back here in its place (one undo step). */
+  const inline = useCallback(
+    async (id: string) => {
+      const wf = workflowRef.current
+      const uses = wf?.nodes[id]?.uses
+      const subPath = uses ? useSchemasStore.getState().schemas[uses]?.subworkflow?.path : null
+      if (!wf || !subPath) return
+      let sub: WorkflowFile
+      try {
+        sub = await fetchWorkflowFile(subPath)
+      } catch (e) {
+        setGroupError((e as Error).message)
+        return
+      }
+      // Edits made while the file loaded win; inline into the latest.
+      const current = workflowRef.current
+      if (!current?.nodes[id]) return
+      const result = inlineSubworkflow(current, id, sub)
+      if (!result.ok) {
+        setGroupError(result.error)
+        return
+      }
+      applyWorkflow(result.workflow)
+      useSelectionStore.getState().setSelection(result.nodeIds)
+    },
+    [applyWorkflow],
+  )
 
   /**
    * Called when the user edits a literal value in an inline input widget on a
@@ -1315,11 +1398,23 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
         if (!selected) return
         e.preventDefault()
         duplicate(selected)
+      } else if (key === "g" && !e.shiftKey) {
+        e.preventDefault()
+        startExtract()
+      } else if (key === "g" && e.shiftKey) {
+        const selected = useSelectionStore.getState().selectedNodeId
+        const uses = selected ? workflowRef.current?.nodes[selected]?.uses : undefined
+        if (!selected || !uses || !useSchemasStore.getState().schemas[uses]?.subworkflow) return
+        e.preventDefault()
+        void inline(selected)
       }
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [visible, save, undo, redo, duplicate, fitView])
+  }, [visible, save, undo, redo, duplicate, fitView, startExtract, inline])
+
+  const selectedUses = selectedNodeId ? workflow?.nodes[selectedNodeId]?.uses : undefined
+  const selectedIsSubworkflow = Boolean(selectedUses && schemas[selectedUses]?.subworkflow)
 
   // The title-bar menus and status bar reach the canvas through these.
   useEffect(() => {
@@ -1334,12 +1429,37 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
         },
         enabled: Boolean(selectedNodeId),
       },
+      "edit.extract": {
+        run: () => startExtract(),
+        enabled: selectedNodeIds.length > 0 || Boolean(selectedNodeId),
+      },
+      "edit.inline": {
+        run: () => {
+          if (selectedNodeId) void inline(selectedNodeId)
+        },
+        enabled: selectedIsSubworkflow,
+      },
       "canvas.addNode": { run: () => setPaletteOpen(true) },
       "canvas.fitView": { run: () => void fitView({ padding: 0.2, duration: 250 }) },
       "canvas.tidy": { run: tidy },
       "help.shortcuts": { run: () => setShortcutsOpen(true) },
     })
-  }, [visible, save, undo, redo, canUndo, canRedo, duplicate, selectedNodeId, fitView, tidy])
+  }, [
+    visible,
+    save,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    duplicate,
+    selectedNodeId,
+    selectedNodeIds,
+    selectedIsSubworkflow,
+    startExtract,
+    inline,
+    fitView,
+    tidy,
+  ])
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -1699,7 +1819,17 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
                 color="var(--canvas-dot)"
               />
             )}
-            <SelectionToolbar onDelete={deleteSelected} />
+            <SelectionToolbar onDelete={deleteSelected}>
+              <button
+                type="button"
+                onClick={() => startExtract()}
+                title="Move the selected nodes into a new sub-workflow (Ctrl+G)"
+                className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-accent"
+              >
+                <SubworkflowIcon className="h-3.5 w-3.5 text-flow" />
+                Move to sub-workflow
+              </button>
+            </SelectionToolbar>
             <Controls showFitView={false} />
             {!isEmpty && showMinimap && (
               <MiniMap
@@ -1768,6 +1898,15 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
               {externalError}
             </EditorNotice>
           )}
+          {groupError && (
+            <EditorNotice
+              tone="error"
+              title="Couldn't inline the sub-workflow"
+              actions={[{ label: "Dismiss", onClick: () => setGroupError(null) }]}
+            >
+              {groupError}
+            </EditorNotice>
+          )}
           {schemasError && (
             <EditorNotice
               tone="warning"
@@ -1832,6 +1971,27 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
             ? { onViewSource: handleViewSource, onGenerateCases: () => aiForNode("cases") }
             : {})}
           onExplain={() => aiForNode("explain")}
+          onExtract={() => {
+            const id = nodeMenu.nodeId
+            if (!id) return
+            const { selectedNodeIds: group } = useSelectionStore.getState()
+            startExtract(group.includes(id) ? group : [id])
+          }}
+          {...(nodeMenu.nodeId && schemas[workflow?.nodes[nodeMenu.nodeId]?.uses ?? ""]?.subworkflow
+            ? {
+                onInline: () => {
+                  if (nodeMenu.nodeId) void inline(nodeMenu.nodeId)
+                },
+              }
+            : {})}
+        />
+        <ExtractDialog
+          plan={extractPlan}
+          onOpenChange={(open) => {
+            if (!open) setExtractPlan(null)
+          }}
+          onExtract={finishExtract}
+          exists={(p) => Boolean(schemas[subworkflowUses(p)])}
         />
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       </div>
