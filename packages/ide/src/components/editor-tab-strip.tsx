@@ -4,6 +4,7 @@ import {
   ChevronRight,
   FileCode,
   GitCompare,
+  Network,
   Workflow,
   X,
 } from "lucide-react"
@@ -20,7 +21,7 @@ export interface StripTab {
   /** Small muted text after the title, e.g. the folder when two tabs share a name. */
   detail?: string | undefined
   /** Picks the tab's icon. */
-  kind?: "workflow" | "node" | "diff" | undefined
+  kind?: "workflow" | "node" | "diff" | "map" | undefined
   dirty?: boolean | undefined
 }
 
@@ -407,6 +408,7 @@ function TabIcon({ kind }: { kind: StripTab["kind"] }) {
   if (kind === "node") return <FileCode aria-hidden className="h-3.5 w-3.5 shrink-0 text-info" />
   if (kind === "diff")
     return <GitCompare aria-hidden className="h-3.5 w-3.5 shrink-0 text-warning" />
+  if (kind === "map") return <Network aria-hidden className="h-3.5 w-3.5 shrink-0 text-primary" />
   return null
 }
 

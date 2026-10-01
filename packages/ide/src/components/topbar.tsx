@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/menubar"
 import { PANE_IDS, PANE_TITLES, type PaneId, reopenPanel } from "@/layout/default-layout"
 import { fetchWorkspaceInfo } from "@/lib/api"
+import { openAppMap } from "@/lib/open-app-map"
 import { isThemeId, THEMES } from "@/lib/themes"
 import { cn } from "@/lib/utils"
 import { EnvironmentPicker } from "@/panels/run-tab/environment-picker"
@@ -141,6 +142,10 @@ export function Topbar() {
           <MenubarMenu>
             <MenubarTrigger className={TRIGGER}>View</MenubarTrigger>
             <MenubarContent>
+              <MenubarItem className="text-xs" onClick={openAppMap}>
+                Application map
+              </MenubarItem>
+              <MenubarSeparator />
               <CommandItem id="canvas.fitView" shortcut="Shift+1">
                 Fit view
               </CommandItem>
