@@ -16,7 +16,7 @@
       }
     },
     "Response": {
-      "uses": "@core/http-response",
+      "uses": "@core/response",
       "in": {
         "body": "ListPets.pets"
       }

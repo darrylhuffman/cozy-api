@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import type { FileFolder } from "@/data/mock-files"
 import { createWorkspaceFile, fetchWorkspaceTree } from "@/lib/api"
 import { FolderPicker } from "./folder-picker"
+import { subworkflowSeed } from "./subworkflow"
 
 interface Props {
   open: boolean
@@ -13,6 +14,8 @@ interface Props {
   defaultFolder?: string
   /** If omitted, the dialog fetches the tree on open. */
   workflowsTree?: FileFolder
+  /** Makes a sub-workflow under `nodes/` instead: its own title, seed and tree. */
+  subworkflow?: boolean
 }
 
 const WORKFLOW_SEED = '{"lorien":1,"nodes":{}}\n'
@@ -23,6 +26,7 @@ export function NewWorkflowDialog({
   onCreated,
   defaultFolder = "workflows",
   workflowsTree,
+  subworkflow = false,
 }: Props) {
   const [folder, setFolder] = useState(defaultFolder)
   const [name, setName] = useState("")
@@ -45,11 +49,11 @@ export function NewWorkflowDialog({
     if (!open || workflowsTree || fetchedRef.current) return
     fetchedRef.current = true
     fetchWorkspaceTree()
-      .then((t) => setTree(t.workflows))
+      .then((t) => setTree(subworkflow ? t.nodes : t.workflows))
       .catch(() => {
         // leave tree=null; picker won't open, but user can still type a name
       })
-  }, [open, workflowsTree])
+  }, [open, workflowsTree, subworkflow])
 
   async function handleCreate() {
     setError(null)
@@ -62,7 +66,7 @@ export function NewWorkflowDialog({
     const bare = trimmed.replace(/\.workflow$/, "")
     const fullPath = `${folder}/${bare}.workflow`
     try {
-      await createWorkspaceFile(fullPath, WORKFLOW_SEED)
+      await createWorkspaceFile(fullPath, subworkflow ? subworkflowSeed() : WORKFLOW_SEED)
       onOpenChange(false)
       onCreated(fullPath)
     } catch (e) {
@@ -76,8 +80,14 @@ export function NewWorkflowDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New workflow</DialogTitle>
+          <DialogTitle>{subworkflow ? "New sub-workflow" : "New workflow"}</DialogTitle>
         </DialogHeader>
+        {subworkflow && (
+          <p className="-mt-1 text-xs text-muted-foreground">
+            A group of nodes other workflows can use like one node. It starts with an Input and an
+            Output, which become its ports.
+          </p>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -118,7 +128,7 @@ export function NewWorkflowDialog({
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="create"
+                  placeholder={subworkflow ? "reserve-seats" : "create"}
                   autoFocus
                   className="flex-1 bg-transparent px-3 py-1 text-sm outline-none placeholder:text-muted-foreground"
                 />

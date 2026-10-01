@@ -1,6 +1,7 @@
 import type { JsonSchema, NodeInstance, NodeSchemas, WorkflowFile } from "@/lib/api"
 import { caseLabel, isBranchPort, SWITCH_USES, switchCases } from "./core-nodes"
 import { type PortNode, schemaToRootedTree, schemaToTree } from "./schema-to-tree"
+import { inputFields, SUBWORKFLOW_INPUT } from "./subworkflow"
 import { unwrapSchema } from "./variables"
 
 export type { PortNode } from "./schema-to-tree"
@@ -50,6 +51,16 @@ export function derivePorts(
   // input IS the resolved value).
   for (const [nodeId, instance] of Object.entries(workflow.nodes)) {
     const np = result.get(nodeId)!
+    // A sub-workflow's Input takes nothing in; its fields are its outputs.
+    if (instance.uses === SUBWORKFLOW_INPUT) {
+      np.outputs = Object.keys(inputFields(instance)).map((name) => ({
+        id: name,
+        label: name,
+        children: [],
+        isLeaf: true,
+      }))
+      continue
+    }
     const schemaInputs = schemas[instance.uses]?.inputs
     const fromSchema = schemaToTree(schemaInputs)
     if (fromSchema.length > 0) {
@@ -83,6 +94,7 @@ export function derivePorts(
   // Outputs: prefer the schema; fall back to inference from references in other nodes
   for (const [nodeId, instance] of Object.entries(workflow.nodes)) {
     const np = result.get(nodeId)!
+    if (instance.uses === SUBWORKFLOW_INPUT) continue
     const schemaOutputs = schemas[instance.uses]?.outputs
     const fromSchema = schemaToTree(schemaOutputs)
     if (fromSchema.length > 0) {

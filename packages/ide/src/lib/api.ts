@@ -200,6 +200,17 @@ export interface NodeSchemas {
   category?: string
   /** Core nodes only: set on an old name that still works, naming its replacement. */
   renamedTo?: string
+  /** Set when the node is a sub-workflow: a `.workflow` file under `nodes/`. */
+  subworkflow?: SubworkflowInfo
+}
+
+export interface SubworkflowInfo {
+  /** e.g. "nodes/orders/reserve-seats.workflow". */
+  path: string
+  /** Statuses its Response nodes can answer with, ascending. */
+  respondsWith: number[]
+  /** Nodes inside it, not counting its Input and Output. */
+  nodeCount: number
 }
 
 export async function fetchWorkspaceSchemas(): Promise<Record<string, NodeSchemas>> {

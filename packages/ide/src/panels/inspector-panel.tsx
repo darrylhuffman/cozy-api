@@ -1,5 +1,5 @@
 import { nodeFileForUses } from "@darrylondil/lorien-runtime/cases"
-import { Code, GitBranch, Sparkles } from "lucide-react"
+import { Code, GitBranch, Sparkles, Workflow } from "lucide-react"
 import { useState } from "react"
 import { askAi } from "@/ai/ask"
 import { explainNode } from "@/ai/prompts"
@@ -13,6 +13,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { JsonSchema, NodeInstance, NodeSchemas, WorkflowFile } from "@/lib/api"
 import { openCodeFile } from "@/lib/open-code-file"
+import { openWorkspaceFile } from "@/lib/open-file"
+import { openSubworkflow } from "@/lib/open-subworkflow"
 import { cn } from "@/lib/utils"
 import { type InspectorTab, useInspectorTab } from "@/store/inspector-tab"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
@@ -28,7 +30,15 @@ import { isValidNodeId, TRIGGERS } from "@/workflow/diagnose"
 import { renameNode } from "@/workflow/graph-ops"
 import { SCHEDULE_USES } from "@/workflow/schedule"
 import { ScheduleEditor } from "@/workflow/schedule-editor"
+import {
+  isSubworkflowPath,
+  SUBWORKFLOW_INPUT,
+  SUBWORKFLOW_OUTPUT,
+  subworkflowUses,
+} from "@/workflow/subworkflow"
+import { SubworkflowIcon } from "@/workflow/subworkflow-icon"
 import { expandTemplate } from "@/workflow/template"
+import { useSubworkflowUsage } from "@/workflow/use-subworkflow-usage"
 import { VARIABLE_USES } from "@/workflow/variables"
 import { RunTab } from "./run-tab"
 import { TestsTab } from "./tests-tab"
@@ -128,6 +138,14 @@ function InspectContent() {
   }
 
   if (!selectedId) {
+    if (isSubworkflowPath(workflowPath)) {
+      return (
+        <div className="flex flex-col gap-5 text-[13px]">
+          <div className={EMPTY_STATE}>No node selected.</div>
+          <UsedIn path={workflowPath} here={workflowPath} />
+        </div>
+      )
+    }
     return <div className={EMPTY_STATE}>No node selected.</div>
   }
 
@@ -142,7 +160,8 @@ function InspectContent() {
 
   const schema = schemas[instance.uses]
   const color = schema?.color ?? null
-  const sourcePath = instance.uses.startsWith("./") ? `${instance.uses.slice(2)}.ts` : null
+  const sub = schema?.subworkflow
+  const sourcePath = instance.uses.startsWith("./") && !sub ? `${instance.uses.slice(2)}.ts` : null
 
   return (
     <div className="flex flex-col gap-5 text-[13px]">
@@ -169,6 +188,16 @@ function InspectContent() {
           )}
         </dl>
         <div className="flex flex-wrap gap-1.5">
+          {sub && (
+            <button
+              type="button"
+              onClick={() => openSubworkflow(sub.path, workflowPath)}
+              className={ACTION_BUTTON}
+            >
+              <SubworkflowIcon className="h-3 w-3 text-flow" />
+              Open sub-workflow
+            </button>
+          )}
           {sourcePath && (
             <button
               type="button"
@@ -199,6 +228,21 @@ function InspectContent() {
           </button>
         </div>
       </Section>
+      {sub && sub.respondsWith.length > 0 && (
+        <Section label="Can respond">
+          <p className="text-[12.5px] text-muted-foreground">
+            A Response inside it can answer the request with{" "}
+            {sub.respondsWith.map((st, i) => (
+              <span key={st}>
+                {i > 0 && (i === sub.respondsWith.length - 1 ? " or " : ", ")}
+                <span className="font-mono text-foreground">{st}</span>
+              </span>
+            ))}
+            .
+          </p>
+        </Section>
+      )}
+      {sub && <UsedIn path={sub.path} here={workflowPath} />}
       {instance.uses === SCHEDULE_USES && (
         <Section label="Schedule">
           <ScheduleEditor
@@ -210,11 +254,19 @@ function InspectContent() {
           />
         </Section>
       )}
-      {workflow && instance.uses !== VARIABLE_USES && !TRIGGERS.has(instance.uses) && (
-        <Section label="Runs">
-          <ConditionField id={selectedId} tabId={liveTabId} workflow={workflow} schemas={schemas} />
-        </Section>
-      )}
+      {workflow &&
+        instance.uses !== VARIABLE_USES &&
+        !TRIGGERS.has(instance.uses) &&
+        !SUBWORKFLOW_PORTS.has(instance.uses) && (
+          <Section label="Runs">
+            <ConditionField
+              id={selectedId}
+              tabId={liveTabId}
+              workflow={workflow}
+              schemas={schemas}
+            />
+          </Section>
+        )}
       {schema?.description && (
         <Section label="Description">
           <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/85">
@@ -280,6 +332,53 @@ function MultiSelection({
     </div>
   )
 }
+
+/** The workflows and sub-workflows that use the sub-workflow at `path`; each opens on click. */
+function UsedIn({ path, here }: { path: string; here: string }) {
+  const usedBy = useSubworkflowUsage(path)
+  const name = useSchemas()[subworkflowUses(path)]?.name
+  return (
+    <Section label={usedBy ? `Used in ${usedBy.length}` : "Used in"}>
+      {usedBy === null ? (
+        <p className="text-[12.5px] text-muted-foreground">Checking…</p>
+      ) : usedBy.length === 0 ? (
+        <p className="text-[12.5px] text-muted-foreground">
+          Not used anywhere yet. Drag {name ?? "it"} from the Explorer onto a workflow.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-0.5">
+          {usedBy.map((p) => (
+            <li key={p}>
+              <button
+                type="button"
+                onClick={() => openWorkspaceFile(p)}
+                title={`Open ${p}`}
+                className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent"
+              >
+                {isSubworkflowPath(p) ? (
+                  <SubworkflowIcon className="h-3.5 w-3.5 shrink-0 text-flow" />
+                ) : (
+                  <Workflow aria-hidden className="h-3.5 w-3.5 shrink-0 text-primary" />
+                )}
+                <span className="truncate font-mono text-[12px]">
+                  {p.split("/").slice(1).join("/")}
+                </span>
+                {p === here && (
+                  <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                    this tab
+                  </span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  )
+}
+
+/** A sub-workflow's Input and Output run when the sub-workflow does; they take no condition. */
+const SUBWORKFLOW_PORTS = new Set([SUBWORKFLOW_INPUT, SUBWORKFLOW_OUTPUT])
 
 const ACTION_BUTTON =
   "flex h-[26px] items-center gap-1.5 rounded-md border border-input px-2.5 text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

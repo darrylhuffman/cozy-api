@@ -50,10 +50,10 @@ import { collectWorkspaceTypes } from "./workspace-types.js"
 
 // ── FileNode types (mirrors packages/ide/src/data/mock-files.ts) ─────────────
 /**
- * "provider" is a file under `providers/` that calls `defineProvider`, "middleware" a `workflows/**\/_middleware.ts`;
- * "code" is any other TypeScript file.
+ * "provider" is a file under `providers/` that calls `defineProvider`, "middleware" a `workflows/**\/_middleware.ts`,
+ * "subworkflow" a `nodes/**\/*.workflow`; "code" is any other TypeScript file.
  */
-export type FileKind = "workflow" | "node" | "provider" | "middleware" | "code"
+export type FileKind = "workflow" | "node" | "subworkflow" | "provider" | "middleware" | "code"
 
 export interface FileLeaf {
   type: "file"
@@ -727,8 +727,10 @@ async function buildFileTree(
       } else {
         // Filter by kind
         const isMiddleware = kind === "workflow" && MIDDLEWARE_FILE.test(entry.name)
+        // Sub-workflows live beside the TypeScript nodes.
+        const isSubworkflow = kind === "node" && entry.name.endsWith(".workflow")
         if (kind === "workflow" && !entry.name.endsWith(".workflow") && !isMiddleware) continue
-        if (kind !== "workflow" && !/\.[mc]?ts$/.test(entry.name)) continue
+        if (kind !== "workflow" && !isSubworkflow && !/\.[mc]?ts$/.test(entry.name)) continue
         result.push({
           type: "file",
           id,
@@ -737,9 +739,11 @@ async function buildFileTree(
           // private code for one of them.
           kind: isMiddleware
             ? "middleware"
-            : kind === "provider" && !providerPaths?.has(relPath.replace(/\\/g, "/"))
-              ? "code"
-              : kind,
+            : isSubworkflow
+              ? "subworkflow"
+              : kind === "provider" && !providerPaths?.has(relPath.replace(/\\/g, "/"))
+                ? "code"
+                : kind,
           path: relPath.replace(/\\/g, "/"),
         })
       }

@@ -223,6 +223,80 @@ describe("FilesPanel — right-click context menu (ready)", () => {
   })
 })
 
+describe("FilesPanel — sub-workflows", () => {
+  beforeEach(() => {
+    useTabsStore.setState({ tabs: [], activeId: null, activeWorkflowId: null, activeCodeId: null })
+    const tree = {
+      workflows: { type: "folder", id: "wf", name: "workflows", children: [] },
+      nodes: {
+        type: "folder",
+        id: "n",
+        name: "nodes",
+        children: [
+          {
+            type: "folder",
+            id: "n-orders",
+            name: "orders",
+            children: [
+              {
+                type: "file",
+                id: "n-nodes-orders-reserve_workflow",
+                name: "reserve.workflow",
+                kind: "subworkflow",
+                path: "nodes/orders/reserve.workflow",
+              },
+            ],
+          },
+        ],
+      },
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockImplementation((url: string) =>
+          typeof url === "string" && url.endsWith("/api/workspace/tree")
+            ? Promise.resolve({ ok: true, json: () => Promise.resolve(tree) })
+            : Promise.reject(new Error("unexpected fetch")),
+        ),
+    )
+  })
+
+  it("opens a sub-workflow on its canvas", async () => {
+    render(<FilesPanel />)
+    await waitFor(() => expect(screen.getByText("reserve.workflow")).toBeInTheDocument())
+    fireEvent.click(screen.getByText("reserve.workflow"))
+    expect(useTabsStore.getState().tabs).toMatchObject([
+      {
+        id: "nodes/orders/reserve.workflow",
+        kind: "workflow",
+        path: "nodes/orders/reserve.workflow",
+      },
+    ])
+  })
+
+  it("drags a sub-workflow onto a canvas like a node", async () => {
+    render(<FilesPanel />)
+    await waitFor(() => expect(screen.getByText("reserve.workflow")).toBeInTheDocument())
+    const setData = vi.fn()
+    fireEvent.dragStart(screen.getByText("reserve.workflow").closest("button")!, {
+      dataTransfer: { setData, effectAllowed: "" },
+    })
+    expect(setData).toHaveBeenCalledWith("application/lorien-node", "./nodes/orders/reserve")
+  })
+
+  it("offers New sub-workflow in the nodes menu, aimed at the folder", async () => {
+    render(<FilesPanel />)
+    await waitFor(() => expect(screen.getByText("orders")).toBeInTheDocument())
+    fireEvent.contextMenu(screen.getByText("orders").closest("button")!)
+    fireEvent.click(screen.getByText("New sub-workflow…"))
+    await waitFor(() => {
+      expect(screen.getByText("New sub-workflow")).toBeInTheDocument()
+      expect(screen.getByText("nodes/orders")).toBeInTheDocument()
+    })
+  })
+})
+
 describe("FilesPanel — providers and lib", () => {
   const folder = (name: string, children: unknown[] = []) => ({
     type: "folder",

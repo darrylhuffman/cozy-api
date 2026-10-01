@@ -8,8 +8,12 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     fetchWorkspaceSchemas: vi.fn().mockResolvedValue({}),
+    fetchItemUsage: vi.fn().mockResolvedValue({ usedBy: [] }),
   }
 })
+
+vi.mock("@/lib/open-subworkflow", () => ({ openSubworkflow: vi.fn() }))
+vi.mock("@/lib/open-file", () => ({ openWorkspaceFile: vi.fn() }))
 
 vi.mock("@/lib/open-code-file", () => ({ openCodeFile: vi.fn() }))
 vi.mock("@/ai/ask", () => ({ askAi: vi.fn(), showAgents: vi.fn() }))
@@ -35,8 +39,10 @@ vi.mock("@/components/ui/tabs", () => ({
 }))
 
 import { askAi } from "@/ai/ask"
-import { fetchWorkspaceSchemas } from "@/lib/api"
+import { fetchItemUsage, fetchWorkspaceSchemas } from "@/lib/api"
 import { openCodeFile } from "@/lib/open-code-file"
+import { openWorkspaceFile } from "@/lib/open-file"
+import { openSubworkflow } from "@/lib/open-subworkflow"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { resetSchemasStore } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
@@ -233,6 +239,43 @@ describe("InspectorPanel — several nodes selected", () => {
     fireEvent.click(screen.getByTitle("Inspect save on its own"))
     expect(useSelectionStore.getState().selectedNodeIds).toEqual(["save"])
     expect(screen.queryByText("2 nodes selected")).toBeNull()
+  })
+})
+
+describe("InspectorPanel — sub-workflows", () => {
+  const sub = {
+    path: "nodes/orders/reserve.workflow",
+    respondsWith: [404, 409],
+    nodeCount: 3,
+  }
+  beforeEach(() => {
+    vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
+      "./nodes/orders/reserve": {
+        name: "Reserve seats",
+        inputs: { type: "object", properties: {} },
+        outputs: { type: "object", properties: {} },
+        subworkflow: sub,
+      },
+    })
+    vi.mocked(fetchItemUsage).mockResolvedValue({
+      usedBy: ["workflows/orders/create.workflow", "nodes/orders/outer.workflow"],
+    })
+    useLiveWorkflowStore.setState({
+      workflow: { lorien: 1, nodes: { Reserve: { uses: "./nodes/orders/reserve" } } },
+      tabId: "tab-1",
+    })
+  })
+
+  it("opens the sub-workflow, says what it can respond and where it's used", async () => {
+    useSelectionStore.getState().setSelected("Reserve")
+    render(<InspectorPanel />)
+    fireEvent.click(await screen.findByRole("button", { name: "Open sub-workflow" }))
+    expect(openSubworkflow).toHaveBeenCalledWith("nodes/orders/reserve.workflow", "")
+    expect(screen.getByText(/answer the request with/).textContent).toContain("404 or 409")
+    expect(screen.queryByText("View source")).toBeNull()
+    expect(await screen.findByText("Used in 2")).toBeDefined()
+    fireEvent.click(screen.getByTitle("Open nodes/orders/outer.workflow"))
+    expect(openWorkspaceFile).toHaveBeenCalledWith("nodes/orders/outer.workflow")
   })
 })
 

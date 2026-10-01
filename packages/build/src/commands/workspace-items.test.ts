@@ -105,6 +105,73 @@ describe("workspace rename / delete", () => {
     expect(existsSync(join(root, "nodes/pets/add-pet.cases.json"))).toBe(false)
   })
 
+  describe("sub-workflows", () => {
+    beforeEach(() => {
+      put("nodes/pets/reserve.workflow", {
+        lorien: 1,
+        nodes: {
+          Input: { uses: "@core/input", values: { fields: {} } },
+          Add: { uses: "./nodes/pets/add-pet" },
+        },
+      })
+      put("nodes/pets/outer.workflow", workflow("./nodes/pets/reserve"))
+      put("workflows/pets/reserve.workflow", workflow("./nodes/pets/reserve"))
+    })
+
+    it("lists the workflows and sub-workflows that use a node or a sub-workflow", async () => {
+      const node = await call("GET", "/api/workspace/usage?path=nodes/pets/add-pet.ts")
+      expect(node.json.usedBy).toEqual([
+        "nodes/pets/reserve.workflow",
+        "workflows/pets/add.workflow",
+      ])
+      const sub = await call("GET", "/api/workspace/usage?path=nodes/pets/reserve.workflow")
+      expect(sub.json.usedBy).toEqual([
+        "nodes/pets/outer.workflow",
+        "workflows/pets/reserve.workflow",
+      ])
+    })
+
+    it("renames a sub-workflow and rewrites everything that uses it", async () => {
+      const r = await call("POST", "/api/workspace/rename", {
+        from: "nodes/pets/reserve.workflow",
+        to: "nodes/pets/hold.workflow",
+      })
+      expect(r.status).toBe(200)
+      expect(r.json.updatedWorkflows).toEqual([
+        "nodes/pets/outer.workflow",
+        "workflows/pets/reserve.workflow",
+      ])
+      const wf = JSON.parse(readFileSync(join(root, "workflows/pets/reserve.workflow"), "utf-8"))
+      expect(wf.nodes.AddPet.uses).toBe("./nodes/pets/hold")
+    })
+
+    it("won't turn a sub-workflow into a TypeScript node", async () => {
+      const r = await call("POST", "/api/workspace/rename", {
+        from: "nodes/pets/reserve.workflow",
+        to: "nodes/pets/reserve.ts",
+      })
+      expect(r.status).toBe(400)
+    })
+
+    it("deletes a sub-workflow", async () => {
+      const r = await call("DELETE", "/api/workspace/file?path=nodes/pets/reserve.workflow")
+      expect(r.json.deleted).toEqual(["nodes/pets/reserve.workflow"])
+    })
+
+    it("shows sub-workflows in the nodes tree", async () => {
+      const app = createIdeApp(root)
+      const tree = (await (await app.request("/api/workspace/tree")).json()) as {
+        nodes: { children: { children: { kind: string; path: string }[] }[] }
+      }
+      const pets = tree.nodes.children[0]?.children ?? []
+      expect(pets.map((c) => `${c.kind}:${c.path}`).sort()).toEqual([
+        "node:nodes/pets/add-pet.ts",
+        "subworkflow:nodes/pets/outer.workflow",
+        "subworkflow:nodes/pets/reserve.workflow",
+      ])
+    })
+  })
+
   it("deletes a workflow with its saved requests", async () => {
     const r = await call("DELETE", "/api/workspace/file?path=workflows/pets/add.workflow")
     expect(r.status).toBe(200)

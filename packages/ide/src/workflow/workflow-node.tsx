@@ -5,17 +5,20 @@ import {
   CalendarClock,
   ChevronDown,
   ChevronRight,
+  CornerDownLeft,
   FlaskConical,
   GitBranch,
   Plus,
   ShieldCheck,
+  SquareArrowOutUpRight,
   X,
   XCircle,
 } from "lucide-react"
 import { useState } from "react"
 import { ProviderChip } from "@/code/provider-card"
-import type { JsonSchema, NodeInstance } from "@/lib/api"
+import type { JsonSchema, NodeInstance, SubworkflowInfo } from "@/lib/api"
 import { openCodeFile } from "@/lib/open-code-file"
+import { openSubworkflow } from "@/lib/open-subworkflow"
 import { cn } from "@/lib/utils"
 import { useInspectorTab } from "@/store/inspector-tab"
 import { middlewareFor, useProvidersStore } from "@/store/providers"
@@ -43,6 +46,8 @@ export interface WorkflowNodeData {
    * like `save-user-2` still render as "Save User".
    */
   schemaName?: string | null
+  /** Set when the node is a sub-workflow. */
+  subworkflow?: SubworkflowInfo | null
   /** Set of EXPANDED parent paths for the inputs tree. Optional — defaults to
    *  the natural "everything collapsed" state.  The editor passes this in to
    *  lift expansion state out of the node and into a single source of truth. */
@@ -120,6 +125,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
     ports,
     color,
     schemaName,
+    subworkflow,
     expandedInputs,
     expandedOutputs,
     onTogglePort,
@@ -142,7 +148,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
   )
   const isCore = instance.uses.startsWith("@core/")
   const isLocal = instance.uses.startsWith("./")
-  const kindLabel = isCore ? "core" : isLocal ? "node" : "external"
+  const kindLabel = subworkflow ? "flow" : isCore ? "core" : isLocal ? "node" : "external"
   // Display name precedence:
   //   1. instance.label  — explicit user-set label on this specific drop.
   //   2. schemaName      — the node's own `defineNode({ name })` (or @core
@@ -189,7 +195,7 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
   // The header carries the node's colour: its accent when it declares one,
   // otherwise the colour of its kind. Mixed in sRGB so low-chroma card colours
   // don't drag the hue around the wheel.
-  const tint = nodeTint(instance.uses, color)
+  const tint = subworkflow && !color ? FLOW_TINT : nodeTint(instance.uses, color)
   const headerBg = `color-mix(in srgb, ${tint} 10%, var(--popover))`
   const cardBg = accent ? `color-mix(in srgb, ${accent} 6%, var(--popover))` : undefined
 
@@ -213,6 +219,8 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         width: NODE_WIDTH,
         position: "relative",
         ...(cardBg ? { background: cardBg } : {}),
+        // Two cards peek out behind a sub-workflow: several nodes in one.
+        ...(subworkflow ? { boxShadow: stackedShadow(isSelected) } : {}),
       }}
     >
       {/* Header — also the drag handle for React Flow's dragHandle prop */}
@@ -245,12 +253,30 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         </span>
         <span className="min-w-0 flex-1 truncate font-semibold text-[13px]">{displayName}</span>
         {gitChange && <GitChangeMark change={gitChange} />}
+        {subworkflow && (
+          <button
+            type="button"
+            aria-label={`Open ${displayName}`}
+            title="Open the sub-workflow (double-click)"
+            onClick={(e) => {
+              e.stopPropagation()
+              openSubworkflow(subworkflow.path, workflowPath)
+            }}
+            className="nodrag flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <SquareArrowOutUpRight aria-hidden className="h-3 w-3" />
+          </button>
+        )}
         {tests && tests.run > 0 && <TestsBadge tests={tests} />}
         {issues && issues.length > 0 && <IssueBadge issues={issues} errorCount={errorCount} />}
         {!condition && !TRIGGERS.has(instance.uses) && <IdleConditionHandle />}
       </div>
 
       {condition && <ConditionStrip condition={condition} onClear={onClearCondition} />}
+
+      {subworkflow && subworkflow.respondsWith.length > 0 && (
+        <RespondsStrip statuses={subworkflow.respondsWith} />
+      )}
 
       {instance.uses === "@core/http-request" && workflowPath && (
         <GuardedBy workflowPath={workflowPath} />
@@ -296,10 +322,53 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
         className="flex items-center gap-1.5 border-t border-border px-3 py-1.5 font-mono text-[10px] text-muted-foreground"
       >
         <span className="min-w-0 flex-1 truncate">{instance.uses}</span>
+        {subworkflow && (
+          <span className="shrink-0">
+            {subworkflow.nodeCount} {subworkflow.nodeCount === 1 ? "node" : "nodes"}
+          </span>
+        )}
         {providers?.map((name) => (
           <ProviderChip key={name} name={name} className="shrink-0" />
         ))}
       </div>
+    </div>
+  )
+}
+
+const FLOW_TINT = "var(--flow)"
+
+function stackedShadow(selected: boolean): string {
+  const layers = [
+    "5px 5px 0 -1px var(--popover)",
+    "5px 5px 0 0 var(--input)",
+    "10px 10px 0 -1px var(--popover)",
+    "10px 10px 0 0 var(--input)",
+    "0 10px 24px rgba(0,0,0,.18)",
+  ]
+  return (selected ? ["0 0 0 2px var(--primary)", ...layers] : layers).join(", ")
+}
+
+/**
+ * Under a sub-workflow's header: the statuses its Response nodes can answer
+ * with, so the caller can see that running it may end the request.
+ */
+function RespondsStrip({ statuses }: { statuses: number[] }) {
+  return (
+    <div
+      data-testid="node-responds"
+      title="A Response inside this sub-workflow can answer the request"
+      className="flex h-[26px] items-center gap-1.5 border-b border-border px-3 text-[11px] text-muted-foreground"
+    >
+      <CornerDownLeft aria-hidden className="h-3 w-3 shrink-0" />
+      <span>Can respond</span>
+      {statuses.map((s) => (
+        <span
+          key={s}
+          className="rounded-[4px] border border-border bg-accent px-1 font-mono text-[10.5px] text-foreground"
+        >
+          {s}
+        </span>
+      ))}
     </div>
   )
 }

@@ -34,4 +34,31 @@ describe("AddNodePalette", () => {
     fireEvent.click(screen.getByText("@core/http-response"))
     expect(onPick).toHaveBeenCalledWith("@core/http-response")
   })
+
+  it("marks sub-workflows with the FLOW badge", () => {
+    render(
+      <AddNodePalette
+        schemas={
+          {
+            ...schemas,
+            "./nodes/orders/reserve": {
+              inputs: {},
+              outputs: {},
+              subworkflow: {
+                path: "nodes/orders/reserve.workflow",
+                respondsWith: [],
+                nodeCount: 2,
+              },
+            },
+          } as never
+        }
+        onPick={vi.fn()}
+      />,
+    )
+    const row = screen.getByText("./nodes/orders/reserve").closest("button")
+    expect(row?.textContent).toContain("FLOW")
+    expect(screen.getByText("./nodes/save-user").closest("button")?.textContent).not.toContain(
+      "FLOW",
+    )
+  })
 })

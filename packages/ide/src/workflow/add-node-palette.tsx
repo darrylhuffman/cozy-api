@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Input } from "@/components/ui/input"
 import type { NodeSchemas } from "@/lib/api"
+import { SubworkflowIcon } from "./subworkflow-icon"
 
 interface Props {
   schemas: Record<string, NodeSchemas>
@@ -32,6 +33,7 @@ export function AddNodePalette({ schemas, onPick }: Props) {
         )}
         {filtered.map((uses) => {
           const color = schemas[uses]?.color
+          const isFlow = !!schemas[uses]?.subworkflow
           return (
             <button
               type="button"
@@ -39,10 +41,25 @@ export function AddNodePalette({ schemas, onPick }: Props) {
               onClick={() => onPick(uses)}
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
             >
-              {color && (
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+              {isFlow ? (
+                <SubworkflowIcon className="h-3.5 w-3.5 shrink-0 text-flow" />
+              ) : (
+                color && (
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+                )
               )}
-              <span className="font-mono text-xs">{uses}</span>
+              <span className="min-w-0 flex-1 truncate font-mono text-xs">{uses}</span>
+              {isFlow && (
+                <span
+                  className="shrink-0 rounded px-[5px] py-px font-semibold text-[9.5px] tracking-[0.06em]"
+                  style={{
+                    color: "var(--flow)",
+                    background: "color-mix(in srgb, var(--flow) 15%, transparent)",
+                  }}
+                >
+                  FLOW
+                </span>
+              )}
             </button>
           )
         })}

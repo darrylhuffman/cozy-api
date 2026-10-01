@@ -1,8 +1,9 @@
 /**
  * "provider" is a top-level `providers/*.ts`, "middleware" a `_middleware.ts`
- * in `workflows/`; "code" is any other TypeScript file.
+ * in `workflows/`, "subworkflow" a `.workflow` file in `nodes/`; "code" is any
+ * other TypeScript file.
  */
-export type FileKind = "workflow" | "node" | "provider" | "middleware" | "code"
+export type FileKind = "workflow" | "node" | "subworkflow" | "provider" | "middleware" | "code"
 
 export interface FileLeaf {
   type: "file"

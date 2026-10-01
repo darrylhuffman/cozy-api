@@ -166,4 +166,36 @@ describe("NewWorkflowDialog", () => {
     expect(screen.getByText(".workflow")).toBeInTheDocument()
     expect(screen.queryByText(/will be appended/i)).not.toBeInTheDocument()
   })
+
+  it("makes a sub-workflow under nodes/, seeded with an Input and an Output", async () => {
+    vi.mocked(createWorkspaceFile).mockResolvedValue(undefined)
+    const onCreated = vi.fn()
+    render(
+      <NewWorkflowDialog
+        subworkflow
+        open
+        onOpenChange={vi.fn()}
+        onCreated={onCreated}
+        defaultFolder="nodes/orders"
+        workflowsTree={{ type: "folder", id: "n-root", name: "nodes", children: [] }}
+      />,
+    )
+    expect(screen.getByText("New sub-workflow")).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText("reserve-seats"), {
+      target: { value: "reserve-seats" },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByText("Create"))
+    })
+    const [path, content] = vi.mocked(createWorkspaceFile).mock.calls[0]!
+    expect(path).toBe("nodes/orders/reserve-seats.workflow")
+    const file = JSON.parse(content as string)
+    expect(Object.values(file.nodes).map((n) => (n as { uses: string }).uses)).toEqual([
+      "@core/input",
+      "@core/output",
+    ])
+    await waitFor(() =>
+      expect(onCreated).toHaveBeenCalledWith("nodes/orders/reserve-seats.workflow"),
+    )
+  })
 })
