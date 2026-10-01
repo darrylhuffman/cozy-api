@@ -128,7 +128,9 @@ export function WorkflowNode({ data }: WorkflowNodeProps) {
   const errorCount = issues?.filter((i) => i.severity === "error").length ?? 0
   const warningCount = (issues?.length ?? 0) - errorCount
 
-  const isSelected = useSelectionStore((s) => s.selectedNodeId === id)
+  const isSelected = useSelectionStore(
+    (s) => s.selectedNodeId === id || s.selectedNodeIds.includes(id),
+  )
   const isCore = instance.uses.startsWith("@core/")
   const isLocal = instance.uses.startsWith("./")
   const kindLabel = isCore ? "core" : isLocal ? "node" : "external"

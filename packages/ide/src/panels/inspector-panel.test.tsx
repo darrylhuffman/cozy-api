@@ -58,7 +58,7 @@ const sampleWorkflow: WorkflowFile = {
 
 function resetStores() {
   resetSchemasStore()
-  useSelectionStore.setState({ selectedNodeId: null })
+  useSelectionStore.setState({ selectedNodeId: null, selectedNodeIds: [] })
   useLiveWorkflowStore.setState({ workflow: null, tabId: null })
   useWorkflowDrafts.setState({ drafts: {} })
 }
@@ -222,6 +222,17 @@ describe("InspectorPanel — InspectContent", () => {
     expect(screen.getByText("@core/http-request")).toBeInTheDocument()
     // "not found" error must NOT appear
     expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
+  })
+})
+
+describe("InspectorPanel — several nodes selected", () => {
+  it("lists the selected nodes, and a click inspects one on its own", () => {
+    useSelectionStore.getState().setSelection(["save", "response"])
+    render(<InspectorPanel />)
+    expect(screen.getByText("2 nodes selected")).toBeDefined()
+    fireEvent.click(screen.getByTitle("Inspect save on its own"))
+    expect(useSelectionStore.getState().selectedNodeIds).toEqual(["save"])
+    expect(screen.queryByText("2 nodes selected")).toBeNull()
   })
 })
 

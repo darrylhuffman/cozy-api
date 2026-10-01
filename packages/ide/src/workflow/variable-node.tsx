@@ -50,7 +50,9 @@ const FORMAT_PLACEHOLDER: Record<string, string> = {
 export function VariableNode({ data }: { data: Record<string, unknown> }) {
   const { id, instance, schema, targets, onValueChange, issues, nodeStatus, gitChange } =
     data as unknown as VariableNodeData
-  const isSelected = useSelectionStore((s) => s.selectedNodeId === id)
+  const isSelected = useSelectionStore(
+    (s) => s.selectedNodeId === id || s.selectedNodeIds.includes(id),
+  )
   const value = instance.values?.[VARIABLE_PORT]
   const kind = variableKind(schema, value)
   const [expanded, setExpanded] = useState(false)
