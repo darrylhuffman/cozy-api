@@ -5,13 +5,18 @@ import type { JsonSchema, NodeInstance } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useSelectionStore } from "@/store/selection"
 import type { Diagnostic } from "./diagnose"
+import { JsonCodeEditor } from "./json-code-editor"
 import {
   checkValue,
+  declaredType,
   scaffoldValue,
+  typedByInput,
   typeLabel,
   unwrapSchema,
   VARIABLE_PORT,
+  VARIABLE_TYPES,
   type VariableTarget,
+  type VariableType,
   variableKind,
 } from "./variables"
 import { GitChangeMark } from "./workflow-node"
@@ -23,6 +28,8 @@ export interface VariableNodeData {
   schema?: JsonSchema | undefined
   targets: VariableTarget[]
   onValueChange?: (value: unknown) => void
+  /** Picks the variable's type, with its value carried over (one edit). */
+  onTypeChange?: (type: VariableType) => void
   issues?: Diagnostic[]
   nodeStatus?: "running" | "completed" | "errored" | "paused"
   gitChange?: "added" | "changed" | undefined
@@ -48,13 +55,24 @@ const FORMAT_PLACEHOLDER: Record<string, string> = {
  * JSON for objects and lists), and one output handle other inputs read.
  */
 export function VariableNode({ data }: { data: Record<string, unknown> }) {
-  const { id, instance, schema, targets, onValueChange, issues, nodeStatus, gitChange } =
-    data as unknown as VariableNodeData
+  const {
+    id,
+    instance,
+    schema,
+    targets,
+    onValueChange,
+    onTypeChange,
+    issues,
+    nodeStatus,
+    gitChange,
+  } = data as unknown as VariableNodeData
   const isSelected = useSelectionStore(
     (s) => s.selectedNodeId === id || s.selectedNodeIds.includes(id),
   )
   const value = instance.values?.[VARIABLE_PORT]
-  const kind = variableKind(schema, value)
+  const declared = declaredType(instance.values)
+  const kind = variableKind(schema, value, declared)
+  const label = typeLabel(schema, value, declared)
   const [expanded, setExpanded] = useState(false)
   const errorCount = issues?.filter((i) => i.severity === "error").length ?? 0
   const commit = (next: unknown) => onValueChange?.(next)
@@ -88,9 +106,28 @@ export function VariableNode({ data }: { data: Record<string, unknown> }) {
           {instance.label ?? id}
         </span>
         {gitChange && <GitChangeMark change={gitChange} />}
-        <span className="shrink-0 text-[10.5px] text-muted-foreground">
-          {typeLabel(schema, value)}
-        </span>
+        {onTypeChange && !typedByInput(schema) ? (
+          <select
+            aria-label={`${id} type`}
+            title="Type"
+            value={kind === "enum" ? "json" : kind}
+            onChange={(e) => onTypeChange(e.target.value as VariableType)}
+            className="nodrag nopan h-5 shrink-0 cursor-pointer rounded-[5px] border border-input bg-background px-1 text-[10.5px] text-muted-foreground outline-none hover:text-foreground focus:border-primary"
+          >
+            {VARIABLE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span
+            className="shrink-0 text-[10.5px] text-muted-foreground"
+            title={typedByInput(schema) ? "Typed by the input it feeds" : undefined}
+          >
+            {label}
+          </span>
+        )}
         <Handle
           type="source"
           position={Position.Right}
@@ -316,19 +353,15 @@ function JsonEditor({
   const lines = draft.split("\n").length
   return (
     <div className="flex flex-col gap-2">
-      <textarea
-        aria-label={id}
-        spellCheck={false}
-        className={cn(
-          "nodrag nopan nowheel w-full resize-none rounded-[7px] border border-input bg-background px-2.5 py-2 font-mono text-[11.5px] leading-[1.6] text-foreground outline-none focus:border-primary",
-          (parseError || problem) && "border-destructive",
-        )}
-        rows={Math.min(Math.max(lines, 3), expanded ? 30 : 12)}
+      <JsonCodeEditor
+        label={id}
         value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value)
+        invalid={!!(parseError || problem)}
+        rows={Math.min(Math.max(lines, 3), expanded ? 30 : 12)}
+        onChange={(text) => {
+          setDraft(text)
           try {
-            commit(JSON.parse(e.target.value))
+            commit(JSON.parse(text))
           } catch {
             // Keep the draft; the file keeps the last value that parsed.
           }
@@ -352,6 +385,15 @@ function JsonEditor({
           </span>
         )}
         <span className="flex-1" />
+        {!parseError && parsed !== undefined && draft !== JSON.stringify(parsed, null, 2) && (
+          <button
+            type="button"
+            className="nodrag shrink-0 text-primary hover:underline"
+            onClick={() => setDraft(JSON.stringify(parsed, null, 2))}
+          >
+            Format
+          </button>
+        )}
         {shaped && (
           <button
             type="button"

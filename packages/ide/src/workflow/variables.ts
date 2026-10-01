@@ -11,6 +11,53 @@ export const VARIABLE_PORT = "value"
 
 export type VariableKind = "enum" | "boolean" | "number" | "string" | "json"
 
+/** The types a variable can be given by hand, under `values.type`. */
+export const VARIABLE_TYPES = ["string", "number", "boolean", "json"] as const
+export type VariableType = (typeof VARIABLE_TYPES)[number]
+
+/** The type picked for a variable, when one is. */
+export function declaredType(
+  values: Record<string, unknown> | undefined,
+): VariableType | undefined {
+  const t = values?.type
+  return (VARIABLE_TYPES as readonly unknown[]).includes(t) ? (t as VariableType) : undefined
+}
+
+/** True when the input a variable feeds says what it holds, so there's no type to pick. */
+export function typedByInput(schema: JsonSchema | undefined): boolean {
+  const s = unwrapSchema(schema)
+  return !!s && (Array.isArray(s.enum) || typeof s.type === "string")
+}
+
+/**
+ * `value` carried over to another type: text keeps what it can (numbers and
+ * JSON as their text, text that parses as JSON as that), anything else
+ * starts empty.
+ */
+export function convertValue(value: unknown, to: VariableType): unknown {
+  switch (to) {
+    case "string":
+      if (typeof value === "string") return value
+      if (value === undefined || value === null) return ""
+      return typeof value === "object" ? JSON.stringify(value) : String(value)
+    case "number": {
+      const n = typeof value === "number" ? value : Number(value)
+      return typeof value !== "boolean" && value !== "" && Number.isFinite(n) ? n : 0
+    }
+    case "boolean":
+      return value === true || value === "true"
+    case "json":
+      if (typeof value === "string") {
+        try {
+          return JSON.parse(value)
+        } catch {
+          return {}
+        }
+      }
+      return value === undefined ? {} : value
+  }
+}
+
 /**
  * Strips `anyOf: [T, { type: "null" }]` (zod's `.nullable()`) down to T,
  * marked `nullable: true`.
@@ -43,8 +90,16 @@ export function schemaAtPath(
   return cur
 }
 
-/** Which editor a variable gets. Without a schema, the value's own type decides. */
-export function variableKind(schema: JsonSchema | undefined, value: unknown): VariableKind {
+/**
+ * Which editor a variable gets: the input it feeds decides, then the type
+ * picked for it, then the value's own type.
+ */
+export function variableKind(
+  schema: JsonSchema | undefined,
+  value: unknown,
+  declared?: VariableType,
+): VariableKind {
+  if (declared && !typedByInput(schema)) return declared
   const s = unwrapSchema(schema)
   if (s && Array.isArray(s.enum)) return "enum"
   const type = s?.type
@@ -59,7 +114,12 @@ export function variableKind(schema: JsonSchema | undefined, value: unknown): Va
 }
 
 /** The short type name in a variable's header. */
-export function typeLabel(schema: JsonSchema | undefined, value: unknown): string {
+export function typeLabel(
+  schema: JsonSchema | undefined,
+  value: unknown,
+  declared?: VariableType,
+): string {
+  if (declared && !typedByInput(schema)) return declared
   const s = unwrapSchema(schema)
   if (s && Array.isArray(s.enum)) return "enum"
   if (typeof s?.type === "string") return s.type

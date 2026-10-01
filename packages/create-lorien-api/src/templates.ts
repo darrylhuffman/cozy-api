@@ -24,7 +24,7 @@ const LORIEN_RANGE = lorienRange(
  * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
  * (with frontmatter wrapper). Single source of truth — both renderers must use this.
  */
-export const SKILL_BODY = `<!-- lorien-skill-version: 10 -->
+export const SKILL_BODY = `<!-- lorien-skill-version: 11 -->
 
 # lorien project guide
 
@@ -142,7 +142,7 @@ The route comes from \`values.path\`, not from where the file sits. Two workflow
 
 **\`@core/http-response\`**: inputs \`body\`, \`status\` (default 200) and \`headers\`. The first Response that runs answers the request. (\`@core/response\` is its old name and still works.)
 
-**\`@core/variable\`**: a constant, \`values.value\`, read as \`<id>.value\`.
+**\`@core/variable\`**: a constant, \`values.value\`, read as \`<id>.value\`. Optional \`values.type\` (\`string\`, \`number\`, \`boolean\`, \`json\`) picks its editor in the IDE.
 
 **\`@core/schedule\`** (a trigger, instead of or beside \`@core/http-request\`): runs the workflow on a cron schedule. \`values.cron\` is a five-field cron expression (\`minute hour day-of-month month day-of-week\`, e.g. \`"0 9 * * 1-5"\` for 09:00 on weekdays; \`*/15\`, ranges, lists, \`MON\`/\`JAN\` names and \`@daily\`-style shortcuts work) and \`values.timezone\` an IANA zone (default \`UTC\`). Both must be literals under \`values\`. Outputs: \`scheduledAt\` (ISO string), \`timestamp\` (ms), \`manual\` (true when started from the IDE's Run now) and \`context.runId\`. \`lorien dev\` and the built server keep the timers; a run that comes due while the previous one is still going is skipped. There is no request, so a Response answers no one, and folder \`_middleware.ts\` doesn't run.
 

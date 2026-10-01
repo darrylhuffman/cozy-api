@@ -13,13 +13,20 @@ import { VariableNode } from "./variable-node.js"
 
 afterEach(cleanup)
 
-function renderVariable(value: unknown, schema?: JsonSchema) {
+function renderVariable(
+  value: unknown,
+  schema?: JsonSchema,
+  extra: { type?: string; onTypeChange?: (t: string) => void } = {},
+) {
   const onValueChange = vi.fn()
+  const values: Record<string, unknown> = { value }
+  if (extra.type) values.type = extra.type
   render(
     <VariableNode
       data={{
         id: "setting",
-        instance: { uses: "@core/variable", values: { value } },
+        instance: { uses: "@core/variable", values },
+        onTypeChange: extra.onTypeChange,
         schema,
         targets: [{ nodeId: "Save", portId: "setting" }],
         onValueChange,
@@ -73,6 +80,34 @@ describe("VariableNode", () => {
     expect(screen.getByText("City is required")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Reset to schema" }))
     expect(onChange).toHaveBeenLastCalledWith({ city: "", zip: "" })
+  })
+
+  it("picks a type when the input it feeds doesn't say", () => {
+    const onTypeChange = vi.fn()
+    const onChange = renderVariable("5", undefined, { type: "number", onTypeChange })
+    // The picked type drives the editor.
+    expect(screen.getByRole("spinbutton", { name: "setting" })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText("setting type"), { target: { value: "json" } })
+    expect(onTypeChange).toHaveBeenCalledWith("json")
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it("shows the input's type instead of a picker when the input is typed", () => {
+    renderVariable(true, { type: "boolean" }, { onTypeChange: vi.fn() })
+    expect(screen.queryByLabelText("setting type")).toBeNull()
+    expect(screen.getByText("boolean")).toBeTruthy()
+  })
+
+  it("highlights JSON and formats it on request", () => {
+    const onChange = renderVariable(undefined, undefined, { type: "json" })
+    const editor = screen.getByLabelText("setting")
+    fireEvent.change(editor, { target: { value: '{"name":"Oak","beds":2}' } })
+    expect(onChange).toHaveBeenLastCalledWith({ name: "Oak", beds: 2 })
+    expect(screen.getByText('"name"').className).toContain("text-info")
+    expect(screen.getByText('"Oak"').className).toContain("text-success")
+    fireEvent.click(screen.getByRole("button", { name: "Format" }))
+    expect((editor as HTMLTextAreaElement).value).toBe('{\n  "name": "Oak",\n  "beds": 2\n}')
+    expect(screen.queryByRole("button", { name: "Format" })).toBeNull()
   })
 
   it("says so when it feeds nothing", () => {
