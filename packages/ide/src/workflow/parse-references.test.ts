@@ -169,7 +169,7 @@ describe("extractReferences", () => {
         },
       },
       response: {
-        uses: "@core/response",
+        uses: "@core/http-response",
         in: { body: "save.user" },
         values: { status: 201 },
       },

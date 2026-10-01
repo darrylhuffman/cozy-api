@@ -7,7 +7,7 @@ const base: WorkflowFile = {
   nodes: {
     Request: { uses: "@core/http-request", values: { path: "/pets", method: "GET" } },
     List: { uses: "./nodes/list", in: { status: "Request.query.status" }, values: { limit: 10 } },
-    Response: { uses: "@core/response", in: { body: "List.pets" } },
+    Response: { uses: "@core/http-response", in: { body: "List.pets" } },
   },
   view: { Request: { x: 0, y: 0 }, List: { x: 300, y: 0 }, Response: { x: 600, y: 0 } },
 } as WorkflowFile

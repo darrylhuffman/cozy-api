@@ -22,7 +22,7 @@ const route = (relativePath: string, path: string): LoadedWorkflow => ({
     nodes: {
       req: { uses: "@core/http-request", values: { path, method: "GET" } },
       read: { uses: "./read" },
-      res: { uses: "@core/response", in: { body: "read.seen" } },
+      res: { uses: "@core/http-response", in: { body: "read.seen" } },
     },
   }),
 })

@@ -5,7 +5,7 @@ describe("case files", () => {
   it("maps node files and uses to case files", () => {
     expect(casesPathFor("nodes/users/save-user.ts")).toBe("nodes/users/save-user.cases.json")
     expect(nodeFileForUses("./nodes/users/save-user")).toBe("nodes/users/save-user.ts")
-    expect(nodeFileForUses("@core/response")).toBeNull()
+    expect(nodeFileForUses("@core/http-response")).toBeNull()
   })
 
   it("parses a valid file", () => {

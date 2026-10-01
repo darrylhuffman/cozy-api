@@ -50,7 +50,7 @@ const sampleWorkflow: WorkflowFile = {
       uses: "./nodes/save-user",
     },
     response: {
-      uses: "@core/response",
+      uses: "@core/http-response",
       in: { body: "save.user" },
     },
   },
@@ -158,7 +158,7 @@ describe("InspectorPanel — InspectContent", () => {
 
   it("does not show a Config section (config is no longer surfaced in the inspector)", async () => {
     vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({
-      "@core/response": {
+      "@core/http-response": {
         inputs: { type: "object", properties: {} },
         outputs: { type: "object", properties: {} },
       },
@@ -466,7 +466,7 @@ describe("InspectorPanel — condition", () => {
     lorien: 1,
     nodes: {
       save: { uses: "./nodes/save-user" },
-      response: { uses: "@core/response", when: "save.ok", in: { body: "save.user" } },
+      response: { uses: "@core/http-response", when: "save.ok", in: { body: "save.user" } },
     },
   }
   beforeEach(() => {

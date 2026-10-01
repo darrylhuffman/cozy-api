@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { resetSchemasStore, useSchemasStore } from "@/store/schemas"
 import { useTabsStore } from "@/store/tabs"
 import { FilesPanel } from "./files-panel.js"
 
@@ -30,6 +31,58 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+})
+
+describe("FilesPanel core nodes", () => {
+  const schema = (name: string, category?: string, renamedTo?: string) => ({
+    name,
+    inputs: { type: "object" },
+    outputs: { type: "object" },
+    ...(category && { category }),
+    ...(renamedTo && { renamedTo }),
+  })
+  beforeEach(() => {
+    useSchemasStore.setState({
+      loaded: true,
+      schemas: {
+        "@core/http-request": schema("HTTP Request", "triggers"),
+        "@core/switch": schema("Switch", "logic"),
+        "@core/if": schema("If / Else", "logic"),
+        "@core/http-response": schema("HTTP Response", "responses"),
+        "@core/response": schema("HTTP Response", "responses", "@core/http-response"),
+        "./nodes/shared/parseBody": schema("Parse Body"),
+      },
+    })
+  })
+  afterEach(() => resetSchemasStore())
+
+  it("lists built-in nodes in a core folder, one subfolder per category", async () => {
+    render(<FilesPanel />)
+    await waitFor(() => expect(screen.getByText("NODES")).toBeInTheDocument())
+    fireEvent.click(screen.getByText("core"))
+    const folders = ["triggers", "logic", "responses"]
+    for (const f of folders) expect(screen.getByText(f)).toBeInTheDocument()
+    // Triggers come first, then logic, then responses.
+    const order = folders.map((f) => screen.getByText(f))
+    expect(order[0]!.compareDocumentPosition(order[1]!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(order[1]!.compareDocumentPosition(order[2]!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+
+    fireEvent.click(screen.getByText("responses"))
+    // The old @core/response name isn't listed a second time.
+    expect(screen.getAllByText("HTTP Response")).toHaveLength(1)
+  })
+
+  it("drags a core node onto the canvas by its uses", async () => {
+    render(<FilesPanel />)
+    await waitFor(() => expect(screen.getByText("NODES")).toBeInTheDocument())
+    fireEvent.click(screen.getByText("core"))
+    fireEvent.click(screen.getByText("logic"))
+    const leaf = screen.getByTestId("core-node-@core/switch")
+    expect(leaf).toHaveTextContent("Switch")
+    const dataTransfer = { setData: vi.fn(), effectAllowed: "" as string }
+    fireEvent.dragStart(leaf, { dataTransfer })
+    expect(dataTransfer.setData).toHaveBeenCalledWith("application/lorien-node", "@core/switch")
+  })
 })
 
 describe("FilesPanel", () => {

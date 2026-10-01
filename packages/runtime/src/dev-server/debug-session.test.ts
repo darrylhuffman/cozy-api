@@ -229,7 +229,7 @@ describe("DebugSession + loadWorkspace integration", () => {
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/users", method: "POST" } },
           save: { uses: "./fake-save" },
-          res: { uses: "@core/response", in: { body: "save.x" } },
+          res: { uses: "@core/http-response", in: { body: "save.x" } },
         },
       }),
     )

@@ -8,7 +8,7 @@ describe("validateWorkflow", () => {
       lorien: 1,
       nodes: {
         request: { uses: "@core/http-request", values: { path: "/x", method: "GET" } },
-        response: { uses: "@core/response", in: { body: "request.body" } },
+        response: { uses: "@core/http-response", in: { body: "request.body" } },
       },
     })
     const result = validateWorkflow(wf)
@@ -19,7 +19,7 @@ describe("validateWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        response: { uses: "@core/response", in: { body: "nonexistent.value" } },
+        response: { uses: "@core/http-response", in: { body: "nonexistent.value" } },
       },
     })
     const result = validateWorkflow(wf)
@@ -31,7 +31,7 @@ describe("validateWorkflow", () => {
     const wf = parseWorkflow({
       lorien: 1,
       nodes: {
-        a: { uses: "@core/response", after: ["missing"] },
+        a: { uses: "@core/http-response", after: ["missing"] },
       },
     })
     const result = validateWorkflow(wf)

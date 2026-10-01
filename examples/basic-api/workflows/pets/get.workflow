@@ -15,7 +15,7 @@
       }
     },
     "Response": {
-      "uses": "@core/response",
+      "uses": "@core/http-response",
       "in": {
         "body": "FindPet.body",
         "status": "FindPet.status"

@@ -39,7 +39,7 @@ describe("checkWiring", () => {
         Request: request,
         Find: { uses: "./nodes/find-book", in: { id: "Request.params.id" } },
         Found: {
-          uses: "@core/response",
+          uses: "@core/http-response",
           when: "Find.found",
           in: { body: "Find.book.title" },
           values: { status: 200 },
@@ -65,7 +65,7 @@ describe("checkWiring", () => {
       issues({
         Request: request,
         Find: { uses: "./nodes/find-book", in: { id: "Request.param.id" } },
-        Res: { uses: "@core/response", when: "!Find.exists", in: { body: "Find.books" } },
+        Res: { uses: "@core/http-response", when: "!Find.exists", in: { body: "Find.books" } },
       }),
     ).toEqual([
       "Find.in.id: `Request.param.id` reads output `param`, but Request has no such output (outputs: body, params, query, headers, context)",
@@ -86,5 +86,23 @@ describe("checkWiring", () => {
     expect(
       issues({ Request: request, L: { uses: "./nodes/loose", in: { anything: "Request.body" } } }),
     ).toEqual([])
+  })
+
+  it("checks a switch's branches against its cases", () => {
+    expect(
+      issues({
+        Request: request,
+        Kind: {
+          uses: "@core/switch",
+          in: { value: "Request.query" },
+          values: { field: "kind", cases: ["a", "b"] },
+        },
+        A: { uses: "@core/http-response", when: "Kind.case2" },
+        B: { uses: "@core/http-response", when: "Kind.default", in: { body: "Kind.value" } },
+        C: { uses: "@core/http-response", when: "Kind.case3" },
+      }),
+    ).toEqual([
+      "C.when: `Kind.case3` reads output `case3`, but Kind has no such output (outputs: case1, case2, default, value)",
+    ])
   })
 })

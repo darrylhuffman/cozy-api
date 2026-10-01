@@ -1,6 +1,7 @@
 import type { Assertion, AssertionOp } from "@darrylondil/lorien-runtime/requests"
 import { parsePath } from "@darrylondil/lorien-runtime/requests"
 import type { JsonSchema, NodeSchemas, WorkflowFile } from "@/lib/api"
+import { isHttpResponse } from "@/workflow/core-nodes"
 import { unwrapSchema } from "@/workflow/variables"
 
 /**
@@ -172,7 +173,7 @@ export function responseBodySchema(
   if (!wf) return undefined
   const bodies: Array<JsonSchema | undefined> = []
   for (const node of Object.values(wf.nodes)) {
-    if (node.uses !== "@core/response") continue
+    if (!isHttpResponse(node.uses)) continue
     const ref = typeof node.in === "string" ? undefined : node.in?.body
     if (ref) bodies.push(refSchema(wf, schemas, ref))
     else if (node.values?.body !== undefined) bodies.push(schemaFromValue(node.values.body))

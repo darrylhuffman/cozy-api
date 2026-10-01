@@ -57,6 +57,7 @@ import { CanvasToolbar, type SaveStatus } from "./canvas-toolbar"
 import { CommandPalette } from "./command-palette"
 import { ConditionEdge, type ConditionEdgeData } from "./condition-edge"
 import {
+  type Condition,
   conditionLabel,
   flipCondition,
   parseCondition,
@@ -64,6 +65,7 @@ import {
   WHEN_HANDLE_ID,
 } from "./conditions"
 import { ConnectionLine } from "./connection-line"
+import { branchLabel, isBranchPort, removeSwitchCase, setSwitchCases } from "./core-nodes"
 import { removeMappings } from "./delete-edge"
 import { deleteNode } from "./delete-node"
 import { derivePorts, type NodePorts } from "./derive-ports"
@@ -630,6 +632,19 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     },
     [applyWorkflow],
   )
+  /** Edits a switch's cases; removing one renumbers what read the later ones. */
+  const onSwitchCasesChange = useCallback(
+    (nodeId: string, cases: unknown[], removed?: number) => {
+      const wf = workflowRef.current
+      if (!wf) return
+      applyWorkflow(
+        removed === undefined
+          ? setSwitchCases(wf, nodeId, cases)
+          : removeSwitchCase(wf, nodeId, removed),
+      )
+    },
+    [applyWorkflow],
+  )
   const onFlipCondition = useCallback(
     (nodeId: string) => {
       const wf = workflowRef.current
@@ -767,6 +782,8 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
           onInputValueChange: (portId: string, value: unknown) =>
             onInputValueChange(id, portId, value),
           onClearCondition: () => onClearCondition(id),
+          onSwitchCasesChange: (cases: unknown[], removed?: number) =>
+            onSwitchCasesChange(id, cases, removed),
           nodeStatus: nodeStatusesRef.current.get(id),
           issues: issuesByNode.get(id),
           tests: testsByUsesRef.current.get(instance.uses) ?? null,
@@ -786,6 +803,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     onTogglePort,
     onInputValueChange,
     onClearCondition,
+    onSwitchCasesChange,
     path,
   ])
 
@@ -1066,7 +1084,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       if (!sourceHandle) continue
       const data: ConditionEdgeData = {
         when: instance.when as string,
-        label: conditionLabel(c),
+        label: branchLabelFor(workflow, c) ?? conditionLabel(c),
         negate: c.negate,
       }
       conditionEdges.push({
@@ -1257,9 +1275,12 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
       const targetNode = wf.nodes[target]
       if (!targetNode) return
 
-      // Dropped on the condition handle: the node now runs only when this
-      // output is truthy. Re-pointing an existing condition keeps its polarity.
-      if (targetHandle === WHEN_HANDLE_ID) {
+      // Dropped on the condition handle (or a logic node's branch dropped
+      // anywhere on a node): the node now runs only when this output is
+      // truthy. Re-pointing an existing condition keeps its polarity.
+      const sourceNode = wf.nodes[source]
+      const fromBranch = sourceNode !== undefined && isBranchPort(sourceNode.uses, sourceHandle)
+      if (targetHandle === WHEN_HANDLE_ID || fromBranch) {
         if (source === target) return
         const negate = parseCondition(targetNode.when)?.negate ?? false
         applyWorkflow(setCondition(wf, target, refString, negate))
@@ -1703,3 +1724,9 @@ function autoPosition(i: number): { x: number; y: number } {
  * directly.
  */
 export { deriveWorkflowPath as defaultPathForWorkflow } from "./template"
+
+/** A condition edge's label when it leaves a branch: "= cat", "not default". */
+function branchLabelFor(wf: WorkflowFile, c: Condition): string | null {
+  const label = branchLabel(wf, c.nodeId, c.path)
+  return label === null ? null : c.negate ? `not ${label}` : label
+}

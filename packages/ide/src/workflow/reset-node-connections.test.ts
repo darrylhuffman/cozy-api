@@ -11,7 +11,7 @@ const wf: WorkflowFile = {
       in: { email: "request.body.email", password: "request.body.password" },
     },
     response: {
-      uses: "@core/response",
+      uses: "@core/http-response",
       in: { body: "save.user" },
       values: { status: 201 },
     },

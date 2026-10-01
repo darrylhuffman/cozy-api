@@ -215,7 +215,7 @@ describe("GET /api/workspace/schemas", () => {
       schemas: Record<string, { inputs: unknown; outputs: unknown }>
     }
     expect(body.schemas["@core/http-request"]).toBeDefined()
-    expect(body.schemas["@core/response"]).toBeDefined()
+    expect(body.schemas["@core/http-response"]).toBeDefined()
 
     // @core/http-request outputs should include the standard properties as JSON Schema
     const httpOut = body.schemas["@core/http-request"]!.outputs as {
@@ -228,8 +228,8 @@ describe("GET /api/workspace/schemas", () => {
     expect(httpOut.properties!.headers).toBeDefined()
     expect(httpOut.properties!.context).toBeDefined()
 
-    // @core/response inputs should include body/status/headers
-    const respIn = body.schemas["@core/response"]!.inputs as {
+    // @core/http-response inputs should include body/status/headers
+    const respIn = body.schemas["@core/http-response"]!.inputs as {
       type?: string
       properties?: Record<string, unknown>
     }
@@ -388,7 +388,7 @@ describe("ide command — workflow hot-reload", () => {
         lorien: 1,
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/ping", method: "GET" } },
-          res: { uses: "@core/response", values: { body: "v1" } },
+          res: { uses: "@core/http-response", values: { body: "v1" } },
         },
       }),
     )
@@ -416,7 +416,7 @@ describe("ide command — workflow hot-reload", () => {
         lorien: 1,
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/ping", method: "GET" } },
-          res: { uses: "@core/response", values: { body: "v2" } },
+          res: { uses: "@core/http-response", values: { body: "v2" } },
         },
       }),
     )

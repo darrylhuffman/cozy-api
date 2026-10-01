@@ -9,7 +9,7 @@ const route = (path: string | undefined, body: string) =>
     lorien: 1,
     nodes: {
       Request: { uses: "@core/http-request", values: path ? { path } : {} },
-      Response: { uses: "@core/response", values: { body } },
+      Response: { uses: "@core/http-response", values: { body } },
     },
   })
 

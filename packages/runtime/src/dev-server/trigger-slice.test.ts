@@ -29,8 +29,8 @@ describe("buildTriggerSlice", () => {
       nodes: {
         trigA: { uses: "@core/http-request" as const, values: { path: "/a", method: "GET" } },
         trigB: { uses: "@core/http-request" as const, values: { path: "/b", method: "GET" } },
-        downA: { uses: "@core/response" as const, in: { body: "trigA.body" } },
-        downB: { uses: "@core/response" as const, in: { body: "trigB.body" } },
+        downA: { uses: "@core/http-response" as const, in: { body: "trigA.body" } },
+        downB: { uses: "@core/http-response" as const, in: { body: "trigB.body" } },
       },
     }
     const depsByNode = new Map<string, Set<string>>([
@@ -50,7 +50,7 @@ describe("buildTriggerSlice", () => {
       lorien: 1 as const,
       nodes: {
         trigA: { uses: "@core/http-request" as const, values: { path: "/a", method: "GET" } },
-        respA: { uses: "@core/response" as const, in: { body: "trigA.body" } },
+        respA: { uses: "@core/http-response" as const, in: { body: "trigA.body" } },
         util: { uses: "./util" as const, in: {} },
       },
     }
@@ -70,7 +70,7 @@ describe("buildTriggerSlice", () => {
       nodes: {
         trigA: { uses: "@core/http-request" as const, values: { path: "/a", method: "GET" } },
         trigB: { uses: "@core/http-request" as const, values: { path: "/b", method: "GET" } },
-        respA: { uses: "@core/response" as const, in: { body: "trigA.body" } },
+        respA: { uses: "@core/http-response" as const, in: { body: "trigA.body" } },
         downB: { uses: "./transform" as const, in: { x: "trigB.body" } },
       },
     }
@@ -94,7 +94,7 @@ describe("buildTriggerSlice", () => {
         trigA: { uses: "@core/http-request" as const, values: { path: "/a", method: "GET" } },
         trigB: { uses: "@core/http-request" as const, values: { path: "/b", method: "GET" } },
         join: { uses: "./merge" as const, in: { a: "trigA.body", b: "trigB.body" } },
-        resp: { uses: "@core/response" as const, in: { body: "join.out" } },
+        resp: { uses: "@core/http-response" as const, in: { body: "join.out" } },
       },
     }
     // join depends on both triggers; resp depends on join.

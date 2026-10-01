@@ -1,4 +1,5 @@
 import type { MiddlewareInfo, NodeSchemas, ProviderInfo, WorkflowFile } from "@/lib/api"
+import { isHttpResponse } from "@/workflow/core-nodes"
 import { deriveWorkflowPath, expandTemplate } from "@/workflow/template"
 
 /**
@@ -98,7 +99,6 @@ export interface AppMapInput {
 }
 
 const HTTP_TRIGGER = "@core/http-request"
-const RESPONSE = "@core/response"
 
 export const dirname = (path: string) => path.split("/").slice(0, -1).join("/")
 const usesToPath = (uses: string) => `${uses.replace(/^\.\//, "")}.ts`
@@ -214,7 +214,7 @@ export function buildAppMap(input: AppMapInput): AppMap {
       steps: [],
       nodes: [],
       middleware: [],
-      responses: entries.filter(([, n]) => n.uses === RESPONSE).length,
+      responses: entries.filter(([, n]) => isHttpResponse(n.uses)).length,
     })
     for (const [id, n] of entries) {
       if (!n.uses.startsWith("./nodes/")) continue

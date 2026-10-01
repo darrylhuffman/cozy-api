@@ -3,6 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { dirname, join, resolve as resolvePath } from "node:path"
 import { fileURLToPath } from "node:url"
+import { type CoreCategory, IF_OPERATORS } from "@darrylondil/lorien-runtime"
 
 export interface JsonSchema {
   type?: string
@@ -22,6 +23,19 @@ export interface NodeSchemas {
   color?: string | null
   /** Leading TSDoc/JSDoc extracted from the node source file. Null when absent. */
   description?: string | null
+  /** Core nodes only: the folder the IDE's Nodes panel lists it under. */
+  category?: CoreCategory
+  /** Core nodes only: set on an old name that still works, naming its replacement. */
+  renamedTo?: string
+}
+
+const BOOLEAN_BRANCHES: JsonSchema = {
+  type: "object",
+  properties: {
+    result: { type: "boolean" },
+    true: { type: "boolean" },
+    false: { type: "boolean" },
+  },
 }
 
 /** Built-in @core/* node schemas, hardcoded — they don't ship as user files. */
@@ -29,6 +43,7 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
   "@core/http-request": {
     name: "HTTP Request",
     color: null,
+    category: "triggers",
     description:
       "HTTP request trigger. The `method` and `path` inputs define the route this workflow handles. The path defaults to the workflow's folder location.",
     inputs: {
@@ -64,9 +79,12 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
       },
     },
   },
-  "@core/response": {
-    name: "Response",
+  "@core/http-response": {
+    name: "HTTP Response",
     color: null,
+    category: "responses",
+    description:
+      "Ends the run and answers the HTTP request with `body`, `status` (200 by default) and `headers`. The first response that runs answers.",
     inputs: {
       type: "object",
       properties: {
@@ -80,11 +98,84 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
   "@core/variable": {
     name: "Variable",
     color: null,
+    category: "data",
     description:
       "A named constant. Other nodes read it as `<id>.value`. Drag an input's handle onto empty canvas to make one typed for that input.",
     inputs: { type: "object", properties: { value: {} } },
     outputs: { type: "object", properties: { value: {} } },
   },
+  "@core/if": {
+    name: "If / Else",
+    color: null,
+    category: "logic",
+    description:
+      "Tests `value` (or its attribute `field`) with `operator` against `compare`. Wire `true` or `false` into a node's condition handle to run it on that branch.",
+    inputs: {
+      type: "object",
+      properties: {
+        value: {},
+        field: { type: "string", description: "Attribute to test when value is an object" },
+        operator: { type: "string", enum: [...IF_OPERATORS], default: "is truthy" },
+        // Typed as text so it's editable on the card; numbers still compare as numbers.
+        compare: { type: "string", description: "What to compare against" },
+      },
+    },
+    outputs: {
+      type: "object",
+      properties: { true: { type: "boolean" }, false: { type: "boolean" }, value: {} },
+    },
+  },
+  "@core/switch": {
+    name: "Switch",
+    color: null,
+    category: "logic",
+    description:
+      "Compares `value` (or its attribute `field`) with each case in order. The first match's branch is true, or `default` when none match. Wire a branch into a node's condition handle to run it on that branch.",
+    inputs: {
+      type: "object",
+      properties: {
+        value: {},
+        field: { type: "string", description: "Attribute to compare when value is an object" },
+        cases: { type: "array", items: {}, default: [] },
+      },
+    },
+    // One `caseN` boolean per entry in `values.cases` sits beside these; the
+    // IDE adds them per instance.
+    outputs: {
+      type: "object",
+      properties: { default: { type: "boolean" }, value: {} },
+    },
+  },
+  "@core/and": {
+    name: "And",
+    color: null,
+    category: "logic",
+    description: "True when both `a` and `b` are truthy.",
+    inputs: { type: "object", properties: { a: {}, b: {} } },
+    outputs: BOOLEAN_BRANCHES,
+  },
+  "@core/or": {
+    name: "Or",
+    color: null,
+    category: "logic",
+    description: "True when `a` or `b` is truthy.",
+    inputs: { type: "object", properties: { a: {}, b: {} } },
+    outputs: BOOLEAN_BRANCHES,
+  },
+  "@core/not": {
+    name: "Not",
+    color: null,
+    category: "logic",
+    description: "Flips `value`'s truthiness.",
+    inputs: { type: "object", properties: { value: {} } },
+    outputs: BOOLEAN_BRANCHES,
+  },
+}
+
+// The old name keeps its schema so existing workflows still draw their ports.
+CORE_SCHEMAS["@core/response"] = {
+  ...(CORE_SCHEMAS["@core/http-response"] as NodeSchemas),
+  renamedTo: "@core/http-response",
 }
 
 interface CacheEntry {
