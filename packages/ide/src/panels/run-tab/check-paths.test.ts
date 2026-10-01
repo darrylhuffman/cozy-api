@@ -70,7 +70,7 @@ describe("schemas", () => {
       lorien: 1,
       nodes: {
         List: { uses: "./nodes/list-pets" },
-        Response: { uses: "@core/response", in: { body: "List.pets" } },
+        Response: { uses: "@core/http-response", in: { body: "List.pets" } },
       },
     } as WorkflowFile
     expect(typeName(responseBodySchema(wf, schemas))).toBe("array")

@@ -101,7 +101,7 @@ beforeEach(() => {
       nodes: {
         Request: { uses: "@core/http-request" },
         SaveUser: { uses: "./nodes/user/save-user" },
-        Response: { uses: "@core/response" },
+        Response: { uses: "@core/http-response" },
       },
     },
   })
@@ -125,7 +125,7 @@ describe("Tests tab", () => {
 
   it("explains when a workflow only uses built-in nodes", () => {
     useLiveWorkflowStore.setState({
-      workflow: { lorien: 1, nodes: { R: { uses: "@core/response" } } },
+      workflow: { lorien: 1, nodes: { R: { uses: "@core/http-response" } } },
     })
     render(<TestsTab />)
     expect(screen.getByText(/only uses built-in nodes/)).toBeInTheDocument()

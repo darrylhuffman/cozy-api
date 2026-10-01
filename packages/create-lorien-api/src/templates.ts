@@ -24,7 +24,7 @@ const LORIEN_RANGE = lorienRange(
  * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
  * (with frontmatter wrapper). Single source of truth — both renderers must use this.
  */
-export const SKILL_BODY = `<!-- lorien-skill-version: 8 -->
+export const SKILL_BODY = `<!-- lorien-skill-version: 10 -->
 
 # lorien project guide
 
@@ -105,7 +105,7 @@ Named-input JSON. Each node lists where its inputs come from. No separate edges 
       "in": { "id": "Request.params.id" }
     },
     "Response": {
-      "uses": "@core/response",
+      "uses": "@core/http-response",
       "in": { "body": "FindRoom.room" }
     }
   }
@@ -140,11 +140,24 @@ Rules:
 
 The route comes from \`values.path\`, not from where the file sits. Two workflows serving the same method and path fail the build.
 
-**\`@core/response\`**: inputs \`body\`, \`status\` (default 200) and \`headers\`. The first Response that runs answers the request.
+**\`@core/http-response\`**: inputs \`body\`, \`status\` (default 200) and \`headers\`. The first Response that runs answers the request. (\`@core/response\` is its old name and still works.)
 
 **\`@core/variable\`**: a constant, \`values.value\`, read as \`<id>.value\`.
 
 **\`@core/schedule\`** (a trigger, instead of or beside \`@core/http-request\`): runs the workflow on a cron schedule. \`values.cron\` is a five-field cron expression (\`minute hour day-of-month month day-of-week\`, e.g. \`"0 9 * * 1-5"\` for 09:00 on weekdays; \`*/15\`, ranges, lists, \`MON\`/\`JAN\` names and \`@daily\`-style shortcuts work) and \`values.timezone\` an IANA zone (default \`UTC\`). Both must be literals under \`values\`. Outputs: \`scheduledAt\` (ISO string), \`timestamp\` (ms), \`manual\` (true when started from the IDE's Run now) and \`context.runId\`. \`lorien dev\` and the built server keep the timers; a run that comes due while the previous one is still going is skipped. There is no request, so a Response answers no one, and folder \`_middleware.ts\` doesn't run.
+
+Logic nodes produce boolean branch outputs for other nodes' \`when\`:
+- **\`@core/switch\`**: inputs \`value\`, optional \`field\` (a dotted attribute of \`value\` to compare, e.g. \`"role"\`) and \`values.cases\` (a list). Outputs \`case1\`…\`caseN\` (only the first matching case is true), \`default\` (true when none match) and \`value\`. Primitives match by their text, so the query string \`"2"\` matches the case \`2\`.
+- **\`@core/if\`**: inputs \`value\`, optional \`field\`, \`operator\` (\`is truthy\` by default; \`is falsy\`, \`==\`, \`!=\`, \`>\`, \`>=\`, \`<\`, \`<=\`, \`contains\`, \`starts with\`, \`ends with\`, \`is empty\`, \`is not empty\`, \`exists\`) and \`compare\`. Outputs \`true\`, \`false\` and \`value\`.
+- **\`@core/and\`**, **\`@core/or\`** (inputs \`a\`, \`b\`) and **\`@core/not\`** (input \`value\`): outputs \`result\`, \`true\` and \`false\`.
+
+\`\`\`json
+"Kind": { "uses": "@core/switch", "in": { "value": "Request.query" }, "values": { "field": "kind", "cases": ["cat", "dog"] } },
+"Cats": { "uses": "./nodes/pets/list-cats", "when": "Kind.case1" },
+"Unknown": { "uses": "@core/http-response", "when": "Kind.default", "values": { "status": 400 } }
+\`\`\`
+
+Prefer a plain \`when\` on a node's own boolean output; reach for these when the branch depends on comparing a value.
 
 ## Status codes and branching
 
@@ -157,7 +170,7 @@ Every node runs unless its \`when\` says otherwise. A node that doesn't run is s
     "Request": { "uses": "@core/http-request", "values": { "path": "/bookings", "method": "POST" } },
     "FindRoom": { "uses": "./nodes/rooms/find-room", "in": { "id": "Request.body.roomId" } },
     "NoRoom": {
-      "uses": "@core/response",
+      "uses": "@core/http-response",
       "when": "!FindRoom.found",
       "values": { "status": 404, "body": { "error": "room not found" } }
     },
@@ -167,7 +180,7 @@ Every node runs unless its \`when\` says otherwise. A node that doesn't run is s
       "in": { "roomId": "FindRoom.room.id", "from": "Request.body.from", "to": "Request.body.to" }
     },
     "Taken": {
-      "uses": "@core/response",
+      "uses": "@core/http-response",
       "when": "CheckOverlap.overlaps",
       "values": { "status": 409, "body": { "error": "room already booked" } }
     },
@@ -177,7 +190,7 @@ Every node runs unless its \`when\` says otherwise. A node that doesn't run is s
       "in": { "roomId": "FindRoom.room.id", "from": "Request.body.from", "to": "Request.body.to" }
     },
     "Created": {
-      "uses": "@core/response",
+      "uses": "@core/http-response",
       "in": { "body": "Insert.booking", "headers": "Insert.headers" },
       "values": { "status": 201 }
     }
@@ -189,7 +202,7 @@ A node can also compute its own status and pass it on: wire \`"status": "Node.st
 
 What lorien answers for you:
 - **400** when a value that came straight from the request fails a node's input schema: \`{ "error": "Invalid request", "issues": [{ "path": "query.minCapacity", "message": "..." }] }\`.
-- **500** when a node throws, or returns something that doesn't match its \`outputs\` schema: \`{ "error": "Internal Server Error" }\`, with the error logged. \`lorien dev\` adds the message as \`detail\`.
+- **500** when a node throws, returns something that doesn't match its \`outputs\` schema, or no Response runs (every Response was skipped by its \`when\`; give each outcome one): \`{ "error": "Internal Server Error" }\`, with the error logged. \`lorien dev\` adds the message as \`detail\`.
 - **405** with an \`Allow\` header when the path exists under other methods, **404** otherwise, both as JSON: \`{ "error": "Method Not Allowed" }\`, \`{ "error": "Not Found" }\`.
 
 ## Providers (db, logger, cache, API client)
@@ -239,6 +252,8 @@ export default defineMiddleware({
 
 Use middleware for checks that stop a request before any node runs; use \`when\` for outcomes that depend on what nodes found.
 
+A CORS preflight (\`OPTIONS\`) on a path your workflows serve runs the middleware those workflows share, so a CORS middleware can answer it: \`if (c.req.method === "OPTIONS") return c.body(null, 204, { ... })\`. If middleware lets it through, it gets 405.
+
 ## Where things go
 
 | You're adding | Put it in |
@@ -253,7 +268,7 @@ Don't create new top-level folders.
 
 After changing providers, nodes or middleware, run \`npx lorien check\` (\`lorien test\` and \`lorien build\` run it too). It flags a node importing a database driver or reading \`process.env\`, a provider exporting business functions, and bad selectors or lifetimes, and each finding says where the code should live. Fix every finding before you finish.
 
-**Add an OpenAPI-typed HTTP client**: \`npx lorien import-openapi <spec.json>\` (a local OpenAPI 3.x JSON file; \`--out\`, \`--api-slug\`, \`--base-url\`). Generated client nodes appear under \`nodes/<api>/\`; use them like any other node.
+**Add an OpenAPI-typed HTTP client**: \`npx lorien import-openapi <spec.json>\` (a local OpenAPI 3.x JSON file; \`--out\`, \`--api-slug\`, \`--base-url\`). It writes one node per operation under \`nodes/<api>/\`, used like any other node, and a client provider \`providers/<api>.ts\` whose env var sets the base URL (defaulting to the spec's server URL). Add auth headers in that provider's \`headers()\`; re-imports keep your edits.
 
 ## Tests
 
@@ -506,7 +521,7 @@ export function renderHelloWorkflow(): string {
         in: {},
       },
       response: {
-        uses: "@core/response",
+        uses: "@core/http-response",
         in: { body: "say.greeting" },
       },
     },

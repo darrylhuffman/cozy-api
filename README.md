@@ -214,8 +214,8 @@ Both branches also changed `workflows/pets/list.workflow`. `main` wired a new `l
     "limit":   "Request.query.limit"               }
   }                                              },
 },                                               "Response": {
-"Response": {                                      "uses": "@core/response",
-  "uses": "@core/response",                        "in": { "body": "ListPets.pets" },
+"Response": {                                      "uses": "@core/http-response",
+  "uses": "@core/http-response",                   "in": { "body": "ListPets.pets" },
   "in": { "body": "ListPets.pets" }                "values": { "status": 200 }
 }                                                }
 ```
@@ -271,7 +271,7 @@ A workflow is small enough to review in a diff:
     "Request":  { "uses": "@core/http-request", "values": { "path": "/pets", "method": "POST" } },
     "AddPet":   { "uses": "./nodes/pets/add-pet",
                   "in": { "name": "Request.body.name", "species": "Request.body.species" } },
-    "Response": { "uses": "@core/response", "in": { "body": "AddPet.pet" }, "values": { "status": 201 } }
+    "Response": { "uses": "@core/http-response", "in": { "body": "AddPet.pet" }, "values": { "status": 201 } }
   }
 }
 ```

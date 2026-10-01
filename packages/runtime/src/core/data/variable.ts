@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { defineNode } from "../define-node.js"
+import { defineNode } from "../../define-node.js"
 
 /**
  * A named constant on the canvas. Its value lives in the workflow file under

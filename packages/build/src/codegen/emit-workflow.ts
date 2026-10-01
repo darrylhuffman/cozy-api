@@ -1,5 +1,7 @@
 import {
+  coreCategory,
   dataDependencies,
+  isHttpResponse,
   isTriggerUses,
   nodeDependencies,
   parseReference,
@@ -48,6 +50,12 @@ export interface EmitWorkflowOptions {
    * Hono middleware before the workflow.
    */
   middleware?: string[]
+  /**
+   * OPTIONS routes this file registers so middleware can answer a CORS
+   * preflight (see `preflightRoutes`). `depth` is how many of `middleware`,
+   * from the outermost, every workflow on the path shares.
+   */
+  preflight?: Array<{ path: string; methods: string[]; depth: number }>
 }
 
 /**
@@ -99,6 +107,19 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   const sortedUses = [...userUses].sort()
   const usesToIdent = new Map<string, string>()
   const seenIdents = new Set<string>()
+  // Logic nodes (switch, if, ...) are emitted inline as `core_<name>` objects.
+  const logicIds = [
+    ...new Set(
+      Object.values(workflow.nodes)
+        .map((inst) => inst.uses)
+        .filter((uses) => coreCategory(uses) === "logic"),
+    ),
+  ].sort()
+  for (const uses of logicIds) {
+    const ident = logicIdent(uses)
+    seenIdents.add(ident)
+    usesToIdent.set(uses, ident)
+  }
   for (const uses of sortedUses) {
     let ident = importIdentForUses(uses)
     // Collision-safety: append a counter if necessary.
@@ -137,6 +158,10 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
   lines.push(renderReadJsonBodyHelper())
   lines.push("")
   lines.push(renderCheckOutputHelper())
+  if (logicIds.length > 0) {
+    lines.push("")
+    lines.push(renderLogicHelpers(logicIds))
+  }
   if (routes.some((t) => requestSourcedNodes(workflow, t.nodeId).size > 0)) {
     lines.push("")
     lines.push(renderParseInputHelper())
@@ -155,6 +180,12 @@ export function emitWorkflow(opts: EmitWorkflowOptions): EmitWorkflowResult {
     const trigger = routes[i]!
     if (i > 0) lines.push("")
     lines.push(...renderRoute(trigger, perRequest, guarded))
+  }
+  if (guarded) {
+    for (const pre of opts.preflight ?? []) {
+      lines.push("")
+      lines.push(...renderPreflight(pre, perRequest))
+    }
   }
 
   lines.push(`}`)
@@ -330,11 +361,11 @@ function renderRun(
     if (interesting.length === 0) continue
     waveNum++
 
-    const responseIds = interesting.filter((id) => workflow.nodes[id]?.uses === "@core/response")
+    const responseIds = interesting.filter((id) => isHttpResponse(workflow.nodes[id]?.uses ?? ""))
     const passIds = interesting.filter((id) => PASS_THROUGH.has(workflow.nodes[id]?.uses ?? ""))
     const computeIds = interesting.filter(
       (id) =>
-        workflow.nodes[id]?.uses !== "@core/response" &&
+        !isHttpResponse(workflow.nodes[id]?.uses ?? "") &&
         !PASS_THROUGH.has(workflow.nodes[id]?.uses ?? ""),
     )
 
@@ -369,9 +400,21 @@ function renderRun(
     if (returned) break
   }
 
-  if (!returned) {
+  if (!returned && trigger.kind !== "http") {
+    // A schedule has no caller to answer; finishing without a Response is normal.
     body.push("")
     body.push(`return { status: 200, headers: {}, body: null }`)
+  } else if (!returned) {
+    // Every Response was skipped by its `when`: a missing branch, not a 200.
+    const responses = [...sliceIds]
+      .filter((id) => isHttpResponse(workflow.nodes[id]?.uses ?? ""))
+      .sort()
+    const message =
+      responses.length > 0
+        ? `no Response node ran (skipped: ${responses.join(", ")}); add a Response for this case`
+        : "the workflow has no Response node"
+    body.push("")
+    body.push(`throw new Error(${JSON.stringify(message)})`)
   }
 
   lines.push(
@@ -455,6 +498,25 @@ function renderRoute(trigger: HttpTriggerInfo, perRequest: boolean, guarded: boo
   lines.push(`    )`)
   lines.push(`  })`)
   return lines
+}
+
+/**
+ * OPTIONS on a path no workflow serves under OPTIONS: run the middleware every
+ * workflow on the path shares (so a CORS middleware can answer the preflight),
+ * then answer 405 like an unmatched method would.
+ */
+function renderPreflight(
+  pre: { path: string; methods: string[]; depth: number },
+  perRequest: boolean,
+): string[] {
+  const shared = Array.from({ length: pre.depth }, (_, i) => `mw${i}`).join(", ")
+  const count = `${perRequest ? "1 + " : ""}[${shared}].flat().length`
+  return [
+    `  // OPTIONS ${pre.path}: shared middleware (a CORS preflight), then 405`,
+    `  app.on("OPTIONS", "${pre.path}", ...guards.slice(0, ${count}), (c: Context) =>`,
+    `    c.json({ error: "Method Not Allowed" }, 405, { Allow: "${pre.methods.join(", ")}" }),`,
+    `  )`,
+  ]
 }
 
 /**
@@ -559,7 +621,10 @@ interface RunContext {
 
 /** `<schema>.parse(...)`, or `parseInput(...)` when some of the input comes from the request. */
 function renderParse(ctx: RunContext, nodeId: string, ident: string, inputExpr: string): string {
-  const sources = ctx.fromRequest ? requestSources(ctx.workflow, nodeId, ctx.triggerId) : null
+  // Core nodes take any input; only user nodes' schemas can reject the request.
+  const core = ctx.workflow.nodes[nodeId]?.uses.startsWith("@core/")
+  const sources =
+    ctx.fromRequest && !core ? requestSources(ctx.workflow, nodeId, ctx.triggerId) : null
   return sources === null
     ? `${ident}.inputs.parse(${inputExpr})`
     : `parseInput(${ident}.inputs, ${inputExpr}, ${JSON.stringify(sources)})`
@@ -655,8 +720,12 @@ function renderParallelWave(ctx: RunContext, nodeIds: string[]): string[] {
     lines.push(ctx.conditional.has(id) ? `  ${ranVar(id)} ? ${call} : {},` : `  ${call},`)
   }
   lines.push(`])`)
-  lines.push(`const _rejection = [${settledNames.join(", ")}].find((r) => r.status === "rejected")`)
-  lines.push(`if (_rejection) throw (_rejection as PromiseRejectedResult).reason`)
+  // Named per wave: two parallel waves in one run would otherwise redeclare it.
+  const rejection = `${settledNames[0]}_rejection`
+  lines.push(
+    `const ${rejection} = [${settledNames.join(", ")}].find((r) => r.status === "rejected")`,
+  )
+  lines.push(`if (${rejection}) throw (${rejection} as PromiseRejectedResult).reason`)
   for (const id of nodeIds) {
     lines.push(
       `const ${outputsVar(id)} = (${id}_settled as PromiseFulfilledResult<unknown>).value as Record<string, unknown>`,
@@ -943,6 +1012,139 @@ function importIdentForUses(uses: string): string {
   return ident
 }
 
+function logicIdent(uses: string): string {
+  return `core_${uses.slice("@core/".length).replace(/[^a-zA-Z0-9_$]/g, "_")}`
+}
+
+/**
+ * The logic nodes as inline objects shaped like user nodes, so they run
+ * through the same call sites. Mirrors @darrylondil/lorien-runtime's
+ * core/logic (compare.ts and the node files); change both together.
+ */
+function renderLogicHelpers(logicIds: string[]): string {
+  const nodes: Record<string, string[]> = {
+    "@core/switch": [
+      `async run(i: CoreInput, _s?: unknown, _c?: unknown): Promise<Record<string, unknown>> {`,
+      `  const subject = corePick(i.value, i.field as string | undefined)`,
+      `  const out: Record<string, unknown> = { value: i.value }`,
+      `  let matched = false`,
+      `  ;((i.cases as unknown[] | undefined) ?? []).forEach((c, n) => {`,
+      `    const hit = !matched && coreEquals(subject, c)`,
+      `    if (hit) matched = true`,
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted as-is into generated code.
+      "    out[`case${n + 1}`] = hit",
+      `  })`,
+      `  out.default = !matched`,
+      `  return out`,
+      `},`,
+    ],
+    "@core/if": [
+      `async run(i: CoreInput, _s?: unknown, _c?: unknown): Promise<Record<string, unknown>> {`,
+      `  const holds = coreTest(corePick(i.value, i.field as string | undefined), i.operator as string | undefined, i.compare)`,
+      `  return { true: holds, false: !holds, value: i.value }`,
+      `},`,
+    ],
+    "@core/and": [
+      `async run(i: CoreInput, _s?: unknown, _c?: unknown): Promise<Record<string, unknown>> {`,
+      `  const result = Boolean(i.a) && Boolean(i.b)`,
+      `  return { result, true: result, false: !result }`,
+      `},`,
+    ],
+    "@core/or": [
+      `async run(i: CoreInput, _s?: unknown, _c?: unknown): Promise<Record<string, unknown>> {`,
+      `  const result = Boolean(i.a) || Boolean(i.b)`,
+      `  return { result, true: result, false: !result }`,
+      `},`,
+    ],
+    "@core/not": [
+      `async run(i: CoreInput, _s?: unknown, _c?: unknown): Promise<Record<string, unknown>> {`,
+      `  const result = !i.value`,
+      `  return { result, true: result, false: !result }`,
+      `},`,
+    ],
+  }
+  const lines = [
+    `// Built-in logic nodes.`,
+    `type CoreInput = Record<string, unknown>`,
+    `const coreInputs = { parse: (v: unknown): CoreInput => (v ?? {}) as CoreInput }`,
+    `const coreOutputs = { safeParse: (_v: unknown) => ({ success: true }) }`,
+    ``,
+    `function corePick(value: unknown, field: string | undefined): unknown {`,
+    `  if (!field) return value`,
+    `  let v: unknown = value`,
+    `  for (const seg of field.split(".")) {`,
+    `    if (seg === "") continue`,
+    `    v = v !== null && typeof v === "object" ? (v as Record<string, unknown>)[seg] : undefined`,
+    `  }`,
+    `  return v`,
+    `}`,
+    ``,
+    `function corePrimitive(v: unknown): boolean {`,
+    `  return typeof v === "string" || typeof v === "number" || typeof v === "boolean" || typeof v === "bigint"`,
+    `}`,
+    ``,
+    `function coreEquals(a: unknown, b: unknown): boolean {`,
+    `  if (a === b) return true`,
+    `  if (corePrimitive(a) && corePrimitive(b)) return String(a) === String(b)`,
+    `  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false`,
+    `  if (Array.isArray(a) !== Array.isArray(b)) return false`,
+    `  const ak = Object.keys(a)`,
+    `  if (ak.length !== Object.keys(b).length) return false`,
+    `  return ak.every((k) => coreEquals((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))`,
+    `}`,
+    ``,
+    `function coreEmpty(v: unknown): boolean {`,
+    `  if (v === undefined || v === null || v === "") return true`,
+    `  if (Array.isArray(v)) return v.length === 0`,
+    `  if (typeof v === "object") return Object.keys(v).length === 0`,
+    `  return false`,
+    `}`,
+    ``,
+    `function coreOrder(a: unknown, b: unknown): number {`,
+    `  const na = typeof a === "string" && a.trim() === "" ? Number.NaN : Number(a)`,
+    `  const nb = typeof b === "string" && b.trim() === "" ? Number.NaN : Number(b)`,
+    `  if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb`,
+    `  const sa = String(a)`,
+    `  const sb = String(b)`,
+    `  return sa < sb ? -1 : sa > sb ? 1 : 0`,
+    `}`,
+    ``,
+    `function coreTest(left: unknown, operator: string | undefined, right: unknown): boolean {`,
+    `  switch (operator) {`,
+    `    case "is falsy": return !left`,
+    `    case "==": return coreEquals(left, right)`,
+    `    case "!=": return !coreEquals(left, right)`,
+    `    case ">": return left != null && right != null && coreOrder(left, right) > 0`,
+    `    case ">=": return left != null && right != null && coreOrder(left, right) >= 0`,
+    `    case "<": return left != null && right != null && coreOrder(left, right) < 0`,
+    `    case "<=": return left != null && right != null && coreOrder(left, right) <= 0`,
+    `    case "contains":`,
+    `      if (typeof left === "string") return left.includes(String(right))`,
+    `      if (Array.isArray(left)) return left.some((item) => coreEquals(item, right))`,
+    `      if (left !== null && typeof left === "object") return String(right) in left`,
+    `      return false`,
+    `    case "starts with": return typeof left === "string" && left.startsWith(String(right))`,
+    `    case "ends with": return typeof left === "string" && left.endsWith(String(right))`,
+    `    case "is empty": return coreEmpty(left)`,
+    `    case "is not empty": return !coreEmpty(left)`,
+    `    case "exists": return left !== undefined && left !== null`,
+    `    default: return Boolean(left)`,
+    `  }`,
+    `}`,
+  ]
+  for (const uses of logicIds) {
+    const body = nodes[uses]
+    if (!body) throw new Error(`emit-workflow: no inline implementation for \`${uses}\``)
+    lines.push("")
+    lines.push(`const ${logicIdent(uses)} = {`)
+    lines.push(`  inputs: coreInputs,`)
+    lines.push(`  outputs: coreOutputs,`)
+    lines.push(...body.map((l) => `  ${l}`))
+    lines.push(`}`)
+  }
+  return lines.join("\n")
+}
+
 function runFnName(nodeId: string): string {
   return `run_${nodeId.replace(/[^a-zA-Z0-9_$]/g, "_")}`
 }
@@ -1022,7 +1224,7 @@ function computeTriggerSlice(
 
   const myReach = reachableFrom.get(triggerNodeId) ?? new Set([triggerNodeId])
   const hasExplicitResponse = [...myReach].some(
-    (id) => id !== triggerNodeId && wf.nodes[id]?.uses === "@core/response",
+    (id) => id !== triggerNodeId && isHttpResponse(wf.nodes[id]?.uses ?? ""),
   )
 
   const included = new Set<string>()
@@ -1030,7 +1232,7 @@ function computeTriggerSlice(
     if (myReach.has(id)) {
       included.add(id)
     } else if (!ownedByAny.has(id)) {
-      const isResponse = wf.nodes[id]?.uses === "@core/response"
+      const isResponse = isHttpResponse(wf.nodes[id]?.uses ?? "")
       if (!isResponse || !hasExplicitResponse) included.add(id)
     }
   }

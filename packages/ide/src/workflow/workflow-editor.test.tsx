@@ -277,7 +277,7 @@ const createWorkflow: WorkflowFile = {
       },
     },
     response: {
-      uses: "@core/response",
+      uses: "@core/http-response",
       in: { body: "save.user" },
       values: { status: 201 },
     },
@@ -2314,8 +2314,8 @@ describe("WorkflowEditor", () => {
       nodes: {
         request: { uses: "@core/http-request", values: { path: "/rooms/:id", method: "GET" } },
         find: { uses: "./nodes/find-room", in: { id: "request.params.id" } },
-        missing: { uses: "@core/response", when: "!find.found", values: { status: 404 } },
-        found: { uses: "@core/response", when: "find.found", in: { body: "find.room" } },
+        missing: { uses: "@core/http-response", when: "!find.found", values: { status: 404 } },
+        found: { uses: "@core/http-response", when: "find.found", in: { body: "find.room" } },
       },
     }
     const schemas = {
@@ -2372,6 +2372,51 @@ describe("WorkflowEditor", () => {
       expect(draft()?.nodes.found?.when).toBeUndefined()
       // Its data binding is untouched.
       expect(draft()?.nodes.found?.in).toEqual({ body: "find.room" })
+    })
+  })
+
+  describe("switch branches", () => {
+    const routed: WorkflowFile = {
+      lorien: 1,
+      nodes: {
+        request: { uses: "@core/http-request", values: { path: "/pets", method: "GET" } },
+        kind: {
+          uses: "@core/switch",
+          in: { value: "request.query" },
+          values: { field: "kind", cases: ["cat", "dog"] },
+        },
+        cats: { uses: "@core/http-response", when: "kind.case1", values: { body: "meow" } },
+        other: { uses: "@core/http-response", values: { status: 404 } },
+      },
+    }
+    const draft = () => useWorkflowDrafts.getState().drafts["test-tab"]?.workflow
+
+    async function open() {
+      vi.mocked(fetchWorkspaceSchemas).mockResolvedValue({})
+      vi.mocked(fetchWorkflowFile).mockResolvedValue(routed)
+      render(<WorkflowEditor path="workflows/pets/get.workflow" tabId="test-tab" />)
+      await waitFor(() => expect(capturedEdges?.some((e) => e.type === "condition")).toBe(true))
+    }
+
+    it("labels a case's condition edge with the value it matches", async () => {
+      await open()
+      const edge = capturedEdges?.find((e) => e.type === "condition" && e.target === "cats")
+      expect(edge).toMatchObject({ source: "kind", sourceHandle: "case1" })
+      expect(edge?.data?.label).toBe("= cat")
+    })
+
+    it("wiring a branch into any input sets the target's `when`, not an input", async () => {
+      await open()
+      act(() => {
+        capturedOnConnect?.({
+          source: "kind",
+          sourceHandle: "default",
+          target: "other",
+          targetHandle: "body",
+        })
+      })
+      expect(draft()?.nodes.other?.when).toBe("kind.default")
+      expect(draft()?.nodes.other?.in).toBeUndefined()
     })
   })
 })

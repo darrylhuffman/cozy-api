@@ -42,7 +42,7 @@ function startServerWithDebug(): Promise<{
           in: { msg: "request.body.msg" },
         },
         response: {
-          uses: "@core/response" as const,
+          uses: "@core/http-response" as const,
           in: { body: "echo.msg" },
         },
       },

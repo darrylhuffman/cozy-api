@@ -17,7 +17,7 @@
       }
     },
     "Response": {
-      "uses": "@core/response",
+      "uses": "@core/http-response",
       "in": {
         "body": "AddPet.pet"
       },

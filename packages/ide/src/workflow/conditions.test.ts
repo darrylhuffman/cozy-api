@@ -14,9 +14,9 @@ const wf: WorkflowFile = {
   nodes: {
     request: { uses: "@core/http-request" },
     find: { uses: "./find-room", in: { id: "request.params.id" } },
-    missing: { uses: "@core/response", when: "!find.found" },
+    missing: { uses: "@core/http-response", when: "!find.found" },
     book: { uses: "./book", when: "find.found", in: { room: "find.room" } },
-    booked: { uses: "@core/response", in: { body: "book" } },
+    booked: { uses: "@core/http-response", in: { body: "book" } },
   },
 }
 

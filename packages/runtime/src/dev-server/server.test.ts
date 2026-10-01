@@ -26,7 +26,7 @@ describe("mountWorkflows", () => {
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/add", method: "POST" } },
           add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
-          res: { uses: "@core/response", in: { body: "add.sum" }, values: { status: 200 } },
+          res: { uses: "@core/http-response", in: { body: "add.sum" }, values: { status: 200 } },
         },
       }),
     }
@@ -63,7 +63,7 @@ describe("mountWorkflows", () => {
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/echo", method: "POST" } },
           echo: { uses: "./echo", in: { title: "req.body.title" } },
-          res: { uses: "@core/response", in: { body: "echo" }, values: { status: 200 } },
+          res: { uses: "@core/http-response", in: { body: "echo" }, values: { status: 200 } },
         },
       }),
     }
@@ -94,7 +94,7 @@ describe("mountWorkflows", () => {
         lorien: 1,
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/key", method: "GET" } },
-          res: { uses: "@core/response", in: { body: "req.headers.x-api-key" } },
+          res: { uses: "@core/http-response", in: { body: "req.headers.x-api-key" } },
         },
       }),
     }
@@ -113,8 +113,8 @@ describe("mountWorkflows", () => {
         nodes: {
           getReq: { uses: "@core/http-request", values: { path: "/users", method: "GET" } },
           postReq: { uses: "@core/http-request", values: { path: "/users", method: "POST" } },
-          getRes: { uses: "@core/response", values: { body: "list" } },
-          postRes: { uses: "@core/response", in: { body: "postReq.body" } },
+          getRes: { uses: "@core/http-response", values: { body: "list" } },
+          postRes: { uses: "@core/http-response", in: { body: "postReq.body" } },
         },
       }),
     }
@@ -142,7 +142,11 @@ describe("mountWorkflows with debug integration", () => {
         lorien: 1,
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/echo", method: "POST" } },
-          res: { uses: "@core/response", in: { body: "req.body.msg" }, values: { status: 200 } },
+          res: {
+            uses: "@core/http-response",
+            in: { body: "req.body.msg" },
+            values: { status: 200 },
+          },
         },
       }),
     }
@@ -157,7 +161,11 @@ describe("mountWorkflows with debug integration", () => {
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/throw", method: "POST" } },
           boom: { uses: "./throw-node", in: { msg: "req.body.msg" } },
-          res: { uses: "@core/response", in: { body: "boom.result" }, values: { status: 200 } },
+          res: {
+            uses: "@core/http-response",
+            in: { body: "boom.result" },
+            values: { status: 200 },
+          },
         },
       }),
     }

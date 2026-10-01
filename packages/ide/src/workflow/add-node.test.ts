@@ -10,10 +10,10 @@ const baseWorkflow: WorkflowFile = {
 
 describe("addNode", () => {
   it("adds a new node with a unique id and the given uses + position", () => {
-    const next = addNode(baseWorkflow, "@core/response", { x: 200, y: 100 })
+    const next = addNode(baseWorkflow, "@core/http-response", { x: 200, y: 100 })
     expect(Object.keys(next.nodes)).toHaveLength(2)
     const newId = Object.keys(next.nodes).find((id) => id !== "request")!
-    expect(next.nodes[newId]).toEqual({ uses: "@core/response" })
+    expect(next.nodes[newId]).toEqual({ uses: "@core/http-response" })
     expect(next.view![newId]).toEqual({ x: 200, y: 100 })
   })
 
@@ -44,14 +44,14 @@ describe("addNode", () => {
   })
 
   it("strips the @core/ prefix for @core nodes", () => {
-    const next = addNode(baseWorkflow, "@core/response", { x: 0, y: 0 })
+    const next = addNode(baseWorkflow, "@core/http-response", { x: 0, y: 0 })
     const newId = Object.keys(next.nodes).find((id) => id !== "request")!
-    expect(newId).toBe("response")
+    expect(newId).toBe("httpResponse")
   })
 
   it("does not mutate the original workflow", () => {
     const before = JSON.stringify(baseWorkflow)
-    addNode(baseWorkflow, "@core/response", { x: 0, y: 0 })
+    addNode(baseWorkflow, "@core/http-response", { x: 0, y: 0 })
     expect(JSON.stringify(baseWorkflow)).toBe(before)
   })
 })

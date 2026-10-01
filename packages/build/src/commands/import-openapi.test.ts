@@ -15,7 +15,7 @@ describe("runImportOpenapi (integration)", () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it("loads spec, converts, writes per-operation nodes + _client.ts", async () => {
+  it("writes per-operation nodes and a client provider", async () => {
     const specPath = join(dir, "petstore.json")
     writeFileSync(
       specPath,
@@ -42,11 +42,12 @@ describe("runImportOpenapi (integration)", () => {
     )
 
     const outDir = join(dir, "out")
-    const result = await runImportOpenapi(specPath, { out: outDir })
+    const result = await runImportOpenapi(specPath, { root: dir, out: outDir })
 
     expect(result.apiSlug).toBe("petstore")
     expect(result.written).toContain("get-pet-by-id.ts")
-    expect(result.written).toContain("_client.ts")
+    expect(result.written).toContain("providers/petstore.ts")
+    expect(readFileSync(join(dir, "providers", "petstore.ts"), "utf-8")).toMatch(/defineProvider/)
     expect(result.errors).toEqual([])
     const opFile = readFileSync(join(outDir, "get-pet-by-id.ts"), "utf-8")
     expect(opFile).toMatch(/defineNode/)
@@ -73,14 +74,14 @@ describe("runImportOpenapi (integration)", () => {
 
     const outDir = join(dir, "out")
     // First import
-    await runImportOpenapi(specPath, { out: outDir })
+    await runImportOpenapi(specPath, { root: dir, out: outDir })
 
     // User edits the file, removes the marker
     const opPath = join(outDir, "list-things.ts")
     writeFileSync(opPath, "// my custom version\nexport default 'edited'\n")
 
     // Re-import without --force
-    const result = await runImportOpenapi(specPath, { out: outDir })
+    const result = await runImportOpenapi(specPath, { root: dir, out: outDir })
     expect(result.preserved).toContain("list-things.ts")
     expect(readFileSync(opPath, "utf-8")).toContain("my custom version")
   })
@@ -108,6 +109,7 @@ describe("runImportOpenapi (integration)", () => {
     writeFileSync(join(outDir, "y.ts"), "// user-authored, no marker\n")
 
     const result = await runImportOpenapi(specPath, {
+      root: dir,
       out: outDir,
       force: true,
     })

@@ -1,3 +1,4 @@
+import { isHttpResponse } from "../core/registry.js"
 import { isTriggerUses } from "../workflow/schedules.js"
 import type { WorkflowFile } from "../workflow/types.js"
 
@@ -7,12 +8,12 @@ import type { WorkflowFile } from "../workflow/types.js"
  * Includes:
  * - The trigger node itself
  * - All nodes forward-reachable from the trigger (explicit subgraph)
- * - Orphan nodes (no trigger owns them) that are NOT @core/response nodes,
+ * - Orphan nodes (no trigger owns them) that are NOT @core/http-response nodes,
  *   unless the trigger's direct subgraph contains no response node at all
  *   (in that case orphan response nodes are included so the trigger still has
  *   a way to produce a response).
  *
- * This prevents a floating @core/response (e.g., one using only $literal values)
+ * This prevents a floating @core/http-response (e.g., one using only $literal values)
  * from short-circuiting a different trigger's response in multi-trigger workflows.
  */
 export function buildTriggerSlice(
@@ -58,9 +59,9 @@ export function buildTriggerSlice(
 
   const triggerReachable = reachableFrom.get(triggerNodeId) ?? new Set([triggerNodeId])
 
-  // Check if the trigger already has a @core/response node in its explicit subgraph.
+  // Check if the trigger already has a @core/http-response node in its explicit subgraph.
   const hasExplicitResponse = [...triggerReachable].some(
-    (id) => id !== triggerNodeId && wf.nodes[id]?.uses === "@core/response",
+    (id) => id !== triggerNodeId && isHttpResponse(wf.nodes[id]?.uses ?? ""),
   )
 
   // Build the included node set.
@@ -71,7 +72,7 @@ export function buildTriggerSlice(
       included.add(id)
     } else if (!ownedByAnyTrigger.has(id)) {
       // Orphan node: include unless it's a response node and we already have one.
-      const isResponse = wf.nodes[id]?.uses === "@core/response"
+      const isResponse = isHttpResponse(wf.nodes[id]?.uses ?? "")
       if (!isResponse || !hasExplicitResponse) {
         included.add(id)
       }

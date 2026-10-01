@@ -1,3 +1,4 @@
+import { canonicalCoreId } from "../core/registry.js"
 import type { AnyNodeOrTrigger } from "../types.js"
 import { parseWhen } from "./dependencies.js"
 import { parseReference } from "./reference.js"
@@ -33,6 +34,17 @@ export function checkWiring(
     const ref = parseReference(raw)
     if (!ref || ref.path.length === 0) return
     const target = defs.get(ref.nodeId)
+    const source = workflow.nodes[ref.nodeId]
+    if (source && canonicalCoreId(source.uses) === "@core/switch") {
+      const branches = switchOutputs(source.values?.cases)
+      if (branches.includes(ref.path[0]!)) return
+      issues.push({
+        nodeId,
+        field,
+        message: `\`${raw}\` reads output \`${ref.path[0]}\`, but ${ref.nodeId} has no such output (outputs: ${branches.join(", ")})`,
+      })
+      return
+    }
     const shape = target ? objectShape(target.outputs) : null
     if (!shape || ref.path[0]! in shape) return
     issues.push({
@@ -122,4 +134,10 @@ function acceptsUndefined(schema: ZodLike): boolean {
 function keysOf(shape: Record<string, unknown>): string {
   const keys = Object.keys(shape)
   return keys.length > 0 ? keys.join(", ") : "none"
+}
+
+/** A switch's outputs: one `caseN` per case, then `default` and `value`. */
+function switchOutputs(cases: unknown): string[] {
+  const n = Array.isArray(cases) ? cases.length : 0
+  return [...Array.from({ length: n }, (_, i) => `case${i + 1}`), "default", "value"]
 }

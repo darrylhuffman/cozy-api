@@ -8,7 +8,7 @@ afterEach(() => {
 
 const schemas = {
   "@core/http-request": { color: null, inputs: {}, outputs: {} },
-  "@core/response": { color: null, inputs: {}, outputs: {} },
+  "@core/http-response": { color: null, inputs: {}, outputs: {} },
   "./nodes/save-user": { color: null, inputs: {}, outputs: {} },
 }
 
@@ -16,7 +16,7 @@ describe("AddNodePalette", () => {
   it("lists all schema keys", () => {
     render(<AddNodePalette schemas={schemas as never} onPick={vi.fn()} />)
     expect(screen.getByText("@core/http-request")).toBeInTheDocument()
-    expect(screen.getByText("@core/response")).toBeInTheDocument()
+    expect(screen.getByText("@core/http-response")).toBeInTheDocument()
     expect(screen.getByText("./nodes/save-user")).toBeInTheDocument()
   })
 
@@ -31,8 +31,8 @@ describe("AddNodePalette", () => {
   it("calls onPick with the chosen `uses` when an item is clicked", () => {
     const onPick = vi.fn()
     render(<AddNodePalette schemas={schemas as never} onPick={onPick} />)
-    fireEvent.click(screen.getByText("@core/response"))
-    expect(onPick).toHaveBeenCalledWith("@core/response")
+    fireEvent.click(screen.getByText("@core/http-response"))
+    expect(onPick).toHaveBeenCalledWith("@core/http-response")
   })
 
   it("marks sub-workflows with the FLOW badge", () => {

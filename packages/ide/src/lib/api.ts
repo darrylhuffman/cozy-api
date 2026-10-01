@@ -196,6 +196,10 @@ export interface NodeSchemas {
   color?: string | null
   /** Leading TSDoc/JSDoc extracted from the node source file. Null when absent. */
   description?: string | null
+  /** Core nodes only: the folder the Nodes panel lists it under ("triggers", "logic", ...). */
+  category?: string
+  /** Core nodes only: set on an old name that still works, naming its replacement. */
+  renamedTo?: string
   /** Set when the node is a sub-workflow: a `.workflow` file under `nodes/`. */
   subworkflow?: SubworkflowInfo
 }

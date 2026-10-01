@@ -1,10 +1,10 @@
 import { Hono } from "hono"
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
-import { defineNode } from "../define-node.js"
-import type { LoadedWorkflow } from "../dev-server/load.js"
-import { mountWorkflows } from "../dev-server/server.js"
-import { parseWorkflow } from "../workflow/parse.js"
+import { defineNode } from "../../define-node.js"
+import type { LoadedWorkflow } from "../../dev-server/load.js"
+import { mountWorkflows } from "../../dev-server/server.js"
+import { parseWorkflow } from "../../workflow/parse.js"
 
 describe("@core/variable", () => {
   it("feeds its value to the nodes that read it", async () => {
@@ -24,7 +24,7 @@ describe("@core/variable", () => {
           Request: { uses: "@core/http-request", values: { path: "/greet", method: "GET" } },
           role: { uses: "@core/variable", values: { value: "admin" } },
           Greet: { uses: "./nodes/greet", in: { name: "Request.query.name", role: "role.value" } },
-          Response: { uses: "@core/response", in: { body: "Greet.text" } },
+          Response: { uses: "@core/http-response", in: { body: "Greet.text" } },
         },
       }),
     }

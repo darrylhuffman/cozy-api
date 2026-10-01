@@ -1,6 +1,8 @@
-import type { NodeInstance, NodeSchemas, WorkflowFile } from "@/lib/api"
+import type { JsonSchema, NodeInstance, NodeSchemas, WorkflowFile } from "@/lib/api"
+import { caseLabel, isBranchPort, SWITCH_USES, switchCases } from "./core-nodes"
 import { type PortNode, schemaToRootedTree, schemaToTree } from "./schema-to-tree"
 import { inputFields, SUBWORKFLOW_INPUT } from "./subworkflow"
+import { unwrapSchema } from "./variables"
 
 export type { PortNode } from "./schema-to-tree"
 
@@ -168,6 +170,15 @@ export function derivePorts(
     }
   }
 
+  // Logic nodes: mark branch outputs, give a switch one output per case, and
+  // offer the attributes of whatever feeds `value` for `field`.
+  for (const [nodeId, instance] of Object.entries(workflow.nodes)) {
+    if (!LOGIC_NODES.has(instance.uses)) continue
+    const np = result.get(nodeId)
+    if (!np) continue
+    result.set(nodeId, applyLogicPorts(np, instance, workflow, schemas))
+  }
+
   // Apply hard-coded per-node conditional port filtering.
   // Currently only @core/http-request has conditional ports (body hidden for GET/DELETE).
   for (const [nodeId, instance] of Object.entries(workflow.nodes)) {
@@ -206,6 +217,93 @@ function applyHttpRequestConditional(ports: NodePorts, instance: NodeInstance): 
     ...ports,
     outputs: ports.outputs.filter((p) => p.id !== "body"),
   }
+}
+
+const LOGIC_NODES = new Set([SWITCH_USES, "@core/if", "@core/and", "@core/or", "@core/not"])
+
+function applyLogicPorts(
+  ports: NodePorts,
+  instance: NodeInstance,
+  workflow: WorkflowFile,
+  schemas: Record<string, NodeSchemas>,
+): NodePorts {
+  let outputs = ports.outputs
+  let inputChildren = ports.inputs.children
+  if (instance.uses === SWITCH_USES) {
+    const branch = (id: string, label: string): PortNode => ({
+      id,
+      label,
+      children: [],
+      isLeaf: true,
+      schema: { type: "boolean" },
+    })
+    const value = outputs.find((p) => p.id === "value") ?? {
+      id: "value",
+      label: "value",
+      children: [],
+      isLeaf: true,
+    }
+    outputs = [
+      ...switchCases(instance).map((c, i) => branch(`case${i + 1}`, caseLabel(c))),
+      branch("default", "default"),
+      value,
+    ]
+    // Cases are edited on their own output rows, not as an input.
+    inputChildren = inputChildren.filter((p) => p.id !== "cases")
+  }
+  outputs = outputs.map((p) => (isBranchPort(instance.uses, p.id) ? { ...p, branch: true } : p))
+
+  const options = attributeOptions(workflow, schemas, instance)
+  if (options.length > 0) {
+    inputChildren = inputChildren.map((p) =>
+      p.id === "field" ? { ...p, schema: { ...p.schema, type: "string", enum: options } } : p,
+    )
+  }
+  return {
+    inputs: { ...ports.inputs, children: inputChildren, isLeaf: inputChildren.length === 0 },
+    outputs,
+  }
+}
+
+/**
+ * The attributes a logic node's `field` can pick: the properties (two levels
+ * deep, dotted) of the output wired into its `value`, when its schema says.
+ */
+export function attributeOptions(
+  workflow: WorkflowFile,
+  schemas: Record<string, NodeSchemas>,
+  instance: NodeInstance,
+): string[] {
+  const raw = typeof instance.in === "object" ? instance.in?.value : undefined
+  if (typeof raw !== "string" || !REFERENCE.test(raw)) return []
+  const [sourceId, ...path] = raw.split(".")
+  const source = sourceId ? workflow.nodes[sourceId] : undefined
+  if (!source) return []
+  let schema = unwrapSchema(schemas[source.uses]?.outputs)
+  for (const seg of path) schema = propertiesOf(schema)[seg]
+  const out: string[] = []
+  const walk = (s: JsonSchema | undefined, prefix: string, depth: number) => {
+    for (const [key, child] of Object.entries(propertiesOf(s))) {
+      if (out.includes(prefix ? `${prefix}.${key}` : key)) continue
+      const name = prefix ? `${prefix}.${key}` : key
+      out.push(name)
+      if (depth < 1) walk(child, name, depth + 1)
+    }
+  }
+  walk(schema, "", 0)
+  return out
+}
+
+/** An object schema's properties; for a union, every option's, first one wins. */
+function propertiesOf(schema: JsonSchema | undefined): Record<string, JsonSchema> {
+  const s = unwrapSchema(schema)
+  const options = (s?.anyOf ?? s?.oneOf) as JsonSchema[] | undefined
+  if (!Array.isArray(options)) return s?.properties ?? {}
+  const out: Record<string, JsonSchema> = {}
+  for (const option of options) {
+    for (const [k, v] of Object.entries(propertiesOf(option))) out[k] ??= v
+  }
+  return out
 }
 
 /**

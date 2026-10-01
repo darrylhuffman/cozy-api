@@ -7,7 +7,7 @@ import { subscribeToFileEvents } from "@/lib/events"
 export const SCHEMA_REFRESH_DEBOUNCE_MS = 300
 
 interface SchemasState {
-  /** Node input/output schemas keyed by `uses` (e.g. "./nodes/x", "@core/response"). */
+  /** Node input/output schemas keyed by `uses` (e.g. "./nodes/x", "@core/http-response"). */
   schemas: Record<string, NodeSchemas>
   /** True once at least one fetch has succeeded. */
   loaded: boolean

@@ -23,8 +23,8 @@ export interface WriteResult {
  *   - File exists without marker → preserve (don't touch user-authored files)
  *   - --force → always overwrite
  *
- * The _client.ts file is treated specially: it's generated on first import only,
- * preserved on re-import unless --force is passed (matches design spec).
+ * A file marked `keepOnReimport` (the client provider) is written on first
+ * import only, and preserved on re-import unless --force is passed.
  */
 export async function writeGeneratedFiles(
   files: GeneratedFile[],
@@ -69,8 +69,8 @@ async function classifyFile(
   if (!exists) return "write"
   if (force) return "write"
 
-  // _client.ts: preserve unless --force, regardless of marker (per spec §3 of the supplement)
-  if (file.relativePath === "_client.ts") return "preserve"
+  // The client provider: preserve unless --force, regardless of marker.
+  if (file.keepOnReimport) return "preserve"
 
   // For per-operation files: check the marker
   const existingContent = await readFile(absPath, "utf-8")

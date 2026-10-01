@@ -61,22 +61,37 @@ describe("convertOpenApiSpec", () => {
     expect(result.apiSlug).toBe("petstore-api")
   })
 
-  it("emits one file per operation + _client.ts", () => {
+  it("emits one node per operation, plus a client provider", () => {
     const result = convertOpenApiSpec(petstoreSpec())
     const names = result.files.map((f) => f.relativePath)
     expect(names).toContain("list-pets.ts")
     expect(names).toContain("add-pet.ts")
     expect(names).toContain("get-pet-by-id.ts")
-    expect(names).toContain("_client.ts")
-    expect(result.files).toHaveLength(4)
+    expect(result.files).toHaveLength(3)
+    expect(result.selector).toBe("petstoreApi")
+    expect(result.provider).toMatchObject({ relativePath: "petstoreApi.ts", keepOnReimport: true })
+  })
+
+  it("defaults the base URL to the spec's first absolute server URL", () => {
+    const withServers = {
+      ...petstoreSpec(),
+      servers: [
+        { url: "/relative" },
+        { url: "https://{region}.x.com" },
+        { url: "https://api.x.com/v2" },
+      ],
+    } as OpenAPIObject
+    expect(convertOpenApiSpec(withServers).provider.source).toContain(
+      `.default("https://api.x.com/v2")`,
+    )
+    expect(
+      convertOpenApiSpec(withServers, { defaultBaseUrl: "https://override.dev" }).provider.source,
+    ).toContain(`.default("https://override.dev")`)
   })
 
   it("each operation file contains the lorien-openapi marker", () => {
     const result = convertOpenApiSpec(petstoreSpec())
-    for (const f of result.files) {
-      if (f.relativePath === "_client.ts") continue
-      expect(f.source).toMatch(/lorien-openapi: generated/)
-    }
+    for (const f of result.files) expect(f.source).toMatch(/lorien-openapi: generated/)
   })
 
   it("accepts apiSlug override", () => {

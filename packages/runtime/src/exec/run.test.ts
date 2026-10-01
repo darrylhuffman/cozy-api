@@ -27,7 +27,7 @@ describe("runWorkflow", () => {
       nodes: {
         req: { uses: "@core/http-request", values: { path: "/add", method: "POST" } },
         add: { uses: "./add", in: { a: "req.body.a", b: "req.body.b" } },
-        res: { uses: "@core/response", in: { body: "add.sum" }, values: { status: 200 } },
+        res: { uses: "@core/http-response", in: { body: "add.sum" }, values: { status: 200 } },
       },
     })
     const { errors, depsByNode } = validateWorkflow(wf)
@@ -85,7 +85,7 @@ describe("runWorkflow", () => {
         a: { uses: "./a", in: {} },
         b: { uses: "./b", in: {} },
         j: { uses: "./join", in: { a: "a.out", b: "b.out" }, after: ["req"] },
-        r: { uses: "@core/response", in: { body: "j.joined" } },
+        r: { uses: "@core/http-response", in: { body: "j.joined" } },
       },
     })
     const { depsByNode } = validateWorkflow(wf)
@@ -123,7 +123,7 @@ describe("runWorkflow", () => {
       lorien: 1,
       nodes: {
         req: { uses: "@core/http-request", values: { path: "/", method: "GET" } },
-        res: { uses: "@core/response", in: { body: "req.body" } },
+        res: { uses: "@core/http-response", in: { body: "req.body" } },
       },
     })
     const { depsByNode } = validateWorkflow(wf)
@@ -175,7 +175,7 @@ describe("runWorkflow", () => {
         req: { uses: "@core/http-request", values: { path: "/", method: "GET" } },
         slow: { uses: "./slow", in: {}, after: ["req"] },
         fail: { uses: "./fail", in: {}, after: ["req"] },
-        r: { uses: "@core/response", in: { body: "slow" } },
+        r: { uses: "@core/http-response", in: { body: "slow" } },
       },
     })
     const { depsByNode } = validateWorkflow(wf)
@@ -227,8 +227,8 @@ describe("runWorkflow", () => {
         reqB: { uses: "@core/http-request", values: { path: "/b", method: "GET" } },
         a: { uses: "./a", in: {}, after: ["reqA"] },
         b: { uses: "./b", in: {}, after: ["reqB"] },
-        resA: { uses: "@core/response", in: { body: "a.out" } },
-        resB: { uses: "@core/response", in: { body: "b.out" } },
+        resA: { uses: "@core/http-response", in: { body: "a.out" } },
+        resB: { uses: "@core/http-response", in: { body: "b.out" } },
       },
     })
     const { depsByNode } = validateWorkflow(wf)
@@ -269,7 +269,7 @@ describe("runWorkflow", () => {
       nodes: {
         req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
         n: { uses: "./strict", in: { email: "req.body.email" } },
-        r: { uses: "@core/response", in: { body: "n.ok" } },
+        r: { uses: "@core/http-response", in: { body: "n.ok" } },
       },
     })
     const { depsByNode } = validateWorkflow(wf)
@@ -312,7 +312,7 @@ describe("runWorkflow", () => {
       nodes: {
         req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
         n: { uses: "./coerced", in: { count: "req.body.n" } },
-        r: { uses: "@core/response", in: { body: "n.ok" } },
+        r: { uses: "@core/http-response", in: { body: "n.ok" } },
       },
     })
     const { depsByNode } = validateWorkflow(wf)
@@ -354,7 +354,7 @@ describe("runWorkflow", () => {
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
           n: { uses: "./echo", in: "req.body" },
-          r: { uses: "@core/response", in: { body: "n.ok" } },
+          r: { uses: "@core/http-response", in: { body: "n.ok" } },
         },
       })
       const { errors, depsByNode } = validateWorkflow(wf)
@@ -400,7 +400,7 @@ describe("runWorkflow", () => {
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
           n: { uses: "./echo", in: "req.body" },
-          r: { uses: "@core/response", in: { body: "n.ok" } },
+          r: { uses: "@core/http-response", in: { body: "n.ok" } },
         },
       })
       const { depsByNode } = validateWorkflow(wf)
@@ -441,7 +441,7 @@ describe("runWorkflow", () => {
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
           n: { uses: "./strict", in: "req.body" },
-          r: { uses: "@core/response", in: { body: "n.ok" } },
+          r: { uses: "@core/http-response", in: { body: "n.ok" } },
         },
       })
       const { depsByNode } = validateWorkflow(wf)
@@ -487,7 +487,7 @@ describe("runWorkflow", () => {
             uses: "./echo",
             values: { method: "POST", path: "/items" },
           },
-          r: { uses: "@core/response", in: { body: "n.ok" } },
+          r: { uses: "@core/http-response", in: { body: "n.ok" } },
         },
       })
       const { depsByNode } = validateWorkflow(wf)
@@ -532,7 +532,7 @@ describe("runWorkflow", () => {
             values: { x: "default", y: "kept" },
             in: { x: "req.body" },
           },
-          r: { uses: "@core/response", in: { body: "n.ok" } },
+          r: { uses: "@core/http-response", in: { body: "n.ok" } },
         },
       })
       const { errors, depsByNode } = validateWorkflow(wf)
@@ -575,7 +575,7 @@ describe("runWorkflow", () => {
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/", method: "POST" } },
           n: { uses: "./echo", in: { method: "GET" } },
-          r: { uses: "@core/response", in: { body: "n" } },
+          r: { uses: "@core/http-response", in: { body: "n" } },
         },
       })
       const { depsByNode } = validateWorkflow(wf)
@@ -615,7 +615,7 @@ describe("runWorkflow", () => {
       nodes: {
         req: { uses: "@core/http-request", values: { path: "/", method: "GET" } },
         b: { uses: "./boom", in: {} },
-        r: { uses: "@core/response", in: { body: "b" } },
+        r: { uses: "@core/http-response", in: { body: "b" } },
       },
     })
     const { depsByNode } = validateWorkflow(wf)
@@ -671,7 +671,7 @@ function buildTinyWorkflow() {
     nodes: {
       trigger: { uses: "@core/http-request", values: { path: "/hook-test", method: "POST" } },
       echo: { uses: "./echo", in: { msg: "trigger.body.msg" } },
-      response: { uses: "@core/response", in: { body: "echo.out" } },
+      response: { uses: "@core/http-response", in: { body: "echo.out" } },
     },
   })
   const { depsByNode } = validateWorkflow(wf)
@@ -708,7 +708,7 @@ function buildWorkflowWithBadInput() {
     nodes: {
       trigger: { uses: "@core/http-request", values: { path: "/bad-input", method: "POST" } },
       failing: { uses: "./strict", in: { msg: "trigger.body.msg" } },
-      response: { uses: "@core/response", in: { body: "failing.out" } },
+      response: { uses: "@core/http-response", in: { body: "failing.out" } },
     },
   })
   const { depsByNode } = validateWorkflow(wf)
@@ -744,7 +744,7 @@ function buildWorkflowWithThrowingNode() {
     nodes: {
       trigger: { uses: "@core/http-request", values: { path: "/throwing", method: "GET" } },
       throwing: { uses: "./throwing", in: {} },
-      response: { uses: "@core/response", in: { body: "trigger.body" } },
+      response: { uses: "@core/http-response", in: { body: "trigger.body" } },
     },
   })
   const { depsByNode } = validateWorkflow(wf)

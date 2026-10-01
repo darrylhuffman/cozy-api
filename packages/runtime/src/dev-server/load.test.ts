@@ -26,7 +26,7 @@ describe("loadWorkspace", () => {
             uses: "@core/http-request",
             values: { path: "/users", method: "POST" },
           },
-          res: { uses: "@core/response", in: { body: "req.body" } },
+          res: { uses: "@core/http-response", in: { body: "req.body" } },
         },
       }),
     )
@@ -59,7 +59,7 @@ describe("loadWorkspace", () => {
         lorien: 1,
         nodes: {
           req: { uses: "@core/http-request", values: { path: "/cancel", method: "POST" } },
-          res: { uses: "@core/response", in: { body: "req.body" } },
+          res: { uses: "@core/http-response", in: { body: "req.body" } },
         },
       }),
     )

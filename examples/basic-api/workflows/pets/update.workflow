@@ -16,7 +16,7 @@
       }
     },
     "Response": {
-      "uses": "@core/response",
+      "uses": "@core/http-response",
       "in": {
         "body": "UpdatePetStatus.body",
         "status": "UpdatePetStatus.status"

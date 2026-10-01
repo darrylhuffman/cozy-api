@@ -119,7 +119,7 @@ describe("runBuild (integration)", () => {
           nodes: {
             req: { uses: "@core/http-request", values: { path: "/hello", method: "GET" } },
             say: { uses: "./nodes/say-hello", in: {} },
-            res: { uses: "@core/response", in: { body: "say.greting" } },
+            res: { uses: "@core/http-response", in: { body: "say.greting" } },
           },
         }),
       )

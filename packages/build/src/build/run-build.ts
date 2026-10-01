@@ -14,6 +14,7 @@ import {
   loadWorkspace,
   middlewareChain,
   planProviders,
+  preflightRoutes,
   resolveCoreNode,
   validateWorkflow,
 } from "@darrylondil/lorien-runtime"
@@ -162,6 +163,17 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
   }
   const resolveNode = (uses: string) => resolveCoreNode(uses) ?? nodeImports.nodes[uses] ?? null
 
+  // Which workflows are valid, so preflight routes are planned from those only.
+  const valid = ws.workflows.filter((wf) => {
+    const { errors: shapeErrors } = validateWorkflow(wf.file)
+    if (shapeErrors.length > 0) return false
+    return nodeImports.errors.length > 0 || checkWiring(wf.file, resolveNode).length === 0
+  })
+  const preflights = preflightRoutes(
+    valid,
+    middlewareFiles.map((f) => f.dir),
+  )
+
   // Codegen each workflow
   const successfulPaths: string[] = []
   const scheduledPaths: string[] = []
@@ -190,6 +202,9 @@ export async function runBuild(opts: RunBuildOptions): Promise<RunBuildResult> {
       relativePath: basePath,
       perRequestProviders: providersGen.perRequest,
       middleware: middlewareChain(wf.relativePath, middlewareFiles).map((f) => f.path),
+      preflight: preflights
+        .filter((p) => p.owner === wf.relativePath)
+        .map((p) => ({ path: p.path, methods: p.methods, depth: p.dirs.length })),
     })
 
     // Slugify directory segments for the output path: [id] -> _id_
