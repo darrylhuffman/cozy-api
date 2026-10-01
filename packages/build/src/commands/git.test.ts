@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
   gitBranches,
   gitCommit,
+  gitDiscard,
   gitFetch,
   gitLog,
   gitMerge,
@@ -14,10 +15,15 @@ import {
   gitPull,
   gitPush,
   gitResolve,
+  gitSetIndex,
   gitShow,
   gitStage,
+  gitStash,
+  gitStashAction,
+  gitStashes,
   gitStatus,
   gitSwitch,
+  gitUndoCommit,
   gitUnstage,
   mountGitRoutes,
   parseStatus,
@@ -288,5 +294,110 @@ describe("branches, merges and remotes", () => {
       rmSync(origin, { recursive: true, force: true })
       rmSync(other, { recursive: true, force: true })
     }
+  })
+})
+
+describe("everyday actions", () => {
+  const a = () => join(ws, "workflows", "a.workflow")
+  const changes = async () => {
+    const s = await gitStatus(ws)
+    if (!s.repo) throw new Error("not a repo")
+    return s
+  }
+
+  it("discards changes to tracked files and deletes new ones", async () => {
+    writeFileSync(a(), "edited\n")
+    writeFileSync(join(ws, "new.ts"), "export {}\n")
+    rmSync(join(ws, "old.ts"))
+    await gitDiscard(ws, ["workflows/a.workflow", "new.ts", "old.ts"])
+    expect((await changes()).changes).toEqual([])
+    expect(readFileSync(a(), "utf-8")).toBe('{"lorien":1,"nodes":{}}\n')
+    expect(readFileSync(join(ws, "old.ts"), "utf-8")).toBe("export {}\n")
+  })
+
+  it("discards back to what's staged, not the last commit", async () => {
+    writeFileSync(a(), "staged\n")
+    await gitStage(ws, ["workflows/a.workflow"])
+    writeFileSync(a(), "on disk\n")
+    await gitDiscard(ws, ["workflows/a.workflow"])
+    expect(readFileSync(a(), "utf-8")).toBe("staged\n")
+    expect((await changes()).staged).toEqual([{ path: "workflows/a.workflow", status: "M" }])
+  })
+
+  it("writes the staged side of a file without touching the disk", async () => {
+    writeFileSync(a(), "line 1\nline 2\n")
+    await gitSetIndex(ws, "workflows/a.workflow", "line 1\n")
+    expect(await gitShow(ws, "workflows/a.workflow", "index")).toBe("line 1\n")
+    expect(readFileSync(a(), "utf-8")).toBe("line 1\nline 2\n")
+    const s = await changes()
+    expect(s.staged).toEqual([{ path: "workflows/a.workflow", status: "M" }])
+    expect(s.changes).toEqual([{ path: "workflows/a.workflow", status: "M" }])
+    // A new file can be staged in part too.
+    await gitSetIndex(ws, "part.ts", "export {}\n")
+    expect(run("ls-files", "apps/api/part.ts").trim()).toBe("apps/api/part.ts")
+    await expect(gitSetIndex(ws, "../x", "")).rejects.toThrow("outside the workspace")
+  })
+
+  it("commits everything when nothing is staged, amends, and undoes", async () => {
+    writeFileSync(a(), "edited\n")
+    writeFileSync(join(ws, "new.ts"), "export {}\n")
+    await expect(gitCommit(ws, "No stage")).rejects.toThrow("Nothing is staged")
+    await gitCommit(ws, "Everything", { all: true })
+    expect(run("show", "--name-only", "--format=", "HEAD").trim().split("\n").sort()).toEqual([
+      "apps/api/new.ts",
+      "apps/api/workflows/a.workflow",
+    ])
+    expect((await changes()).head?.subject).toBe("Everything")
+
+    // Amend with only a new message, then with a staged file and the old message.
+    await gitCommit(ws, "Renamed", { amend: true })
+    writeFileSync(join(ws, "more.ts"), "export {}\n")
+    await gitStage(ws, ["more.ts"])
+    await gitCommit(ws, "", { amend: true })
+    expect(run("log", "--format=%s").trim().split("\n")).toEqual(["Renamed", "Initial"])
+    expect(run("show", "--name-only", "--format=", "HEAD")).toContain("apps/api/more.ts")
+
+    // Undo keeps the changes, staged.
+    await gitUndoCommit(ws)
+    const s = await changes()
+    expect(s.head?.subject).toBe("Initial")
+    expect(s.staged.map((f) => f.path).sort()).toEqual([
+      "more.ts",
+      "new.ts",
+      "workflows/a.workflow",
+    ])
+    expect(readFileSync(a(), "utf-8")).toBe("edited\n")
+
+    // Undoing the first commit leaves an unborn branch with everything staged.
+    await gitUndoCommit(ws)
+    expect((await changes()).head).toBeNull()
+    await expect(gitUndoCommit(ws)).rejects.toThrow("no commit to undo")
+  })
+
+  it("stashes the workspace, lists, pops and drops stashes", async () => {
+    writeFileSync(a(), "edited\n")
+    writeFileSync(join(ws, "new.ts"), "export {}\n")
+    writeFileSync(join(repo, "README.md"), "outside\n")
+    await gitStash(ws, { message: "wip" })
+    let s = await changes()
+    expect(s.changes).toEqual([])
+    // Only the workspace is stashed.
+    expect(readFileSync(join(repo, "README.md"), "utf-8")).toBe("outside\n")
+    const [stash] = await gitStashes(ws)
+    expect(stash).toMatchObject({ index: 0 })
+    expect(stash?.message).toContain("wip")
+
+    await gitStashAction(ws, { index: 0, action: "pop" })
+    s = await changes()
+    expect(s.changes.map((c) => c.path).sort()).toEqual(["new.ts", "workflows/a.workflow"])
+    expect(await gitStashes(ws)).toEqual([])
+
+    await gitStash(ws, {})
+    await gitStashAction(ws, { index: 0, action: "drop" })
+    expect(await gitStashes(ws)).toEqual([])
+    await expect(gitStash(ws, {})).rejects.toThrow("no changes to stash")
+    await expect(gitStashAction(ws, { index: 3, action: "pop" })).rejects.toThrow(
+      "no longer exists",
+    )
   })
 })

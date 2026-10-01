@@ -3,20 +3,27 @@ import { create } from "zustand"
 import {
   abortMerge,
   commitStaged,
+  discardChanges,
   fetchGitBranches,
   fetchGitLog,
   fetchGitStatus,
   fetchRemotes,
+  fetchStashes,
   type GitBranch,
   type GitCommit,
   type GitFileChange,
+  type GitStash,
   type GitStatus,
   mergeBranch,
   pullBranch,
   pushBranch,
   resolveConflict,
+  setStagedContent,
   stageFiles,
+  stashAction,
+  stashChanges,
   switchBranch,
+  undoLastCommit,
   unstageFiles,
 } from "@/lib/api"
 import { subscribeToFileEvents } from "@/lib/events"
@@ -25,6 +32,7 @@ interface GitState {
   status: GitStatus | null
   commits: GitCommit[]
   branches: GitBranch[]
+  stashes: GitStash[]
   /** What a long-running sync is doing ("Pulling"), for the panel to show. */
   syncing: string | null
   /** Message from the last failed call; cleared by the next success. */
@@ -33,14 +41,30 @@ interface GitState {
   refresh(): Promise<void>
   stage(paths: string[]): Promise<void>
   unstage(paths: string[]): Promise<void>
-  /** Commits what's staged; resolves false (with `error` set) when it didn't. */
-  commit(message: string): Promise<boolean>
+  /** Throws away unstaged changes to these files (new files are deleted). */
+  discard(paths: string[]): Promise<void>
+  /** Sets a file's staged content, for staging or unstaging a single change. */
+  setStaged(path: string, content: string): Promise<boolean>
+  /**
+   * Commits what's staged; resolves false (with `error` set) when it didn't.
+   * `all` stages every change first, `amend` rewrites the last commit, and
+   * `then` pushes or syncs once committed.
+   */
+  commit(
+    message: string,
+    opts?: { amend?: boolean; all?: boolean; then?: "push" | "sync" | undefined },
+  ): Promise<boolean>
+  undoCommit(): Promise<void>
+  /** Pulls, then pushes. */
+  sync(): Promise<void>
+  stash(opts?: { message?: string; untracked?: boolean }): Promise<void>
+  stashAction(index: number, action: "apply" | "pop" | "drop"): Promise<void>
   loadBranches(): Promise<void>
   switchTo(branch: string): Promise<boolean>
   createBranch(name: string, from?: string): Promise<boolean>
   fetch(): Promise<void>
   pull(): Promise<void>
-  push(): Promise<void>
+  push(opts?: { force?: boolean }): Promise<void>
   merge(branch: string): Promise<boolean>
   abortMerge(): Promise<void>
   resolve(path: string, how: { content: string } | { take: "ours" | "theirs" }): Promise<boolean>
@@ -77,13 +101,14 @@ export const useGitStore = create<GitState>((set, get) => {
     status: null,
     commits: [],
     branches: [],
+    stashes: [],
     syncing: null,
     error: null,
     busy: false,
     refresh() {
       if (inFlight) return inFlight
-      inFlight = Promise.all([fetchGitStatus(), fetchGitLog()])
-        .then(([status, commits]) => set({ status, commits, error: null }))
+      inFlight = Promise.all([fetchGitStatus(), fetchGitLog(), fetchStashes().catch(() => [])])
+        .then(([status, commits, stashes]) => set({ status, commits, stashes, error: null }))
         .catch((e: Error) => set({ error: e.message }))
         .finally(() => {
           inFlight = null
@@ -92,6 +117,11 @@ export const useGitStore = create<GitState>((set, get) => {
     },
     stage: (paths) => act(() => stageFiles(paths)),
     unstage: (paths) => act(() => unstageFiles(paths)),
+    discard: (paths) => act(() => discardChanges(paths)),
+    async setStaged(path, content) {
+      await act(() => setStagedContent(path, content))
+      return get().error === null
+    },
     async loadBranches() {
       try {
         set({ branches: await fetchGitBranches() })
@@ -104,23 +134,40 @@ export const useGitStore = create<GitState>((set, get) => {
       sync("Creating branch", () => switchBranch(from ? { create: name, from } : { create: name })),
     fetch: async () => void (await sync("Fetching", fetchRemotes)),
     pull: async () => void (await sync("Pulling", pullBranch)),
-    push: async () => void (await sync("Pushing", pushBranch)),
+    push: async (opts = {}) =>
+      void (await sync(opts.force ? "Force pushing" : "Pushing", () => pushBranch(opts))),
     merge: (branch) => sync(`Merging ${branch}`, () => mergeBranch(branch)),
     abortMerge: async () => void (await sync("Aborting merge", abortMerge)),
     resolve: (path, how) => sync(`Resolving ${path}`, () => resolveConflict(path, how)),
-    async commit(message) {
+    undoCommit: async () => void (await sync("Undoing commit", undoLastCommit)),
+    async sync() {
+      if (await sync("Pulling", pullBranch)) {
+        // A pull that stopped on conflicts leaves a merge to finish first.
+        const status = get().status
+        if (status?.repo && status.merging) return
+        await sync("Pushing", () => pushBranch())
+      }
+    },
+    stash: async (opts = {}) => void (await sync("Stashing", () => stashChanges(opts))),
+    stashAction: async (index, action) =>
+      void (await sync(action === "drop" ? "Dropping stash" : "Applying stash", () =>
+        stashAction(index, action),
+      )),
+    async commit(message, opts = {}) {
       set({ busy: true })
       try {
-        await commitStaged(message)
+        await commitStaged(message, { amend: opts.amend === true, all: opts.all === true })
         set({ error: null })
-        await get().refresh()
-        return true
       } catch (e) {
         set({ error: (e as Error).message })
         return false
       } finally {
         set({ busy: false })
+        await get().refresh()
       }
+      if (opts.then === "push") await get().push()
+      if (opts.then === "sync") await get().sync()
+      return true
     },
   }
 })
@@ -132,6 +179,7 @@ export function resetGitStore(): void {
     status: null,
     commits: [],
     branches: [],
+    stashes: [],
     syncing: null,
     error: null,
     busy: false,

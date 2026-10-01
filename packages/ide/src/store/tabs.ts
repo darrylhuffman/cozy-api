@@ -119,7 +119,7 @@ export const useTabsStore = create<TabsState>()(
     }),
     {
       name: "lorien-ide-tabs",
-      version: 5,
+      version: 6,
       migrate(persistedState, fromVersion) {
         const state = persistedState as {
           tabs?: unknown
@@ -149,6 +149,19 @@ export const useTabsStore = create<TabsState>()(
         // that was open, else the code file.
         if (fromVersion < 5) {
           next = { ...next, activeId: next.activeWorkflowId ?? next.activeCodeId ?? null }
+        }
+        // v5 → v6: the Application map moved from a tab to a popup.
+        if (fromVersion < 6) {
+          const tabs = Array.isArray(next.tabs)
+            ? (next.tabs as Array<{ kind?: unknown; id?: unknown }>)
+            : []
+          if (tabs.some((t) => t.kind === "map")) {
+            const kept = tabs.filter((t) => t.kind !== "map")
+            const active = kept.some((t) => t.id === next.activeId)
+              ? next.activeId
+              : (kept[kept.length - 1]?.id ?? null)
+            next = { ...next, tabs: kept, activeId: active }
+          }
         }
         return next as never
       },

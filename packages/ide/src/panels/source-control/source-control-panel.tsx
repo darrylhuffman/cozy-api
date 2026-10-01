@@ -1,10 +1,26 @@
-import { FileCode, GitMerge, Minus, Plus, Sparkles, Workflow } from "lucide-react"
+import {
+  ChevronDown,
+  ExternalLink,
+  FileCode,
+  GitMerge,
+  Minus,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+  Undo2,
+  Workflow,
+} from "lucide-react"
 import { useEffect, useState } from "react"
-import type { GitCommit, GitConflict, GitFileChange, GitRevision } from "@/lib/api"
+import type { GitCommit, GitConflict, GitFileChange, GitRevision, GitStash } from "@/lib/api"
 import { openConflict, openDiff } from "@/lib/open-diff"
+import { openWorkspaceFile } from "@/lib/open-file"
 import { cn } from "@/lib/utils"
+import { confirmAction } from "@/store/confirm"
 import { GIT_LABEL, useGitStore } from "@/store/git"
+import { amendLastCommit, discardFiles, undoLastCommit } from "./actions"
 import { BranchBar } from "./branch-bar"
+import { ButtonMenu, RowMenu } from "./menus"
 import { suggestCommitMessage, summarize, workflowDiffFor } from "./summaries"
 
 /**
@@ -15,6 +31,7 @@ import { suggestCommitMessage, summarize, workflowDiffFor } from "./summaries"
 export function SourceControlPanel() {
   const status = useGitStore((s) => s.status)
   const commits = useGitStore((s) => s.commits)
+  const stashes = useGitStore((s) => s.stashes)
   const error = useGitStore((s) => s.error)
   const busy = useGitStore((s) => s.busy)
   const [message, setMessage] = useState("")
@@ -45,23 +62,49 @@ export function SourceControlPanel() {
   const { staged, changes, conflicts, merging } = status
   const unresolved = conflicts.length + status.conflictsElsewhere
   const draft = message === "" && merging ? merging.message : message
+  // Nothing staged: commit every change, as VS Code's smart commit does.
+  const commitAll = !merging && staged.length === 0 && changes.length > 0
   const canCommit = merging
     ? unresolved === 0 && draft.trim() !== "" && !busy
-    : staged.length > 0 && message.trim() !== "" && !busy
+    : (staged.length > 0 || commitAll) && message.trim() !== "" && !busy
+  const clean = !merging && staged.length === 0 && changes.length === 0
+  const git = useGitStore.getState
 
-  const commit = async () => {
+  const commit = async (then?: "push" | "sync") => {
     if (!canCommit) return
-    if (await useGitStore.getState().commit(draft)) setMessage("")
+    if (await git().commit(draft, { all: commitAll, then })) setMessage("")
+  }
+  const amend = async () => {
+    if (await amendLastCommit(message)) setMessage("")
   }
 
   const suggest = async () => {
     setSuggesting(true)
     try {
-      setMessage(await suggestCommitMessage(staged))
+      setMessage(await suggestCommitMessage(staged.length > 0 ? staged : changes))
     } finally {
       setSuggesting(false)
     }
   }
+
+  const count = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`
+  const commitLabel = merging
+    ? "Commit merge"
+    : staged.length > 0
+      ? `Commit ${count(staged.length, "file")}`
+      : commitAll
+        ? `Commit all ${count(changes.length, "change")}`
+        : "Nothing to commit"
+  // With nothing to commit, the button syncs or publishes instead, like VS Code's.
+  const syncButton =
+    clean && status.upstream && (status.ahead > 0 || status.behind > 0)
+      ? {
+          label: `Sync changes${status.behind ? ` ↓${status.behind}` : ""}${status.ahead ? ` ↑${status.ahead}` : ""}`,
+          run: () => void git().sync(),
+        }
+      : clean && !status.upstream && status.branch && status.head
+        ? { label: "Publish branch", run: () => void git().push() }
+        : null
 
   return (
     <Shell>
@@ -114,21 +157,71 @@ export function SourceControlPanel() {
           }}
           className="w-full resize-none rounded-md border border-input bg-background px-2.5 py-2 text-[12.5px] outline-none focus:border-primary"
         />
+        <div className="flex h-8">
+          {syncButton ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={syncButton.run}
+              className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-l-md bg-primary text-[12.5px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-45"
+            >
+              <RefreshCw aria-hidden className="size-3.5" />
+              {syncButton.label}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={!canCommit}
+              onClick={() => void commit()}
+              className="min-w-0 flex-1 rounded-l-md bg-primary text-[12.5px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-45"
+            >
+              {commitLabel}
+            </button>
+          )}
+          <ButtonMenu
+            label="Commit options"
+            items={[
+              { label: commitLabel, run: () => void commit(), disabled: !canCommit },
+              {
+                label: status.upstream ? "Commit & push" : "Commit & publish",
+                run: () => void commit("push"),
+                disabled: !canCommit || !status.branch,
+              },
+              {
+                label: "Commit & sync",
+                run: () => void commit("sync"),
+                disabled: !canCommit || !status.upstream,
+              },
+              null,
+              {
+                label:
+                  message.trim() === ""
+                    ? "Amend last commit (keep its message)"
+                    : "Amend last commit",
+                run: () => void amend(),
+                disabled: busy || !!merging || !status.head,
+              },
+              {
+                label: "Undo last commit",
+                run: () => void undoLastCommit(),
+                disabled: busy || !!merging || !status.head,
+              },
+            ]}
+            trigger={
+              <button
+                type="button"
+                aria-label="Commit options"
+                disabled={busy || !!merging}
+                className="flex w-7 items-center justify-center rounded-r-md border-l border-primary-foreground/25 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-45"
+              >
+                <ChevronDown className="size-3.5" />
+              </button>
+            }
+          />
+        </div>
         <button
           type="button"
-          disabled={!canCommit}
-          onClick={() => void commit()}
-          className="h-8 rounded-md bg-primary text-[12.5px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-45"
-        >
-          {merging
-            ? "Commit merge"
-            : staged.length === 0
-              ? "Stage changes to commit"
-              : `Commit ${staged.length} ${staged.length === 1 ? "file" : "files"}`}
-        </button>
-        <button
-          type="button"
-          disabled={staged.length === 0 || suggesting}
+          disabled={(staged.length === 0 && changes.length === 0) || suggesting}
           onClick={() => void suggest()}
           className="flex h-7 items-center justify-center gap-1.5 rounded-md border border-border text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-45"
         >
@@ -159,21 +252,10 @@ export function SourceControlPanel() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {conflicts.length > 0 && <ConflictSection conflicts={conflicts} />}
-        <FileSection
-          title="Staged"
-          files={staged}
-          base="HEAD"
-          head="index"
-          action={{ label: "Unstage", icon: Minus, run: (p) => useGitStore.getState().unstage(p) }}
-        />
-        <FileSection
-          title="Changes"
-          files={changes}
-          base="index"
-          head="worktree"
-          action={{ label: "Stage", icon: Plus, run: (p) => useGitStore.getState().stage(p) }}
-        />
-        <History commits={commits} />
+        <FileSection title="Staged" files={staged} />
+        <FileSection title="Changes" files={changes} />
+        <Stashes stashes={stashes} disabled={busy || !!merging} />
+        <History commits={commits} head={status.head?.hash ?? null} />
       </div>
     </Shell>
   )
@@ -196,36 +278,61 @@ function SectionTitle({ children, right }: { children: React.ReactNode; right?: 
   )
 }
 
-function FileSection({
-  title,
-  files,
-  base,
-  head,
-  action,
+type Section = "Staged" | "Changes"
+
+/** Diff bases: staged files compare to the last commit, changes to what's staged. */
+const REVS: Record<Section, { base: GitRevision; head: GitRevision }> = {
+  Staged: { base: "HEAD", head: "index" },
+  Changes: { base: "index", head: "worktree" },
+}
+
+function HeaderButton({
+  label,
+  icon: Icon,
+  onClick,
 }: {
-  title: string
-  files: GitFileChange[]
-  base: GitRevision
-  head: GitRevision
-  action: { label: string; icon: typeof Plus; run: (paths: string[]) => Promise<void> }
+  label: string
+  icon: typeof Plus
+  onClick: () => void
 }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="rounded p-0.5 opacity-0 hover:bg-accent hover:text-foreground focus:opacity-100 group-hover/section:opacity-100"
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  )
+}
+
+function FileSection({ title, files }: { title: Section; files: GitFileChange[] }) {
   if (files.length === 0 && title === "Staged") return null
-  const Icon = action.icon
+  const git = useGitStore.getState
+  const paths = files.map((f) => f.path)
   return (
     <section aria-label={title} className="pb-2">
       <SectionTitle
         right={
-          files.length > 0 && (
-            <button
-              type="button"
-              aria-label={`${action.label} all`}
-              title={`${action.label} all`}
-              onClick={() => void action.run(files.map((f) => f.path))}
-              className="rounded p-0.5 opacity-0 hover:bg-accent hover:text-foreground focus:opacity-100 group-hover/section:opacity-100"
-            >
-              <Icon className="h-3.5 w-3.5" />
-            </button>
-          )
+          files.length > 0 &&
+          (title === "Staged" ? (
+            <HeaderButton
+              label="Unstage all"
+              icon={Minus}
+              onClick={() => void git().unstage(paths)}
+            />
+          ) : (
+            <>
+              <HeaderButton
+                label="Discard all changes"
+                icon={Undo2}
+                onClick={() => void discardFiles(files)}
+              />
+              <HeaderButton label="Stage all" icon={Plus} onClick={() => void git().stage(paths)} />
+            </>
+          ))
         }
       >
         {title} <span className="ml-1 font-normal">{files.length}</span>
@@ -235,7 +342,7 @@ function FileSection({
       ) : (
         <ul className="px-1.5">
           {files.map((f) => (
-            <FileRow key={f.path} file={f} base={base} head={head} action={action} />
+            <FileRow key={f.path} file={f} section={title} />
           ))}
         </ul>
       )}
@@ -243,68 +350,114 @@ function FileSection({
   )
 }
 
-function FileRow({
-  file,
-  base,
-  head,
-  action,
+function RowButton({
+  label,
+  icon: Icon,
+  onClick,
 }: {
-  file: GitFileChange
-  base: GitRevision
-  head: GitRevision
-  action: { label: string; icon: typeof Plus; run: (paths: string[]) => Promise<void> }
+  label: string
+  icon: typeof Plus
+  onClick: () => void
 }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label.split(" ")[0] === "Open" ? "Open file" : label.replace(/ \S+$/, "")}
+      onClick={onClick}
+      className="mt-1 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-background hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  )
+}
+
+function FileRow({ file, section }: { file: GitFileChange; section: Section }) {
+  const { base, head } = REVS[section]
   const name = file.path.split("/").pop() ?? file.path
   const dir = file.path.split("/").slice(0, -1).join("/")
   const isWorkflow = file.path.endsWith(".workflow")
   const summary = useWorkflowSummary(isWorkflow ? file : null, base, head)
   const label = GIT_LABEL[file.status]
-  const Icon = action.icon
+  const git = useGitStore.getState
+  // A file deleted on disk has nothing to open.
+  const onDisk = !(section === "Changes" && file.status === "D")
+  const toggle =
+    section === "Staged"
+      ? { label: "Unstage", icon: Minus, run: () => void git().unstage([file.path]) }
+      : { label: "Stage", icon: Plus, run: () => void git().stage([file.path]) }
+  const discardLabel = file.status === "U" ? "Delete file" : "Discard changes"
   return (
-    <li className="group flex items-start gap-1 rounded-md hover:bg-accent">
-      <button
-        type="button"
-        onClick={() => openDiff(file.path, base, head)}
-        title={`${file.path}: ${label?.title ?? ""}`}
-        className="flex min-w-0 flex-1 items-start gap-2 px-1.5 py-1 text-left"
-      >
-        {isWorkflow ? (
-          <Workflow aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-        ) : (
-          <FileCode aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-info" />
-        )}
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="flex min-w-0 items-baseline gap-1.5 text-[13px]">
-            <span
-              className={cn("max-w-full shrink-0 truncate", file.status === "D" && "line-through")}
-            >
-              {name}
+    <RowMenu
+      label={`${name} actions`}
+      items={[
+        { label: "Open changes", run: () => openDiff(file.path, base, head) },
+        { label: "Open file", run: () => openWorkspaceFile(file.path), disabled: !onDisk },
+        null,
+        { label: `${toggle.label} changes`, run: toggle.run },
+        ...(section === "Changes"
+          ? [{ label: `${discardLabel}…`, run: () => void discardFiles([file]), destructive: true }]
+          : []),
+        null,
+        { label: "Copy path", run: () => void navigator.clipboard?.writeText(file.path) },
+      ]}
+    >
+      <li className="group flex items-start gap-1 rounded-md hover:bg-accent">
+        <button
+          type="button"
+          onClick={() => openDiff(file.path, base, head)}
+          title={`${file.path}: ${label?.title ?? ""}`}
+          className="flex min-w-0 flex-1 items-start gap-2 px-1.5 py-1 text-left"
+        >
+          {isWorkflow ? (
+            <Workflow aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+          ) : (
+            <FileCode aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-info" />
+          )}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="flex min-w-0 items-baseline gap-1.5 text-[13px]">
+              <span
+                className={cn(
+                  "max-w-full shrink-0 truncate",
+                  file.status === "D" && "line-through",
+                )}
+              >
+                {name}
+              </span>
+              <span className="truncate text-[11px] text-muted-foreground">{dir}</span>
             </span>
-            <span className="truncate text-[11px] text-muted-foreground">{dir}</span>
+            {summary && (
+              <span className="truncate text-[11px] text-muted-foreground">{summary}</span>
+            )}
           </span>
-          {summary && <span className="truncate text-[11px] text-muted-foreground">{summary}</span>}
-        </span>
-      </button>
-      <button
-        type="button"
-        aria-label={`${action.label} ${name}`}
-        title={action.label}
-        onClick={() => void action.run([file.path])}
-        className="mt-1 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-background hover:text-foreground focus:opacity-100 group-hover:opacity-100"
-      >
-        <Icon className="h-3.5 w-3.5" />
-      </button>
-      <span
-        role="img"
-        aria-label={label?.title}
-        className={cn(
-          "mt-1 mr-1.5 w-3 shrink-0 text-center font-mono text-[11px] font-semibold",
-          label?.className,
+        </button>
+        {onDisk && (
+          <RowButton
+            label={`Open ${name}`}
+            icon={ExternalLink}
+            onClick={() => openWorkspaceFile(file.path)}
+          />
         )}
-      >
-        {file.status}
-      </span>
-    </li>
+        {section === "Changes" && (
+          <RowButton
+            label={`${discardLabel} ${name}`}
+            icon={Undo2}
+            onClick={() => void discardFiles([file])}
+          />
+        )}
+        <RowButton label={`${toggle.label} ${name}`} icon={toggle.icon} onClick={toggle.run} />
+        <span
+          role="img"
+          aria-label={label?.title}
+          className={cn(
+            "mt-1 mr-1.5 w-3 shrink-0 text-center font-mono text-[11px] font-semibold",
+            label?.className,
+          )}
+        >
+          {file.status}
+        </span>
+      </li>
+    </RowMenu>
   )
 }
 
@@ -385,22 +538,114 @@ function ConflictSection({ conflicts }: { conflicts: GitConflict[] }) {
   )
 }
 
-function History({ commits }: { commits: GitCommit[] }) {
+function Stashes({ stashes, disabled }: { stashes: GitStash[]; disabled: boolean }) {
+  if (stashes.length === 0) return null
+  const git = useGitStore.getState
+  const drop = async (s: GitStash) => {
+    const ok = await confirmAction({
+      title: "Drop this stash?",
+      description: `"${s.message}" is deleted. This can't be undone.`,
+      confirmLabel: "Drop stash",
+      destructive: true,
+    })
+    if (ok) await git().stashAction(s.index, "drop")
+  }
+  return (
+    <section aria-label="Stashes" className="pb-2">
+      <SectionTitle>
+        Stashes <span className="ml-1 font-normal">{stashes.length}</span>
+      </SectionTitle>
+      <ul className="px-1.5">
+        {stashes.map((s) => (
+          <RowMenu
+            key={s.index}
+            label="Stash actions"
+            items={[
+              { label: "Pop stash", run: () => void git().stashAction(s.index, "pop"), disabled },
+              {
+                label: "Apply stash",
+                run: () => void git().stashAction(s.index, "apply"),
+                disabled,
+              },
+              null,
+              { label: "Drop stash…", run: () => void drop(s), disabled, destructive: true },
+            ]}
+          >
+            <li
+              className="group flex items-center gap-1 rounded-md py-0.5 pr-1.5 pl-1.5 text-[12.5px] hover:bg-accent"
+              title={`${s.message}\n${new Date(s.time * 1000).toLocaleString()}`}
+            >
+              <span className="min-w-0 flex-1 truncate">{s.message}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground group-hover:hidden">
+                {ago(s.time)}
+              </span>
+              <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  aria-label={`Pop stash ${s.message}`}
+                  title="Pop: apply and delete the stash"
+                  onClick={() => void git().stashAction(s.index, "pop")}
+                  className="rounded px-1 text-[11.5px] text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-45"
+                >
+                  Pop
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  aria-label={`Apply stash ${s.message}`}
+                  title="Apply: keep the stash too"
+                  onClick={() => void git().stashAction(s.index, "apply")}
+                  className="rounded px-1 text-[11.5px] text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-45"
+                >
+                  Apply
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  aria-label={`Drop stash ${s.message}`}
+                  title="Drop stash"
+                  onClick={() => void drop(s)}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-background hover:text-destructive disabled:opacity-45"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </span>
+            </li>
+          </RowMenu>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function History({ commits, head }: { commits: GitCommit[]; head: string | null }) {
   if (commits.length === 0) return null
   return (
     <section aria-label="History" className="pb-3">
       <SectionTitle>History</SectionTitle>
-      <ul className="px-3">
+      <ul className="px-1.5">
         {commits.map((c) => (
-          <li
+          <RowMenu
             key={c.hash}
-            className="flex items-baseline gap-2 py-0.5 text-[12.5px]"
-            title={`${c.subject}\n${c.author}, ${new Date(c.time * 1000).toLocaleString()}`}
+            label="Commit actions"
+            items={[
+              { label: "Copy commit hash", run: () => void navigator.clipboard?.writeText(c.hash) },
+              { label: "Copy message", run: () => void navigator.clipboard?.writeText(c.subject) },
+              ...(c.hash === head
+                ? [null, { label: "Undo last commit", run: () => void undoLastCommit() }]
+                : []),
+            ]}
           >
-            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{c.hash}</span>
-            <span className="min-w-0 flex-1 truncate">{c.subject}</span>
-            <span className="shrink-0 text-[11px] text-muted-foreground">{ago(c.time)}</span>
-          </li>
+            <li
+              className="flex items-baseline gap-2 rounded-md px-1.5 py-0.5 text-[12.5px] hover:bg-accent"
+              title={`${c.subject}\n${c.author}, ${new Date(c.time * 1000).toLocaleString()}`}
+            >
+              <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{c.hash}</span>
+              <span className="min-w-0 flex-1 truncate">{c.subject}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">{ago(c.time)}</span>
+            </li>
+          </RowMenu>
         ))}
       </ul>
     </section>

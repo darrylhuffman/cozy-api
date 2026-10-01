@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process"
-import { readFile, writeFile } from "node:fs/promises"
+import { readFile, rm, writeFile } from "node:fs/promises"
 import { resolve, sep } from "node:path"
 import type { Hono } from "hono"
 
@@ -44,6 +44,17 @@ export interface GitStatus {
   conflictsElsewhere: number
   /** Set while a merge (or a pull that merged) waits to be committed. */
   merging: { branch: string | null; message: string } | null
+  /** The commit the branch points at (anywhere in the repo), or null before the first commit. */
+  head: { hash: string; subject: string } | null
+}
+
+/** A `git stash` entry. Stashes belong to the whole repository. */
+export interface GitStash {
+  /** 0 for the newest (stash@{0}). */
+  index: number
+  message: string
+  /** Unix seconds. */
+  time: number
 }
 
 export interface GitBranch {
@@ -133,9 +144,12 @@ const UNMERGED: Record<string, [ConflictSide, ConflictSide]> = {
   UU: ["modified", "modified"],
 }
 
-export function parseStatus(out: string, prefix: string): Omit<GitStatus, "repo" | "merging"> {
+export function parseStatus(
+  out: string,
+  prefix: string,
+): Omit<GitStatus, "repo" | "merging" | "head"> {
   const entries = out.split("\0")
-  const result: Omit<GitStatus, "repo" | "merging"> = {
+  const result: Omit<GitStatus, "repo" | "merging" | "head"> = {
     branch: null,
     upstream: null,
     ahead: 0,
@@ -207,7 +221,18 @@ export async function gitStatus(root: string): Promise<GitStatus | { repo: false
     "--untracked-files=all",
     ":/",
   ])
-  return { repo: true, ...parseStatus(out, prefix), merging: await mergeState(root) }
+  const [merging, head] = await Promise.all([mergeState(root), headCommit(root)])
+  return { repo: true, ...parseStatus(out, prefix), merging, head }
+}
+
+async function headCommit(root: string): Promise<GitStatus["head"]> {
+  try {
+    const out = await git(root, ["log", "-1", "--format=%h%x1f%s", "HEAD"])
+    const [hash = "", subject = ""] = out.trim().split("\x1f")
+    return { hash, subject }
+  } catch {
+    return null
+  }
 }
 
 /** The merge in progress, if any: which branch, and git's prepared message. */
@@ -314,9 +339,20 @@ export async function gitUnstage(root: string, paths: string[]): Promise<void> {
   }
 }
 
-export async function gitCommit(root: string, message: string): Promise<GitCommit> {
-  if (message.trim() === "") throw new GitError("Write a commit message first", 400)
-  const status = await gitStatus(root)
+export interface CommitOptions {
+  /** Rewrite the last commit with what's staged; an empty message keeps its message. */
+  amend?: boolean
+  /** Stage every change in the workspace first, as VS Code's smart commit does. */
+  all?: boolean
+}
+
+export async function gitCommit(
+  root: string,
+  message: string,
+  opts: CommitOptions = {},
+): Promise<GitCommit> {
+  if (message.trim() === "" && !opts.amend) throw new GitError("Write a commit message first", 400)
+  let status = await gitStatus(root)
   if (!status.repo) throw new GitError("This workspace isn't in a git repository", 409)
   if (status.conflicts.length > 0 || status.conflictsElsewhere > 0) {
     throw new GitError(
@@ -326,9 +362,18 @@ export async function gitCommit(root: string, message: string): Promise<GitCommi
       409,
     )
   }
+  if (opts.amend) {
+    if (status.merging) throw new GitError("Finish or abort the merge before amending", 409)
+    if (!status.head) throw new GitError("There's no commit to amend yet", 409)
+  }
+  if (opts.all && !status.merging && status.staged.length === 0 && status.changes.length > 0) {
+    await git(root, ["add", "-A", "--", "."])
+    status = await gitStatus(root)
+    if (!status.repo) throw new GitError("This workspace isn't in a git repository", 409)
+  }
   // A merge commit takes the whole merge, including files outside the
-  // workspace; git can't commit part of one.
-  if (!status.merging && status.staged.length === 0) {
+  // workspace; git can't commit part of one. Amending may only change the message.
+  if (!status.merging && !opts.amend && status.staged.length === 0) {
     throw new GitError("Nothing is staged", 409)
   }
   if (!status.merging && status.stagedElsewhere > 0) {
@@ -337,10 +382,137 @@ export async function gitCommit(root: string, message: string): Promise<GitCommi
       409,
     )
   }
-  await git(root, ["commit", "-F", "-"], { input: message })
+  if (opts.amend && message.trim() === "") {
+    await git(root, ["commit", "--amend", "--no-edit"])
+  } else {
+    await git(root, ["commit", ...(opts.amend ? ["--amend"] : []), "-F", "-"], { input: message })
+  }
   const [latest] = await gitLog(root, 1)
   if (!latest) throw new GitError("Committed, but couldn't read the new commit")
   return latest
+}
+
+/**
+ * Undoes the last commit but keeps its changes staged (`reset --soft`), like
+ * VS Code's Undo Last Commit. The first commit is undone by removing the branch ref.
+ */
+export async function gitUndoCommit(root: string): Promise<void> {
+  await refuseWhileMerging(root, "undo a commit")
+  const status = await gitStatus(root)
+  if (!status.repo || !status.head) throw new GitError("There's no commit to undo", 409)
+  try {
+    await git(root, ["rev-parse", "-q", "--verify", "HEAD~1"])
+  } catch {
+    await git(root, ["update-ref", "-d", "HEAD"])
+    return
+  }
+  await git(root, ["reset", "--soft", "HEAD~1"])
+}
+
+/**
+ * Throws away unstaged changes: tracked files go back to their staged (or
+ * committed) content, new untracked files are deleted.
+ */
+export async function gitDiscard(root: string, paths: string[]): Promise<void> {
+  const status = await gitStatus(root)
+  if (!status.repo) throw new GitError("This workspace isn't in a git repository", 409)
+  const conflicted = paths.filter((p) => status.conflicts.some((c) => c.path === p))
+  if (conflicted.length > 0) {
+    throw new GitError(`${conflicted[0]} has a merge conflict. Resolve it instead.`, 409)
+  }
+  const untracked = new Set(status.changes.filter((c) => c.status === "U").map((c) => c.path))
+  const tracked = paths.filter((p) => !untracked.has(p) && status.changes.some((c) => c.path === p))
+  for (const p of paths) {
+    if (untracked.has(p)) await rm(inside(root, p), { force: true })
+  }
+  if (tracked.length > 0) await git(root, ["restore", "--worktree", "--", ...tracked])
+}
+
+/**
+ * Replaces a file's staged content without touching the disk. The IDE stages
+ * or unstages single changes (hunks) by writing the index side it computed.
+ */
+export async function gitSetIndex(root: string, path: string, content: string): Promise<void> {
+  inside(root, path)
+  const prefix = (await gitPrefix(root)) ?? ""
+  const file = `${prefix}${path.split(sep).join("/")}`
+  const entry = await git(root, ["ls-files", "-s", "--", path]).catch(() => "")
+  // Keep an executable bit or symlink mode the file already has.
+  const mode = /^(\d{6}) /.exec(entry)?.[1] ?? "100644"
+  const blob = (await git(root, ["hash-object", "-w", "--stdin"], { input: content })).trim()
+  // Run from the top of the repository, where the path is relative to.
+  const top = (await git(root, ["rev-parse", "--show-toplevel"])).trim()
+  await git(top, ["update-index", "--add", "--cacheinfo", `${mode},${blob},${file}`])
+}
+
+/** The repository's stashes, newest first. */
+export async function gitStashes(root: string): Promise<GitStash[]> {
+  let out: string
+  try {
+    out = await git(root, ["stash", "list", "--format=%gd%x1f%s%x1f%ct"])
+  } catch {
+    return []
+  }
+  return out
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [ref = "", message = "", time = "0"] = line.split("\x1f")
+      return { index: Number(/\{(\d+)\}/.exec(ref)?.[1] ?? 0), message, time: Number(time) }
+    })
+}
+
+/** Stashes the workspace's changes (new files too, unless `keepUntracked`). */
+export async function gitStash(
+  root: string,
+  opts: { message?: unknown; untracked?: unknown } = {},
+): Promise<void> {
+  await refuseWhileMerging(root, "stash")
+  const status = await gitStatus(root)
+  if (!status.repo) throw new GitError("This workspace isn't in a git repository", 409)
+  const untracked = opts.untracked !== false
+  const has = status.staged.length > 0 || status.changes.some((c) => untracked || c.status !== "U")
+  if (!has) throw new GitError("There are no changes to stash", 409)
+  const message = typeof opts.message === "string" && opts.message.trim() ? opts.message.trim() : ""
+  await git(root, [
+    "stash",
+    "push",
+    ...(untracked ? ["--include-untracked"] : []),
+    ...(message ? ["-m", message] : []),
+    "--",
+    ".",
+  ])
+}
+
+/** Applies, pops or drops a stash. Conflicts are left for the panel to show. */
+export async function gitStashAction(
+  root: string,
+  body: { index?: unknown; action?: unknown },
+): Promise<void> {
+  const index = body.index ?? 0
+  if (typeof index !== "number" || !Number.isInteger(index) || index < 0) {
+    throw new GitError("Expected { index: number }", 400)
+  }
+  if (body.action !== "apply" && body.action !== "pop" && body.action !== "drop") {
+    throw new GitError('Expected { action: "apply" | "pop" | "drop" }', 400)
+  }
+  if (!(await gitStashes(root)).some((s) => s.index === index)) {
+    throw new GitError("That stash no longer exists", 404)
+  }
+  const ref = `stash@{${index}}`
+  if (body.action === "drop") {
+    await git(root, ["stash", "drop", "-q", ref])
+    return
+  }
+  await refuseWhileMerging(root, "apply a stash")
+  try {
+    await git(root, ["stash", body.action, ref])
+  } catch (e) {
+    // A stash that conflicts is applied with markers and kept; show the conflicts.
+    const status = await gitStatus(root)
+    if (status.repo && (status.conflicts.length > 0 || status.conflictsElsewhere > 0)) return
+    throw e
+  }
 }
 
 /** Local and remote branches, most recently committed first. */
@@ -454,13 +626,17 @@ export async function gitPull(root: string): Promise<void> {
   await merging(root, ["pull", "--no-rebase", "--no-edit"])
 }
 
-/** Pushes the current branch, setting its upstream on origin the first time. */
-export async function gitPush(root: string): Promise<void> {
+/**
+ * Pushes the current branch, setting its upstream on origin the first time.
+ * `force` overwrites the remote branch (with a lease, so it refuses if
+ * someone else pushed since the last fetch).
+ */
+export async function gitPush(root: string, opts: { force?: boolean } = {}): Promise<void> {
   await refuseWhileMerging(root, "push")
   const status = await gitStatus(root)
   if (!status.repo || !status.branch) throw new GitError("Switch to a branch before pushing", 409)
   if (status.upstream) {
-    await git(root, ["push"])
+    await git(root, ["push", ...(opts.force ? ["--force-with-lease"] : [])])
     return
   }
   const remotes = (await git(root, ["remote"])).split("\n").filter(Boolean)
@@ -569,15 +745,31 @@ export function mountGitRoutes(app: Hono, root: string): void {
   post("/api/git/switch", (b) => gitSwitch(root, b))
   post("/api/git/fetch", () => gitFetch(root))
   post("/api/git/pull", () => gitPull(root))
-  post("/api/git/push", () => gitPush(root))
+  post("/api/git/push", (b) => gitPush(root, { force: b.force === true }))
   post("/api/git/merge", (b) => gitMerge(root, b.branch))
   post("/api/git/merge-abort", () => gitMergeAbort(root))
   post("/api/git/resolve", (b) => gitResolve(root, b))
+  post("/api/git/discard", (b) => gitDiscard(root, checkPaths(root, b.paths)))
+  post("/api/git/set-index", async (b) => {
+    if (typeof b.path !== "string" || typeof b.content !== "string") {
+      throw new GitError("Expected { path, content }", 400)
+    }
+    await gitSetIndex(root, b.path, b.content)
+  })
+  post("/api/git/undo-commit", () => gitUndoCommit(root))
+  app.get("/api/git/stashes", (c) => handle(c, async () => ({ stashes: await gitStashes(root) })))
+  post("/api/git/stash", (b) => gitStash(root, b))
+  post("/api/git/stash-action", (b) => gitStashAction(root, b))
   app.post("/api/git/commit", (c) =>
     handle(c, async () => {
-      const body = (await c.req.json().catch(() => ({}))) as { message?: unknown }
+      const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
       if (typeof body.message !== "string") throw new GitError("Expected { message }", 400)
-      return { commit: await gitCommit(root, body.message) }
+      return {
+        commit: await gitCommit(root, body.message, {
+          amend: body.amend === true,
+          all: body.all === true,
+        }),
+      }
     }),
   )
 }

@@ -282,3 +282,29 @@ body,
   overflow: hidden;
   border: 1px solid var(--border);
 }
+
+/* Source Control change marks in the code editor's gutter (see git-gutter.ts). */
+.monaco-editor .margin-view-overlays .git-gutter {
+  left: 3px !important;
+  width: 3px !important;
+  cursor: pointer;
+}
+.monaco-editor .git-gutter-added {
+  background: var(--success);
+}
+.monaco-editor .git-gutter-modified {
+  background: var(--info);
+}
+.monaco-editor .git-gutter-removed::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--destructive);
+}
+.monaco-editor .git-gutter-removed.git-gutter-top::after {
+  top: -4px;
+  bottom: auto;
+}
