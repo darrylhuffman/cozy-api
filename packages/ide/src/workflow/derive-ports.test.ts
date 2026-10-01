@@ -555,7 +555,7 @@ describe("derivePorts — logic nodes", () => {
       outputs: { type: "object", properties: { default: { type: "boolean" }, value: {} } },
     },
     "@core/if": {
-      inputs: { type: "object", properties: { value: {} } },
+      inputs: { type: "object", properties: { value: {}, field: { type: "string" } } },
       outputs: {
         type: "object",
         properties: { true: { type: "boolean" }, false: { type: "boolean" }, value: {} },
@@ -589,6 +589,15 @@ describe("derivePorts — logic nodes", () => {
       .get("Role")!
       .inputs.children.find((p) => p.id === "field")
     // The picker browses the type of what `value` reads: Find.user.
+    expect(Object.keys(field?.fieldsOf?.properties ?? {})).toEqual(["role", "profile"])
+  })
+
+  it("gives an if's field the same picker", () => {
+    const ports = derivePorts(
+      { ...wf, nodes: { ...wf.nodes, Gate: { uses: "@core/if", in: { value: "Find.user" } } } },
+      schemas,
+    )
+    const field = ports.get("Gate")!.inputs.children.find((p) => p.id === "field")
     expect(Object.keys(field?.fieldsOf?.properties ?? {})).toEqual(["role", "profile"])
   })
 
