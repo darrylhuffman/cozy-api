@@ -2,7 +2,9 @@ import { readdir, readFile, stat } from "node:fs/promises"
 import { extname, join, relative } from "node:path"
 import type { AnyNodeOrTrigger } from "../types.js"
 import {
+  flattenedOrigins,
   flattenWorkflow,
+  type NodeOrigins,
   SubworkflowError,
   type SubworkflowMap,
   subworkflowUses,
@@ -17,6 +19,8 @@ export interface LoadedWorkflow {
   file: WorkflowFile
   /** The file as written, when flattening changed it. */
   source?: WorkflowFile
+  /** Where each node brought in from a sub-workflow was written, when there are any. */
+  origins?: NodeOrigins
 }
 
 export interface LoadedWorkspace {
@@ -47,11 +51,14 @@ export async function loadWorkspace(root: string): Promise<LoadedWorkspace> {
           if (!(e instanceof SubworkflowError)) throw e
           throw new Error(`${e.nodeId}.${e.field}: ${e.message}`)
         }
+        const relativePath = relative(root, abs).replaceAll("\\", "/")
         workflows.push({
           absolutePath: abs,
-          relativePath: relative(root, abs).replaceAll("\\", "/"),
+          relativePath,
           file,
-          ...(file !== source ? { source } : {}),
+          ...(file !== source
+            ? { source, origins: flattenedOrigins(source, relativePath, subworkflows) }
+            : {}),
         })
       } catch (e) {
         errors.push({ path: abs, message: (e as Error).message })

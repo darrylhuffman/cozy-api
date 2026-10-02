@@ -4,6 +4,7 @@ import { defineNode } from "../define-node.js"
 import { testWorkflow } from "../testing/test-workflow.js"
 import { traceWorkflow } from "../testing/trace-workflow.js"
 import {
+  flattenedOrigins,
   flattenWorkflow,
   SubworkflowError,
   type SubworkflowMap,
@@ -331,5 +332,68 @@ describe("subworkflowPorts", () => {
       inputs: { eventId: "string", quantity: "number" },
       outputs: ["event", "available", "totalCents"],
     })
+  })
+})
+
+describe("flattenedOrigins", () => {
+  it("says which file and node each flattened node came from", () => {
+    const origins = flattenedOrigins(createOrder, "workflows/orders/create.workflow", subworkflows)
+    const flat = flattenWorkflow(createOrder, subworkflows)
+    expect(Object.keys(origins).sort()).toEqual(
+      Object.keys(flat.nodes)
+        .filter((id) => id.startsWith("ReserveSeats__"))
+        .sort(),
+    )
+    expect(origins.ReserveSeats__FindEvent).toEqual({
+      frames: [
+        { workflowPath: "workflows/orders/create.workflow", nodeId: "ReserveSeats" },
+        { workflowPath: "nodes/orders/reserve-seats.workflow", nodeId: "FindEvent" },
+      ],
+    })
+    expect(origins.ReserveSeats__Input?.role).toBe("input")
+    expect(origins.ReserveSeats__Output?.role).toBe("output")
+    expect(origins.Request).toBeUndefined()
+  })
+
+  it("lists every level of a nested sub-workflow", () => {
+    const outer: SubworkflowMap = {
+      ...subworkflows,
+      "./nodes/orders/outer": {
+        uses: "./nodes/orders/outer",
+        relativePath: "nodes/orders/outer.workflow",
+        file: parseWorkflow({
+          lorien: 1,
+          nodes: {
+            Input: { uses: "@core/input", values: { fields: { eventId: "string" } } },
+            Seats: { uses: "./nodes/orders/reserve-seats", in: { eventId: "Input.eventId" } },
+          },
+        }),
+      },
+    }
+    const wf = parseWorkflow({ lorien: 1, nodes: { Wrap: { uses: "./nodes/orders/outer" } } })
+    const origins = flattenedOrigins(wf, "workflows/w.workflow", outer)
+    expect(origins.Wrap__Seats__FindEvent?.frames.map((f) => f.nodeId)).toEqual([
+      "Wrap",
+      "Seats",
+      "FindEvent",
+    ])
+    expect(Object.keys(origins)).toContain("Wrap__Seats__Input")
+  })
+})
+
+describe("mocks inside a sub-workflow", () => {
+  it("stand in for an inner node by its flattened id", async () => {
+    const result = await testWorkflow(createOrder, {
+      request: { params: { id: "nope" }, body: { quantity: 1 } },
+      nodes,
+      subworkflows,
+      mocks: {
+        ReserveSeats__FindEvent: {
+          output: { found: true, event: { id: "mocked", seatsLeft: 5, priceCents: 100 } },
+        },
+      },
+    })
+    expect(result.status).toBe(201)
+    expect(result.body).toEqual({ eventId: "mocked", totalCents: 100 })
   })
 })

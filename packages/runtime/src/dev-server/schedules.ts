@@ -62,7 +62,7 @@ export function prepareSchedules(
         const runId = opts.debug?.newRunId() ?? crypto.randomUUID()
         const startedAt = Date.now()
         const request: RequestEnvelope = { method: SCHEDULE_METHOD, path: cron }
-        const debugRun = opts.debug?.buildRun(runId, wf.relativePath, nodeId, request)
+        const debugRun = opts.debug?.buildRun(runId, wf.relativePath, nodeId, request, wf.origins)
         const scope = opts.providers
           ? await opts.providers.open({ requestId: runId, timestamp: startedAt })
           : null

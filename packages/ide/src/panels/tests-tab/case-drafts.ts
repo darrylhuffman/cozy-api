@@ -100,16 +100,33 @@ export function lastRunOf(
     p === workflowPath || p.endsWith(`/${workflowPath}`) || workflowPath.endsWith(p)
   for (const run of runs) {
     if (!samePath(run.workflowPath)) continue
+    // A sub-workflow node runs as its nodes: its input is what its Input
+    // received, its output what its Output handed back.
+    const groupOf = (nodeId: string, role: "input" | "output") => {
+      const origin = run.origins?.[nodeId]
+      return origin?.role === role && origin.frames.length === 2
+        ? (origin.frames[0]?.nodeId ?? null)
+        : null
+    }
     for (let i = run.events.length - 1; i >= 0; i--) {
       const ev = run.events[i]!.event
-      if (ev.type !== "before-node" || !ids.has(ev.nodeId)) continue
+      if (ev.type !== "before-node") continue
+      const group = groupOf(ev.nodeId, "input")
+      const nodeId = ids.has(ev.nodeId) ? ev.nodeId : group && ids.has(group) ? group : null
+      if (!nodeId) continue
       const after = run.events.slice(i + 1).map((e) => e.event)
-      const done = after.find((e) => e.type === "after-node" && e.nodeId === ev.nodeId)
-      const failed = after.find((e) => e.type === "error" && e.nodeId === ev.nodeId)
-      if (done?.type === "after-node")
-        return { nodeId: ev.nodeId, input: ev.input, output: done.output }
-      if (failed?.type === "error")
-        return { nodeId: ev.nodeId, input: ev.input, error: failed.error.message }
+      const done = after.find((e) =>
+        e.type !== "after-node"
+          ? false
+          : nodeId === ev.nodeId
+            ? e.nodeId === ev.nodeId
+            : groupOf(e.nodeId, "output") === nodeId,
+      )
+      const failed = after.find(
+        (e) => e.type === "error" && (e.nodeId === ev.nodeId || e.nodeId.startsWith(`${nodeId}__`)),
+      )
+      if (done?.type === "after-node") return { nodeId, input: ev.input, output: done.output }
+      if (failed?.type === "error") return { nodeId, input: ev.input, error: failed.error.message }
     }
   }
   return null

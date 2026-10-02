@@ -60,9 +60,13 @@ export class CaseFileError extends Error {
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v)
 
-/** `nodes/users/save-user.ts` → `nodes/users/save-user.cases.json` */
+/**
+ * `nodes/users/save-user.ts` → `nodes/users/save-user.cases.json`. A
+ * sub-workflow's cases sit next to it the same way:
+ * `nodes/orders/reserve-seats.workflow` → `nodes/orders/reserve-seats.cases.json`.
+ */
 export function casesPathFor(nodePath: string): string {
-  return `${nodePath.replace(/\.ts$/, "")}${CASES_SUFFIX}`
+  return `${nodePath.replace(/\.(ts|workflow)$/, "")}${CASES_SUFFIX}`
 }
 
 /** `./nodes/users/save-user` (a workflow's `uses`) → `nodes/users/save-user.ts` */

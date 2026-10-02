@@ -1,4 +1,5 @@
 import type { WebSocket } from "ws"
+import type { NodeOrigins } from "../workflow/flatten.js"
 import type { Breakpoint, ClientMessage, ServerMessage } from "./debug-protocol.js"
 
 interface PauseFrame {
@@ -74,6 +75,8 @@ export class DebugSession {
     workflowPath: string,
     runId: string,
     startedAt: number,
+    /** Where nodes from sub-workflows were written: a breakpoint there stops them too. */
+    origins?: NodeOrigins,
   ): {
     onBeforeNode: (nodeId: string, input: Record<string, unknown>) => Promise<void>
     onAfterNode: (nodeId: string, output: Record<string, unknown>) => Promise<void>
@@ -88,17 +91,35 @@ export class DebugSession {
     }
     this.runs.set(runId, state)
 
+    const hasBreakpoint = (path: string, nodeId: string, phase: "before" | "after") =>
+      (this.breakpoints.get(path) ?? []).some(
+        (b) =>
+          b.nodeId === nodeId &&
+          (phase === "before"
+            ? b.kind === "before"
+            : b.kind === "after" || b.kind.startsWith("port:")),
+      )
+    // A node from a sub-workflow stops on a breakpoint set in the sub-workflow's
+    // own file; the sub-workflow node in the caller stops as its Input starts
+    // and as its Output finishes.
+    const breakpointAt = (nodeId: string, phase: "before" | "after"): boolean => {
+      const origin = origins?.[nodeId]
+      if (!origin) return hasBreakpoint(workflowPath, nodeId, phase)
+      const leaf = origin.frames[origin.frames.length - 1]
+      if (leaf && hasBreakpoint(leaf.workflowPath, leaf.nodeId, phase)) return true
+      const owner = origin.frames[origin.frames.length - 2]
+      const edge = phase === "before" ? origin.role === "input" : origin.role === "output"
+      return !!owner && edge && hasBreakpoint(owner.workflowPath, owner.nodeId, phase)
+    }
+
     const shouldPause = (nodeId: string, phase: "before" | "after"): boolean => {
       if (state.stepMode === "step") return true
-      const bps = this.breakpoints.get(workflowPath) ?? []
       if (phase === "before") {
         if (state.stepMode === "step-over" && state.stepOverNodeId !== nodeId) return true
-        return bps.some((b) => b.nodeId === nodeId && b.kind === "before")
+        return breakpointAt(nodeId, "before")
       }
       if (state.stepMode === "step-over" && state.stepOverNodeId === nodeId) return false
-      return bps.some(
-        (b) => b.nodeId === nodeId && (b.kind === "after" || b.kind.startsWith("port:")),
-      )
+      return breakpointAt(nodeId, "after")
     }
 
     const pause = (nodeId: string, phase: "before" | "after", payload: unknown): Promise<void> => {

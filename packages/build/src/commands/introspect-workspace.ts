@@ -48,6 +48,11 @@ export interface SubworkflowInfo {
   respondsWith: number[]
   /** True when a Response inside it (or in a sub-workflow it uses) can answer the request. */
   responds: boolean
+  /**
+   * Its nodes a request test can mock, by their id once flattened under the
+   * node that uses it (`FindEvent`, `Seats__FindEvent` for a nested one).
+   */
+  mockable: string[]
   /** Nodes inside, not counting its Input and Output. */
   nodeCount: number
 }
@@ -363,6 +368,12 @@ export function subworkflowSchemas(
     const responds =
       Object.values(file.nodes).some((n) => isHttpResponse(n.uses)) ||
       nested.some((info) => info.responds)
+    const mockable = Object.entries(file.nodes).flatMap(([id, n]) => {
+      if (subworkflows[n.uses]) {
+        return (schemaFor(n.uses)?.subworkflow?.mockable ?? []).map((m) => `${id}__${m}`)
+      }
+      return n.uses.startsWith("@core/") ? [] : [id]
+    })
     const base = uses.split("/").pop() ?? uses
     out[uses] = {
       name: file.label ?? base.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase()),
@@ -374,6 +385,7 @@ export function subworkflowSchemas(
         path: sub.relativePath,
         respondsWith: [...new Set(respondsWith)].sort((a, b) => a - b),
         responds,
+        mockable,
         nodeCount: Object.values(file.nodes).filter(
           (n) => n.uses !== SUBWORKFLOW_INPUT && n.uses !== SUBWORKFLOW_OUTPUT,
         ).length,

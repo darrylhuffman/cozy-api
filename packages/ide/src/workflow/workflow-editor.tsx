@@ -43,6 +43,7 @@ import { useGitStore } from "@/store/git"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
 import { useWorkspaceProviders } from "@/store/providers"
+import { runStatusesIn } from "@/store/run-origins"
 import { useSchemas, useSchemasStore } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
 import { CANVAS_GRID, useSettings } from "@/store/settings"
@@ -230,26 +231,15 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
   const setDirty = useTabsStore((s) => s.setDirty)
   const setSelected = useSelectionStore((s) => s.setSelected)
   const selectedRunId = useDebugSessionStore((s) => s.selectedRunId)
-  const selectedRunEvents = useDebugSessionStore((s) => {
-    const run = s.runs.find((r) => r.runId === s.selectedRunId)
-    return run?.events ?? null
-  })
-  const selectedRunPausedFrame = useDebugSessionStore((s) => {
-    const run = s.runs.find((r) => r.runId === s.selectedRunId)
-    return run?.pausedFrame ?? null
-  })
-  const nodeStatuses = useMemo<Map<string, NodeStatus>>(() => {
-    if (!selectedRunEvents) return new Map()
-    const statuses = new Map<string, NodeStatus>()
-    for (const e of selectedRunEvents) {
-      if (e.event.type === "before-node") statuses.set(e.event.nodeId, "running")
-      else if (e.event.type === "after-node") statuses.set(e.event.nodeId, "completed")
-      else if (e.event.type === "error") statuses.set(e.event.nodeId, "errored")
-      else if (e.event.type === "skipped") statuses.set(e.event.nodeId, "skipped")
-    }
-    if (selectedRunPausedFrame) statuses.set(selectedRunPausedFrame.nodeId, "paused")
-    return statuses
-  }, [selectedRunEvents, selectedRunPausedFrame])
+  const selectedRun = useDebugSessionStore(
+    (s) => s.runs.find((r) => r.runId === s.selectedRunId) ?? null,
+  )
+  // The selected run's progress in this file: its own run, or one of a
+  // workflow that uses this file as a sub-workflow.
+  const nodeStatuses = useMemo<Map<string, NodeStatus>>(
+    () => (selectedRun ? runStatusesIn(selectedRun, path) : new Map()),
+    [selectedRun, path],
+  )
   const breakpoints = useDebugSessionStore((s) => s.breakpoints)
   const toggleBreakpoint = useDebugSessionStore((s) => s.toggleBreakpoint)
   // Refs so the node-init effect can stamp the current run status and
@@ -1106,24 +1096,30 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
   // Push the latest node status from the debug-session store into each RFNode's
   // data. Separated from the node-init effect so debug status changes never
   // cause a full rebuild (and never interfere with collapse-on-edit behaviour).
+  // nodesRef follows too: onNodesChange builds from it, and a stale copy
+  // would wipe the status on the next measure or drag.
   useEffect(() => {
-    setNodes((nds) =>
-      nds.map((n) => ({
+    setNodes((nds) => {
+      const next = nds.map((n) => ({
         ...n,
         data: { ...n.data, nodeStatus: nodeStatuses.get(n.id) },
-      })),
-    )
+      }))
+      nodesRef.current = next
+      return next
+    })
   }, [nodeStatuses])
 
   // Push the latest breakpoint state into each RFNode's data so the canvas
   // renders red dots for nodes/ports that have breakpoints set.
   useEffect(() => {
-    setNodes((nds) =>
-      nds.map((n) => ({
+    setNodes((nds) => {
+      const next = nds.map((n) => ({
         ...n,
         data: { ...n.data, ...breakpointDataFor(breakpoints, path, n.id) },
-      })),
-    )
+      }))
+      nodesRef.current = next
+      return next
+    })
   }, [breakpoints, path])
 
   // Subscribe to edge-fired events from the currently-selected run and briefly

@@ -1,6 +1,8 @@
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { type RunRecord, useDebugSessionStore } from "@/store/debug-session"
+import { framesOf } from "@/store/run-origins"
+import { SubworkflowIcon } from "@/workflow/subworkflow-icon"
 import { SectionLabel } from "./section-label"
 
 export function Timeline({ runId }: { runId: string | null }) {
@@ -15,10 +17,15 @@ export function Timeline({ runId }: { runId: string | null }) {
       </div>
       {run ? (
         <div className="flex flex-col gap-1 px-3.5 font-mono text-[11.5px]">
-          {foldEdges(run).map((row, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: the timeline only ever appends
-            <TimelineRow key={i} row={row} />
-          ))}
+          {nestRows(run, foldEdges(run)).map((item, i) =>
+            item.kind === "group" ? (
+              // biome-ignore lint/suspicious/noArrayIndexKey: the timeline only ever appends
+              <GroupHeader key={i} group={item} />
+            ) : (
+              // biome-ignore lint/suspicious/noArrayIndexKey: the timeline only ever appends
+              <TimelineRow key={i} row={item.row} depth={item.depth} label={item.label} />
+            ),
+          )}
           {run.outcome.kind === "ok" && (
             <div className="flex gap-3 text-success">
               <span className="w-12 shrink-0 text-muted-foreground">+{run.outcome.totalMs}ms</span>
@@ -102,6 +109,67 @@ function foldEdges(run: RunRecord): FoldedRow[] {
   return rows
 }
 
+interface GroupItem {
+  kind: "group"
+  depth: number
+  /** The sub-workflow node, in the file above it. */
+  nodeId: string
+  /** The sub-workflow's file. */
+  path: string
+}
+
+type NestedItem = GroupItem | { kind: "row"; row: FoldedRow; depth: number; label: string }
+
+const INDENT_PX = 14
+
+/**
+ * Rows from inside a sub-workflow (`ReserveSeats__FindEvent`) go under a
+ * heading for the sub-workflow node, indented one step per level, and show
+ * the inner node's own id.
+ */
+function nestRows(run: RunRecord, rows: FoldedRow[]): NestedItem[] {
+  const out: NestedItem[] = []
+  let open: string[] = []
+  for (const row of rows) {
+    const frames = framesOf(run, row.nodeId)
+    const chain = frames.slice(0, -1).map((f) => f.nodeId)
+    let same = 0
+    while (same < chain.length && same < open.length && chain[same] === open[same]) same++
+    for (let k = same; k < chain.length; k++) {
+      out.push({
+        kind: "group",
+        depth: k,
+        nodeId: chain[k] as string,
+        path: frames[k + 1]?.workflowPath ?? "",
+      })
+    }
+    open = chain
+    out.push({
+      kind: "row",
+      row,
+      depth: chain.length,
+      label: frames[frames.length - 1]?.nodeId ?? row.nodeId,
+    })
+  }
+  return out
+}
+
+function GroupHeader({ group }: { group: GroupItem }) {
+  return (
+    <div
+      className="flex items-center gap-1.5 pt-1 text-muted-foreground"
+      style={{ paddingLeft: 60 + group.depth * INDENT_PX }}
+      title={group.path}
+    >
+      <SubworkflowIcon className="h-3 w-3 text-flow" />
+      <span className="truncate text-foreground">{group.nodeId}</span>
+      <span className="truncate">
+        {group.path.replace(/^nodes\//, "").replace(/\.workflow$/, "")}
+      </span>
+    </div>
+  )
+}
+
 const phaseTone: Record<FoldedRow["kind"], string> = {
   before: "text-info",
   after: "text-success",
@@ -109,7 +177,7 @@ const phaseTone: Record<FoldedRow["kind"], string> = {
   skipped: "text-muted-foreground",
 }
 
-function TimelineRow({ row }: { row: FoldedRow }) {
+function TimelineRow({ row, depth, label }: { row: FoldedRow; depth: number; label: string }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="flex flex-col gap-1">
@@ -124,7 +192,13 @@ function TimelineRow({ row }: { row: FoldedRow }) {
       >
         <span className="w-12 shrink-0 text-muted-foreground">+{row.offsetMs}ms</span>
         <span className={cn("w-12 shrink-0", phaseTone[row.kind])}>{row.kind}</span>
-        <span className="min-w-0 truncate text-foreground">{row.nodeId}</span>
+        <span
+          className="min-w-0 truncate text-foreground"
+          style={depth > 0 ? { paddingLeft: depth * INDENT_PX } : undefined}
+          title={row.nodeId}
+        >
+          {label}
+        </span>
         {row.precedingEdges.length > 0 && (
           <span className="shrink-0 text-muted-foreground">
             ← {row.precedingEdges.length} input{row.precedingEdges.length > 1 ? "s" : ""}

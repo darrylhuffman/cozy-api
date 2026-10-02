@@ -158,3 +158,78 @@ describe("runNodeCases", () => {
     expect(out[0]?.results.map((r) => r.caseId)).toEqual(["b"])
   })
 })
+
+describe("sub-workflow cases", () => {
+  let root: string
+  const findUser = defineNode({
+    inputs: z.object({ id: z.string() }),
+    outputs: z.object({ found: z.boolean(), user: z.any() }),
+    async run({ id }) {
+      return id === "u1" ? { found: true, user: { id, name: "Ada" } } : { found: false, user: null }
+    },
+  })
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "lorien-subcases-"))
+    await mkdir(join(root, "nodes/users"), { recursive: true })
+    await writeFile(
+      join(root, "nodes/users/require-user.workflow"),
+      JSON.stringify({
+        lorien: 1,
+        nodes: {
+          Input: { uses: "@core/input", values: { fields: { id: "string" } } },
+          Find: { uses: "./nodes/users/find-user", in: { id: "Input.id" } },
+          Missing: {
+            uses: "@core/http-response",
+            when: "!Find.found",
+            values: { status: 404, body: { error: "no user" } },
+          },
+          Output: { uses: "@core/output", in: { user: "Find.user" } },
+        },
+      }),
+    )
+    await writeFile(
+      join(root, "nodes/users/require-user.cases.json"),
+      JSON.stringify({
+        lorien: 1,
+        cases: [
+          {
+            id: "found",
+            name: "hands back the user",
+            input: { id: "u1" },
+            expect: { output: { user: { name: "Ada" } } },
+          },
+          {
+            id: "missing",
+            name: "answers 404",
+            input: { id: "nope" },
+            expect: { output: { response: { status: 404, body: { error: "no user" } } } },
+          },
+          { id: "typed", name: "checks input types", input: { id: 7 }, expect: { error: "id" } },
+          {
+            id: "unknown",
+            name: "refuses unknown inputs",
+            input: { x: 1 },
+            expect: { error: "x" },
+          },
+        ],
+      }),
+    )
+  })
+  afterEach(() => rm(root, { recursive: true, force: true }))
+
+  it("feeds the case through the Input and checks what the Output hands back", async () => {
+    const out = await runNodeCases({
+      root,
+      nodes: { "./nodes/users/find-user": findUser },
+      services: {} as never,
+    })
+    expect(out).toHaveLength(1)
+    expect(out[0]?.error).toBeUndefined()
+    expect(out[0]?.results.map((r) => [r.caseId, r.passed, r.failures])).toEqual([
+      ["found", true, []],
+      ["missing", true, []],
+      ["typed", true, []],
+      ["unknown", true, []],
+    ])
+  })
+})

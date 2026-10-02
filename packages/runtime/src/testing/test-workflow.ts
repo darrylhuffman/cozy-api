@@ -1,6 +1,7 @@
 import { resolveCoreNode } from "../core/registry.js"
 import { runWorkflow, type WorkflowRunResult } from "../exec/run.js"
 import { computeExecutionPlan } from "../exec/topology.js"
+import type { NodeMock } from "../requests/types.js"
 import type { AnyNodeOrTrigger, MockProviders, Services } from "../types.js"
 import type { SubworkflowMap } from "../workflow/flatten.js"
 import { flattenWorkflow } from "../workflow/flatten.js"
@@ -24,6 +25,12 @@ export interface TestWorkflowOptions {
    * uses any. A file from `loadWorkflowFile` is already flattened and needs none.
    */
   subworkflows?: SubworkflowMap
+  /**
+   * Node id → what it returns (`{ output }`) or throws (`{ error }`) instead
+   * of running. A node inside a sub-workflow goes by its flattened id,
+   * `<SubWorkflowNode>__<Inner>`.
+   */
+  mocks?: Record<string, NodeMock>
   /** Specify which trigger node to fire when the workflow has multiple. Defaults to the first @core/http-request found. */
   trigger?: string
 }
@@ -58,6 +65,7 @@ export async function testWorkflow(
     },
     services: (opts.services ?? {}) as Services,
     resolveNode: (uses) => resolveCoreNode(uses) ?? opts.nodes?.[uses] ?? null,
+    ...(opts.mocks ? { mocks: opts.mocks } : {}),
   })
 }
 

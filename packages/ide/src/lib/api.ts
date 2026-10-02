@@ -213,6 +213,8 @@ export interface SubworkflowInfo {
   respondsWith: number[]
   /** True when a Response inside it can answer the request (missing on older servers). */
   responds?: boolean
+  /** Its nodes a request test can mock, by the id they run under in its caller, minus the caller's prefix. */
+  mockable?: string[]
   /** Nodes inside it, not counting its Input and Output. */
   nodeCount: number
 }
