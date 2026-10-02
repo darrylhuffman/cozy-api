@@ -24,7 +24,7 @@ const LORIEN_RANGE = lorienRange(
  * Used to render both AGENTS.md (no frontmatter) and .claude/skills/lorien-api/SKILL.md
  * (with frontmatter wrapper). Single source of truth — both renderers must use this.
  */
-export const SKILL_BODY = `<!-- lorien-skill-version: 11 -->
+export const SKILL_BODY = `<!-- lorien-skill-version: 12 -->
 
 # lorien project guide
 
@@ -37,7 +37,8 @@ workflows/**/*.workflow          ← HTTP routes (you author these)
 workflows/**/*.requests.json     ← saved requests for that route (tests)
 workflows/**/_middleware.ts      ← middleware for every route in that folder and below
 nodes/**/*.ts                    ← typed compute units, one defineNode per file; ALL business logic
-nodes/**/*.cases.json            ← test cases for the node next to it
+nodes/**/*.workflow             ← sub-workflows: a group of nodes used as one node
+nodes/**/*.cases.json            ← test cases for the node (or sub-workflow) next to it
 providers/**/<name>.ts           ← injected dependencies (db, logger, cache, clients), one defineProvider per file, read by its selector
 providers/<name>/                ← code private to one provider (migrations, SQL, client setup)
 lib/                             ← plain shared code: zod schemas, helpers
@@ -205,6 +206,30 @@ What lorien answers for you:
 - **500** when a node throws, returns something that doesn't match its \`outputs\` schema, or no Response runs (every Response was skipped by its \`when\`; give each outcome one): \`{ "error": "Internal Server Error" }\`, with the error logged. \`lorien dev\` adds the message as \`detail\`.
 - **405** with an \`Allow\` header when the path exists under other methods, **404** otherwise, both as JSON: \`{ "error": "Method Not Allowed" }\`, \`{ "error": "Not Found" }\`.
 
+## Sub-workflows
+
+A sub-workflow is a \`.workflow\` file under \`nodes/\` that other workflows use like a node: \`"uses": "./nodes/orders/reserve-seats"\` (no extension). Use one when several routes repeat the same group of nodes. In the IDE, select nodes and choose "Extract to sub-workflow".
+
+\`\`\`json
+{ "lorien": 1, "label": "Reserve seats", "nodes": {
+  "Input": { "uses": "@core/input", "values": { "fields": { "eventId": "string", "quantity": "number" } } },
+  "FindEvent": { "uses": "./nodes/events/find-event", "in": { "id": "Input.eventId" } },
+  "NoEvent": { "uses": "@core/response", "when": "!FindEvent.found", "values": { "status": 404, "body": { "error": "event not found" } } },
+  "Capacity": { "uses": "./nodes/orders/check-capacity", "when": "FindEvent.found",
+    "in": { "event": "FindEvent.event", "quantity": "Input.quantity" } },
+  "Output": { "uses": "@core/output", "in": { "event": "FindEvent.event", "available": "Capacity.available" } }
+} }
+\`\`\`
+
+- **\`@core/input\`** lists the inputs in \`values.fields\` (name → \`string\`, \`number\`, \`boolean\` or \`json\`); the inner nodes read \`Input.<field>\`. Values pass through unchanged, so wire numbers from the query or path through a node that coerces them.
+- **\`@core/output\`** is an \`in\` map; each key is an output the caller reads as \`<Node>.<key>\` (\`ReserveSeats.available\`).
+- The caller wires each input in its \`in\` (\`"in": { "eventId": "Request.params.id", "quantity": "Request.body.quantity" }\`) and can use \`when\` and \`after\` as on any node.
+- A Response inside a sub-workflow answers the request, like one in the route itself.
+- A sub-workflow hands back all of its outputs or none: if its Output is skipped (here, when \`Capacity\` is), every node reading the sub-workflow is skipped too. Branch on an output flag, or answer with a Response inside.
+- \`label\` is the name the IDE shows; it falls back to the file name.
+- Sub-workflows can use other sub-workflows. No cycles.
+- When a workflow runs, each inner node runs as \`<Node>__<Inner>\` (\`ReserveSeats__FindEvent\`). Use that id in saved-request \`mocks\` and \`node\` checks and in \`traceWorkflow\`. A breakpoint set in the sub-workflow's tab stops every route that uses it, and the Debug timeline groups its steps under the sub-workflow node.
+
 ## Providers (db, logger, cache, API client)
 
 1. Create \`providers/<name>.ts\` (folders are fine: \`providers/aws/s3.ts\`) exporting \`defineProvider({ selector, color, lifetime, env, uses, create, dispose })\`. \`selector\` is required and is the name nodes read it by: a string literal, starting with a letter, then letters, digits, \`_\` or \`-\`. Use camelCase (\`httpClient\`): a dashed selector must be quoted everywhere (\`{ "http-client": http }\`, \`providers["http-client"]\`). Name the file after the selector, and put a one-sentence doc comment above \`defineProvider\` to describe it (the IDE shows it on the provider's card).
@@ -262,6 +287,7 @@ A CORS preflight (\`OPTIONS\`) on a path your workflows serve runs the middlewar
 | Anything that decides, validates, transforms or queries data for a route | a node in \`nodes/\` |
 | A zod schema or helper shared by several nodes | \`lib/\` |
 | A new HTTP route | \`workflows/<path>.workflow\` |
+| A group of nodes several routes repeat | a sub-workflow, \`nodes/<path>.workflow\` |
 | Auth, CORS, rate limits or request logging for a group of routes | \`workflows/<folder>/_middleware.ts\` |
 
 Don't create new top-level folders.
@@ -289,6 +315,8 @@ Two JSON test files, both run by \`lorien test\` and shown in the IDE's Tests an
 
 \`expect.output\` matches as a subset unless \`"match": "equals"\`. \`expect.error\` passes when the thrown message contains the text. \`mocks\` replace a provider with just the listed methods (\`{ "returns": value }\` or \`{ "throws": "message" }\`); any method not listed is missing.
 
+A sub-workflow takes cases too, in \`nodes/<path>/<name>.cases.json\` next to its \`.workflow\` file: \`input\` gives its Input fields and \`expect.output\` checks what its Output received. When a Response inside it answers instead, the output is \`{ "response": { "status": 404, "body": {...} } }\`.
+
 **Saved requests**: \`workflows/<path>/<workflow>.requests.json\`, next to the \`.workflow\` file:
 
 \`\`\`json
@@ -315,7 +343,8 @@ Checks: \`target\` is \`status\`, \`header\`, \`body\`, \`duration\` or \`node\`
 ## Renaming and moving
 
 The IDE's rename updates everything. By hand:
-- **A node file**: update every \`"uses"\` that points at it, and move its \`.cases.json\` with it.
+- **A node file or sub-workflow**: update every \`"uses"\` that points at it, and move its \`.cases.json\` with it.
+- **A sub-workflow's Input field or Output key**: update the \`in\` of every node that uses it, and every \`<Node>.<key>\` read of the renamed output.
 - **A node id in a workflow**: update the \`in\` and \`when\` references and \`after\` lists that name it, plus \`mocks\` and \`node\` checks in the workflow's \`.requests.json\`.
 - **A workflow file**: the route stays \`values.path\`; move its \`.requests.json\` with it.
 
@@ -615,6 +644,7 @@ curl http://localhost:3000/hello
 
 - \`workflows/\` — HTTP routes as \`.workflow\` JSON files
 - \`nodes/\` — typed compute units (\`defineNode\` modules)
+- \`nodes/**/*.workflow\` — sub-workflows, used like nodes
 - \`providers/\` — injected dependencies (db, logger, clients)
 - \`workflows/**/_middleware.ts\` — middleware for the routes in that folder
 - \`lorien.config.ts\` — build target

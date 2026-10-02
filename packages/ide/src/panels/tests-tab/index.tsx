@@ -6,6 +6,7 @@ import { useNodeCases } from "@/store/node-cases"
 import { useSchemas } from "@/store/schemas"
 import { useSelectionStore } from "@/store/selection"
 import { useTabsStore } from "@/store/tabs"
+import { isSubworkflowPath, subworkflowUses } from "@/workflow/subworkflow"
 import { NodeCasesGroup } from "./node-cases-group"
 import { WorkflowTests } from "./workflow-tests"
 
@@ -23,14 +24,17 @@ export function TestsTab() {
   const logs = useNodeCases((s) => s.lastLogs)
   const anyRunning = useNodeCases((s) => Object.values(s.running).some(Boolean))
 
+  // Cases for each local node and sub-workflow it uses; in a sub-workflow's
+  // own tab, its cases first.
   const nodes = useMemo(() => {
     const seen = new Map<string, string>()
+    if (isSubworkflowPath(workflowPath)) seen.set(subworkflowUses(workflowPath), workflowPath)
     for (const inst of Object.values(workflow?.nodes ?? {})) {
-      const file = nodeFileForUses(inst.uses)
+      const file = schemas[inst.uses]?.subworkflow?.path ?? nodeFileForUses(inst.uses)
       if (file && !seen.has(inst.uses)) seen.set(inst.uses, file)
     }
     return [...seen].map(([uses, file]) => ({ uses, file }))
-  }, [workflow])
+  }, [workflow, workflowPath, schemas])
 
   if (!workflow) {
     return (
@@ -41,9 +45,9 @@ export function TestsTab() {
   }
 
   const selectedUses = selectedId ? workflow.nodes[selectedId]?.uses : undefined
-  const ordered = [...nodes].sort(
-    (a, b) => Number(b.uses === selectedUses) - Number(a.uses === selectedUses),
-  )
+  const ordered = isSubworkflowPath(workflowPath)
+    ? nodes
+    : [...nodes].sort((a, b) => Number(b.uses === selectedUses) - Number(a.uses === selectedUses))
 
   return (
     <div className="flex flex-col gap-2 text-xs" data-testid="tests-tab">
@@ -84,7 +88,7 @@ export function TestsTab() {
             schema={schemas[n.uses]}
             workflow={workflow}
             workflowPath={workflowPath}
-            highlighted={n.uses === selectedUses}
+            highlighted={n.uses === selectedUses || n.file === workflowPath}
           />
         ))
       )}

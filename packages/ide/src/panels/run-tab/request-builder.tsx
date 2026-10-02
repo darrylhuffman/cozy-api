@@ -251,20 +251,31 @@ function useCheckShapes(): CheckShapes {
   )
 }
 
-/** The live workflow's node ids: all of them, and the ones a mock can stand in for. */
+/**
+ * The live workflow's node ids: all of them, and the ones a mock can stand in
+ * for. A sub-workflow node isn't one node when it runs, so its own nodes are
+ * offered instead, by the id they run under (`ReserveSeats__FindEvent`).
+ */
 function useWorkflowNodeIds(): { all: string[]; mockable: string[] } {
+  const schemas = useSchemasStore((s) => s.schemas)
   const key = useLiveWorkflowStore((s) =>
     Object.entries(s.workflow?.nodes ?? {})
-      .map(([id, n]) => `${n.uses.startsWith("@core/") ? "-" : "+"}${id}`)
+      .map(([id, n]) => `${n.uses.startsWith("@core/") ? "-" : "+"}${id}\t${n.uses}`)
       .join("\n"),
   )
   return useMemo(() => {
-    const entries = key ? key.split("\n") : []
+    const entries = key ? key.split("\n").map((e) => e.split("\t") as [string, string]) : []
     return {
-      all: entries.map((e) => e.slice(1)),
-      mockable: entries.filter((e) => e.startsWith("+")).map((e) => e.slice(1)),
+      all: entries.map(([e]) => e.slice(1)),
+      mockable: entries
+        .filter(([e]) => e.startsWith("+"))
+        .flatMap(([e, uses]) => {
+          const id = e.slice(1)
+          const sub = schemas[uses]?.subworkflow
+          return sub ? (sub.mockable ?? []).map((inner) => `${id}__${inner}`) : [id]
+        }),
     }
-  }, [key])
+  }, [key, schemas])
 }
 
 /** Send / save for the form in the builder, plus the last validation or save problem. */

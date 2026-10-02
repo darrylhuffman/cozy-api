@@ -249,6 +249,70 @@ export function flattenWorkflow(
   return { ...wf, nodes: out, ...(view ? { view } : {}) }
 }
 
+/** A node in one file: the workflow (or sub-workflow) and its id there. */
+export interface NodeFrame {
+  workflowPath: string
+  nodeId: string
+}
+
+/**
+ * Where a flattened node came from: one frame per file, outermost first.
+ * `ReserveSeats__FindEvent` in `workflows/orders/create.workflow` is
+ * `[{ workflows/orders/create.workflow, ReserveSeats }, { nodes/orders/reserve-seats.workflow, FindEvent }]`.
+ */
+export interface NodeOrigin {
+  frames: NodeFrame[]
+  /** Set on a sub-workflow's own Input or Output node. */
+  role?: "input" | "output"
+}
+
+/** Flattened node id → where it came from. Only nodes from inside sub-workflows are listed. */
+export type NodeOrigins = Record<string, NodeOrigin>
+
+/**
+ * The origin of every node `flattenWorkflow` brings in from a sub-workflow,
+ * so a debugger can show (and stop on) it in the file it was written in.
+ */
+export function flattenedOrigins(
+  wf: WorkflowFile,
+  workflowPath: string,
+  subworkflows: SubworkflowMap,
+): NodeOrigins {
+  const out: NodeOrigins = {}
+  const walk = (
+    file: WorkflowFile,
+    path: string,
+    prefix: string,
+    outer: NodeFrame[],
+    stack: string[],
+  ) => {
+    for (const [id, inst] of Object.entries(file.nodes)) {
+      const frame = { workflowPath: path, nodeId: id }
+      const sub = subworkflows[inst.uses]
+      if (sub && !stack.includes(inst.uses)) {
+        walk(
+          sub.file,
+          sub.relativePath,
+          `${prefix}${id}${SUBWORKFLOW_SEPARATOR}`,
+          [...outer, frame],
+          [...stack, inst.uses],
+        )
+        continue
+      }
+      if (outer.length === 0) continue
+      const role =
+        inst.uses === SUBWORKFLOW_INPUT
+          ? "input"
+          : inst.uses === SUBWORKFLOW_OUTPUT
+            ? "output"
+            : undefined
+      out[prefix + id] = { frames: [...outer, frame], ...(role ? { role } : {}) }
+    }
+  }
+  walk(wf, workflowPath, "", [], [])
+  return out
+}
+
 /** A copy of an inner node with every node id it references prefixed. */
 function prefixRefs(inst: NodeInstance, prefix: string): NodeInstance {
   const fix = (raw: string) => {

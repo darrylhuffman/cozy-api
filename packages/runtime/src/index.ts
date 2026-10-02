@@ -140,8 +140,15 @@ export type {
 } from "./types.js"
 export type { ParsedWhen } from "./workflow/dependencies.js"
 export { dataDependencies, nodeDependencies, parseWhen } from "./workflow/dependencies.js"
-export type { Subworkflow, SubworkflowMap } from "./workflow/flatten.js"
+export type {
+  NodeFrame,
+  NodeOrigin,
+  NodeOrigins,
+  Subworkflow,
+  SubworkflowMap,
+} from "./workflow/flatten.js"
 export {
+  flattenedOrigins,
   flattenWorkflow,
   referenceSource,
   SUBWORKFLOW_INPUT,

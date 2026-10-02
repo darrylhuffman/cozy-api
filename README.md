@@ -123,6 +123,10 @@ A provider card shows its **lifetime** (`singleton`, `scoped` per request, or `t
 
 ![The Application map in its Lanes layout: Request log middleware, the pet store's seven routes, the nodes they run and the db and logger providers, connected by solid lines for "workflow runs node" and dotted lines for "provider injected", with an overview of counts on the right](docs/images/app-map.png)
 
+### 🧩 Sub-workflows
+
+When several routes repeat the same steps, select those nodes and choose **Extract to sub-workflow**. They move into a `.workflow` file under `nodes/` that every route uses as a single node, with its own Input and Output. Open it to edit it in its own tab. Each run still shows every inner step: the Debug timeline groups them under the sub-workflow node, a breakpoint set inside one stops every route that uses it, and a sub-workflow can have test cases like any node.
+
 ### ✅ Tests next to the thing they test
 
 ![The Tests tab: workflow tests with mocks and step checks, and node test cases, all passing](docs/images/tests.png)
@@ -254,6 +258,7 @@ my-app/
 │   └── *.requests.json     #   saved requests: the route's workflow tests
 ├── nodes/                  # typed compute units (defineNode): all business logic
 │   ├── *.ts
+│   ├── *.workflow          #   sub-workflows: a group of nodes used as one node
 │   └── *.cases.json        #   test cases for the node beside it
 ├── providers/              # injected dependencies (defineProvider): db, logger, clients
 │   └── <name>.ts           #   singleton, scoped (per request) or transient

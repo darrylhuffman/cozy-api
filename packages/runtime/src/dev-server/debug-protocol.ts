@@ -1,4 +1,5 @@
 import type { LifecycleEvent } from "../exec/lifecycle.js"
+import type { NodeOrigins } from "../workflow/flatten.js"
 
 /** A breakpoint on a node or output port. Stored per workflow path. */
 export interface Breakpoint {
@@ -94,6 +95,11 @@ export type ServerMessage =
       workflowPath: string
       triggerNodeId: string
       request: RequestEnvelope
+      /**
+       * Where nodes brought in from sub-workflows were written (their ids
+       * look like `ReserveSeats__FindEvent`). Absent when there are none.
+       */
+      origins?: NodeOrigins
     }
   | { type: "ack"; for: ClientMessage["type"] }
 

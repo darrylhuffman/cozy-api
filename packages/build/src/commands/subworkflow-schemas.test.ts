@@ -81,6 +81,7 @@ describe("subworkflowSchemas", () => {
         path: "nodes/events/require-event.workflow",
         respondsWith: [404],
         responds: true,
+        mockable: ["Find"],
         nodeCount: 3,
       },
     })
@@ -91,6 +92,11 @@ describe("subworkflowSchemas", () => {
     expect(load?.name).toBe("Load event")
     expect(load?.outputs.properties?.event).toEqual(findEvent.outputs.properties.event)
     // Its nested sub-workflow's Response answers the request too.
-    expect(load?.subworkflow).toMatchObject({ respondsWith: [404], responds: true })
+    expect(load?.subworkflow).toMatchObject({
+      respondsWith: [404],
+      responds: true,
+      // Nested nodes go by their flattened id.
+      mockable: ["Require__Find"],
+    })
   })
 })

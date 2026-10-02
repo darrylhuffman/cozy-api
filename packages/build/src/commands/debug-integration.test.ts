@@ -40,3 +40,36 @@ describe("makeDebugIntegration.buildRun", () => {
     expect(sequence.indexOf("broadcast:run-started")).toBeLessThan(sequence.indexOf("registerRun"))
   })
 })
+
+describe("makeDebugIntegration with sub-workflows", () => {
+  it("sends where flattened nodes came from, and hands it to the session", () => {
+    const session = new DebugSession()
+    const broadcasts: ServerMessage[] = []
+    vi.spyOn(session, "broadcast").mockImplementation((msg) => {
+      broadcasts.push(msg)
+    })
+    const register = vi.spyOn(session, "registerRun")
+    const origins = {
+      Reserve__Find: {
+        frames: [
+          { workflowPath: "workflows/a.workflow", nodeId: "Reserve" },
+          { workflowPath: "nodes/r.workflow", nodeId: "Find" },
+        ],
+      },
+    }
+    makeDebugIntegration(session).buildRun(
+      "run-1",
+      "workflows/a.workflow",
+      "Request",
+      { method: "GET", path: "/" },
+      origins,
+    )
+    expect(broadcasts[0]).toMatchObject({ type: "run-started", origins })
+    expect(register).toHaveBeenCalledWith(
+      "workflows/a.workflow",
+      "run-1",
+      expect.any(Number),
+      origins,
+    )
+  })
+})

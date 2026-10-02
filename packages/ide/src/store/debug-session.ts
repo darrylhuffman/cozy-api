@@ -1,6 +1,7 @@
 import type {
   Breakpoint,
   ClientMessage,
+  NodeOrigins,
   RequestEnvelope,
   ServerMessage,
   WireLifecycleEvent,
@@ -33,6 +34,8 @@ export interface RunRecord {
   workflowPath: string
   triggerNodeId: string
   request: RequestEnvelope
+  /** Where nodes from sub-workflows (`ReserveSeats__FindEvent`) were written. */
+  origins?: NodeOrigins
   startedAt: number
   events: TimelineEvent[]
   logs: LogEntry[]
@@ -139,7 +142,7 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
         set({ connected: true })
         return
       case "run-started": {
-        const { runId, workflowPath, triggerNodeId, request } = msg
+        const { runId, workflowPath, triggerNodeId, request, origins } = msg
         set((s) => {
           if (s.runs.find((r) => r.runId === runId)) return s
           const record: RunRecord = {
@@ -147,6 +150,7 @@ export const useDebugSessionStore = create<DebugSessionState>((set, get) => ({
             workflowPath,
             triggerNodeId,
             request,
+            ...(origins ? { origins } : {}),
             startedAt: Date.now(),
             events: [],
             logs: [],

@@ -2,8 +2,9 @@ import { CircleX, Sparkles } from "lucide-react"
 import { askAi } from "@/ai/ask"
 import { fixFailedRun } from "@/ai/prompts"
 import { cn } from "@/lib/utils"
-import { useDebugSessionStore } from "@/store/debug-session"
+import { type RunRecord, useDebugSessionStore } from "@/store/debug-session"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
+import { framesOf } from "@/store/run-origins"
 
 type Variant = "info" | "warning" | "success" | "error"
 
@@ -35,9 +36,12 @@ export function StatusBanner({ runId }: { runId: string | null }) {
       <BannerShell variant="warning" icon={<PauseGlyph />}>
         <span>
           <span className="font-semibold text-warning">Paused</span> at{" "}
-          <span className="font-mono">
-            {run.pausedFrame.nodeId}.{run.pausedFrame.phase}
+          <span className="font-mono" title={run.pausedFrame.nodeId}>
+            {pausedLeaf(run)}.{run.pausedFrame.phase}
           </span>
+          {pausedOwners(run) && (
+            <span className="text-muted-foreground"> in {pausedOwners(run)}</span>
+          )}
         </span>
         <Actions>
           <ControlButton variant="primary" onClick={() => sendContinue(run.runId)}>
@@ -169,4 +173,21 @@ function ControlButton({
       {children}
     </button>
   )
+}
+
+/** The paused node's own id: `Find` for `Reserve__Find`, which ran inside a sub-workflow. */
+function pausedLeaf(run: RunRecord): string {
+  const id = run.pausedFrame?.nodeId ?? ""
+  return framesOf(run, id).at(-1)?.nodeId ?? id
+}
+
+/** The sub-workflow nodes the paused node is inside, outermost first ("Reserve › Seats"). */
+function pausedOwners(run: RunRecord): string | null {
+  const frames = framesOf(run, run.pausedFrame?.nodeId ?? "")
+  return frames.length > 1
+    ? frames
+        .slice(0, -1)
+        .map((f) => f.nodeId)
+        .join(" › ")
+    : null
 }

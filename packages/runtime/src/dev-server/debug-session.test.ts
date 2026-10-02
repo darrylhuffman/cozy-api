@@ -105,6 +105,46 @@ describe("DebugSession multi-active state", () => {
     await pending
   })
 
+  it("stops a sub-workflow's nodes on breakpoints set in its own file", async () => {
+    const s = new DebugSession()
+    const { ws, sent } = makeMockClient()
+    s.connect(ws)
+    const SUB = "nodes/orders/reserve.workflow"
+    await s.onMessage(ws, {
+      type: "set-breakpoints",
+      breakpoints: [
+        { workflowPath: SUB, nodeId: "Find", kind: "before" },
+        { workflowPath: "wf", nodeId: "Reserve", kind: "after" },
+      ],
+    })
+    const frames = (inner: string) => [
+      { workflowPath: "wf", nodeId: "Reserve" },
+      { workflowPath: SUB, nodeId: inner },
+    ]
+    const { onBeforeNode, onAfterNode } = s.registerRun("wf", "r1", Date.now(), {
+      Reserve__Input: { frames: frames("Input"), role: "input" },
+      Reserve__Find: { frames: frames("Find") },
+      Reserve__Output: { frames: frames("Output"), role: "output" },
+    })
+    const pausedOn = () =>
+      sent.filter((m) => m.type === "paused").map((m) => (m.type === "paused" ? m.nodeId : ""))
+
+    await onBeforeNode("Reserve__Input", {})
+    await onAfterNode("Reserve__Input", {})
+    const find = onBeforeNode("Reserve__Find", {})
+    await new Promise((r) => setTimeout(r, 10))
+    expect(pausedOn()).toEqual(["Reserve__Find"])
+    await s.onMessage(ws, { type: "continue", runId: "r1" })
+    await find
+
+    // "after Reserve" in the caller stops once its Output has run.
+    const out = onAfterNode("Reserve__Output", {})
+    await new Promise((r) => setTimeout(r, 10))
+    expect(pausedOn()).toEqual(["Reserve__Find", "Reserve__Output"])
+    await s.onMessage(ws, { type: "continue", runId: "r1" })
+    await out
+  })
+
   it("step targets the right run by runId", async () => {
     const s = new DebugSession()
     const { ws, sent } = makeMockClient()

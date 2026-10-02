@@ -173,3 +173,69 @@ test("moves selected nodes into a new sub-workflow, and inlines them back", asyn
     await ide.request.delete(`/api/workspace/file?path=${sub}`)
   }
 })
+
+test("a breakpoint in a sub-workflow's tab stops the workflow that uses it", async ({ ide }) => {
+  const sub = "nodes/pets/scratch-debug-lookup.workflow"
+  const caller = "workflows/pets/scratch-debug.workflow"
+  await ide.request.put(`/api/workspace/file?path=${sub}&create=true`, {
+    data: json({
+      lorien: 1,
+      label: "Debug lookup",
+      nodes: {
+        Input: { uses: "@core/input", values: { fields: { id: "string" } } },
+        FindPet: { uses: "./nodes/pets/find-pet", in: { id: "Input.id" } },
+        Output: { uses: "@core/output", in: { body: "FindPet.body", status: "FindPet.status" } },
+      },
+      view: { Input: { x: 0, y: 0 }, FindPet: { x: 360, y: 0 }, Output: { x: 720, y: 0 } },
+    }),
+  })
+  await ide.request.put(`/api/workspace/file?path=${caller}&create=true`, {
+    data: json({
+      lorien: 1,
+      nodes: {
+        Request: {
+          uses: "@core/http-request",
+          values: { path: "/scratch-debug/:id", method: "GET" },
+        },
+        Lookup: { uses: "./nodes/pets/scratch-debug-lookup", in: { id: "Request.params.id" } },
+        Response: {
+          uses: "@core/http-response",
+          in: { body: "Lookup.body", status: "Lookup.status" },
+        },
+      },
+    }),
+  })
+  try {
+    // The dev server picks up the new route before any breakpoint is set.
+    await expect
+      .poll(async () => (await ide.request.get("/scratch-debug/1")).status())
+      .not.toBe(404)
+    await expect(ide.getByText("Debugger connected")).toBeVisible()
+    await ide.getByRole("button", { name: "scratch-debug-lookup.workflow" }).click()
+    const findPet = ide.getByTestId("node-card").filter({ hasText: "Find Pet" })
+    await expect(findPet).toBeVisible()
+    await findPet.getByTestId("node-header").click({ button: "right" })
+    await ide.getByText("Toggle breakpoint (before)").click()
+    await expect(ide.locator('[data-testid="node-breakpoint-dot-before"]')).toHaveCount(1)
+
+    const response = ide.request.get("/scratch-debug/1")
+    const banner = ide.getByTestId("status-banner")
+    await expect(banner).toContainText("Paused at FindPet.before in Lookup")
+    // Selecting the run shows where it stopped, in the sub-workflow's tab.
+    await ide.getByRole("button", { name: /paused.*scratch-debug/i }).click()
+    await expect(findPet).toHaveClass(/lorien-paused/)
+    // The timeline lists it by its own id, under the sub-workflow node.
+    await expect(
+      ide
+        .getByTitle("Lookup__FindPet")
+        .filter({ hasText: /^FindPet$/ })
+        .first(),
+    ).toBeVisible()
+    await banner.getByRole("button", { name: "Continue" }).click()
+    await response
+    await expect(banner).toContainText("Completed")
+  } finally {
+    await ide.request.delete(`/api/workspace/file?path=${caller}`)
+    await ide.request.delete(`/api/workspace/file?path=${sub}`)
+  }
+})

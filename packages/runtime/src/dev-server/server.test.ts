@@ -202,6 +202,8 @@ describe("mountWorkflows with debug integration", () => {
       "echo.workflow",
       "req",
       expect.objectContaining({ method: "POST", path: "/echo", body: { msg: "hello" } }),
+      // No sub-workflows, so no origins.
+      undefined,
     )
     expect(onResult).toHaveBeenCalledOnce()
     expect(onResult.mock.calls[0][0]).toBe("test-run-42")

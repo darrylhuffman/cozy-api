@@ -1,6 +1,6 @@
 {
   "name": "create-lorien",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Scaffold a new lorien project \u2014 npx create-lorien <name>",
   "license": "MIT",
   "repository": {

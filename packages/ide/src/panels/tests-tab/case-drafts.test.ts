@@ -123,3 +123,43 @@ describe("lastRunOf", () => {
     ).toBeNull()
   })
 })
+
+describe("lastRunOf for a sub-workflow node", () => {
+  it("takes what its Input received and its Output handed back", () => {
+    const caller = {
+      lorien: 1 as const,
+      nodes: { Reserve: { uses: "./nodes/orders/reserve" } },
+    }
+    const frames = (inner: string) => [
+      { workflowPath: "workflows/o.workflow", nodeId: "Reserve" },
+      { workflowPath: "nodes/orders/reserve.workflow", nodeId: inner },
+    ]
+    const r = {
+      ...run([
+        {
+          offsetMs: 0,
+          event: { type: "before-node", nodeId: "Reserve__Input", input: { id: "e1" } },
+        },
+        {
+          offsetMs: 1,
+          event: {
+            type: "after-node",
+            nodeId: "Reserve__Output",
+            output: { ok: true },
+            durationMs: 0,
+          },
+        },
+      ]),
+      workflowPath: "workflows/o.workflow",
+      origins: {
+        Reserve__Input: { frames: frames("Input"), role: "input" as const },
+        Reserve__Output: { frames: frames("Output"), role: "output" as const },
+      },
+    }
+    expect(lastRunOf([r], caller, "workflows/o.workflow", "./nodes/orders/reserve")).toEqual({
+      nodeId: "Reserve",
+      input: { id: "e1" },
+      output: { ok: true },
+    })
+  })
+})

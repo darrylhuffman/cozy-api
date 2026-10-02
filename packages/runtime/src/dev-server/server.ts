@@ -16,6 +16,7 @@ import {
   TRACE_PATH,
 } from "../requests/types.js"
 import type { AnyNodeOrTrigger, Services } from "../types.js"
+import type { NodeOrigins } from "../workflow/flatten.js"
 import { findRouteConflicts, workflowRoutes } from "../workflow/routes.js"
 import { validateWorkflow } from "../workflow/validate.js"
 import { checkWiring } from "../workflow/wiring.js"
@@ -32,6 +33,8 @@ export interface DebugIntegration {
     workflowPath: string,
     triggerNodeId: string,
     request: RequestEnvelope,
+    /** Where nodes from sub-workflows were written, for breakpoints set inside them. */
+    origins?: NodeOrigins,
   ) => {
     lifecycle: LifecycleEmitter
     onBeforeNode?: (nodeId: string, input: Record<string, unknown>) => Promise<void>
@@ -258,7 +261,7 @@ export function mountWorkflows(app: Hono, workflows: LoadedWorkflow[], opts: Mou
           ...(body !== null ? { body } : {}),
         }
 
-        const run = opts.debug?.buildRun(runId, wf.relativePath, nodeId, request)
+        const run = opts.debug?.buildRun(runId, wf.relativePath, nodeId, request, wf.origins)
         const lifecycle = run?.lifecycle ?? (test ? new LifecycleEmitter() : undefined)
         const recorder = test && lifecycle ? recordTrace(lifecycle, test.mocks) : null
         const traceHeaders = (): Record<string, string> => {

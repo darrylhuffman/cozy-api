@@ -15,13 +15,14 @@ import {
 export function makeDebugIntegration(debugSession: DebugSession): DebugIntegration {
   return {
     newRunId: () => `r-${Math.random().toString(36).slice(2, 10)}`,
-    buildRun: (runId, workflowPath, triggerNodeId, request) => {
+    buildRun: (runId, workflowPath, triggerNodeId, request, origins) => {
       debugSession.broadcast({
         type: "run-started",
         runId,
         workflowPath,
         triggerNodeId,
         request,
+        ...(origins && Object.keys(origins).length > 0 ? { origins } : {}),
       })
       const startedAt = Date.now()
       const lifecycle = new LifecycleEmitter()
@@ -53,7 +54,12 @@ export function makeDebugIntegration(debugSession: DebugSession): DebugIntegrati
           })
         })
       }
-      const { onBeforeNode, onAfterNode } = debugSession.registerRun(workflowPath, runId, startedAt)
+      const { onBeforeNode, onAfterNode } = debugSession.registerRun(
+        workflowPath,
+        runId,
+        startedAt,
+        origins,
+      )
       return { lifecycle, onBeforeNode, onAfterNode }
     },
     onResult: (runId, result, totalMs) => {
