@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 import type { JsonSchema, WorkflowFile } from "@/lib/api"
 import {
   checkValue,
+  convertValue,
+  declaredType,
   describeVariable,
   extractVariable,
   scaffoldValue,
@@ -152,5 +154,34 @@ describe("extractVariable", () => {
     expect((res?.workflow.nodes.checkout?.in as Record<string, string>)["shipping.address"]).toBe(
       "address2.value",
     )
+  })
+})
+
+describe("variable types", () => {
+  it("lets a picked type choose the editor unless the input it feeds is typed", () => {
+    expect(variableKind(undefined, "5", "number")).toBe("number")
+    expect(variableKind({}, {}, "string")).toBe("string")
+    expect(variableKind({ type: "boolean" }, true, "string")).toBe("boolean")
+    expect(typeLabel(undefined, "x", "json")).toBe("json")
+  })
+
+  it("reads only known types", () => {
+    expect(declaredType({ type: "json" })).toBe("json")
+    expect(declaredType({ type: "date" })).toBeUndefined()
+    expect(declaredType(undefined)).toBeUndefined()
+  })
+
+  it("carries a value over to the new type", () => {
+    expect(convertValue(42, "string")).toBe("42")
+    expect(convertValue({ a: 1 }, "string")).toBe('{"a":1}')
+    expect(convertValue("12.5", "number")).toBe(12.5)
+    expect(convertValue("abc", "number")).toBe(0)
+    expect(convertValue(true, "number")).toBe(0)
+    expect(convertValue("true", "boolean")).toBe(true)
+    expect(convertValue(1, "boolean")).toBe(false)
+    expect(convertValue('{"a":1}', "json")).toEqual({ a: 1 })
+    expect(convertValue("hello", "json")).toEqual({})
+    expect(convertValue(undefined, "json")).toEqual({})
+    expect(convertValue(7, "json")).toBe(7)
   })
 })

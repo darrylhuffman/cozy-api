@@ -29,6 +29,7 @@ import { type Condition, parseCondition, WHEN_HANDLE_ID } from "./conditions"
 import { SWITCH_USES, switchCases } from "./core-nodes"
 import type { NodePorts, PortNode } from "./derive-ports"
 import { type Diagnostic, TRIGGERS } from "./diagnose"
+import { FieldPicker } from "./field-picker"
 import { formatRun, SCHEDULE_USES, scheduleValues } from "./schedule"
 import { resolveAccentColor } from "./tailwind-colors"
 import { expandTemplate } from "./template"
@@ -877,6 +878,15 @@ function PortRow({
         ) : (
           chevron
         )
+    } else if (port.fieldsOf) {
+      right = (
+        <FieldPicker
+          label={port.label}
+          value={typeof literal === "string" && literal !== "" ? literal : undefined}
+          schema={port.fieldsOf}
+          onCommit={onInputValueChange && ((v) => onInputValueChange(port.id, v))}
+        />
+      )
     } else {
       right = (
         <ValueChip

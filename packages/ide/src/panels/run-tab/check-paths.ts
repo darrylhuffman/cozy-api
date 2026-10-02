@@ -150,7 +150,7 @@ export function typeName(schema: JsonSchema | undefined): string {
 }
 
 /** The node an input is read from: `AddPet.pet.id` → the schema of AddPet's `pet.id`. */
-function refSchema(
+export function refSchema(
   wf: WorkflowFile,
   schemas: Record<string, NodeSchemas>,
   ref: string,

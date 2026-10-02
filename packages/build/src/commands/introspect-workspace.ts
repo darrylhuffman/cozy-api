@@ -169,8 +169,14 @@ export const CORE_SCHEMAS: Record<string, NodeSchemas> = {
     color: null,
     category: "data",
     description:
-      "A named constant. Other nodes read it as `<id>.value`. Drag an input's handle onto empty canvas to make one typed for that input.",
-    inputs: { type: "object", properties: { value: {} } },
+      "A named constant. Other nodes read it as `<id>.value`. Drag an input's handle onto empty canvas to make one typed for that input, or set `type` (string, number, boolean, json) to pick its editor.",
+    inputs: {
+      type: "object",
+      properties: {
+        value: {},
+        type: { type: "string", enum: ["string", "number", "boolean", "json"] },
+      },
+    },
     outputs: { type: "object", properties: { value: {} } },
   },
   "@core/if": {

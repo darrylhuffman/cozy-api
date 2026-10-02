@@ -555,7 +555,7 @@ describe("derivePorts — logic nodes", () => {
       outputs: { type: "object", properties: { default: { type: "boolean" }, value: {} } },
     },
     "@core/if": {
-      inputs: { type: "object", properties: { value: {} } },
+      inputs: { type: "object", properties: { value: {}, field: { type: "string" } } },
       outputs: {
         type: "object",
         properties: { true: { type: "boolean" }, false: { type: "boolean" }, value: {} },
@@ -584,18 +584,28 @@ describe("derivePorts — logic nodes", () => {
     expect(ports.inputs.children.map((p) => p.id)).toEqual(["value", "field"])
   })
 
-  it("offers the attributes of the wired value for field", () => {
+  it("gives field the type of the wired value to pick from", () => {
     const field = derivePorts(wf, schemas)
       .get("Role")!
       .inputs.children.find((p) => p.id === "field")
-    expect(field?.schema?.enum).toEqual(["role", "profile", "profile.plan"])
+    // The picker browses the type of what `value` reads: Find.user.
+    expect(Object.keys(field?.fieldsOf?.properties ?? {})).toEqual(["role", "profile"])
+  })
+
+  it("gives an if's field the same picker", () => {
+    const ports = derivePorts(
+      { ...wf, nodes: { ...wf.nodes, Gate: { uses: "@core/if", in: { value: "Find.user" } } } },
+      schemas,
+    )
+    const field = ports.get("Gate")!.inputs.children.find((p) => p.id === "field")
+    expect(Object.keys(field?.fieldsOf?.properties ?? {})).toEqual(["role", "profile"])
   })
 
   it("marks an if's true and false as branches", () => {
     const ports = derivePorts(wf, schemas).get("Check")!
     expect(ports.outputs.filter((p) => p.branch).map((p) => p.id)).toEqual(["true", "false"])
   })
-  it("offers attributes from every option of a union", () => {
+  it("passes a union value type through to the field picker", () => {
     const union: Record<string, NodeSchemas> = {
       ...schemas,
       "./nodes/find-pet": {
@@ -621,6 +631,19 @@ describe("derivePorts — logic nodes", () => {
       union,
     )
     const field = ports.get("Kind")!.inputs.children.find((p) => p.id === "field")
-    expect(field?.schema?.enum).toEqual(["id", "species", "error"])
+    expect(Object.keys(field?.fieldsOf?.properties ?? {})).toEqual(
+      expect.arrayContaining(["id", "species", "error"]),
+    )
+  })
+  it("offers no picker when the value has no known fields", () => {
+    const ports = derivePorts(
+      baseWorkflow({
+        Find: { uses: "./nodes/find-user" },
+        Kind: { uses: "@core/switch", in: { value: "Find.user.role" } },
+      }),
+      schemas,
+    )
+    const field = ports.get("Kind")!.inputs.children.find((p) => p.id === "field")
+    expect(field?.fieldsOf).toBeUndefined()
   })
 })

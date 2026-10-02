@@ -31,6 +31,11 @@ export interface PortNode {
    * if's `true`/`false`): wired into another node, it sets that node's `when`.
    */
   branch?: boolean
+  /**
+   * For a logic node's `field` input: the type of the value it reads into,
+   * so the card offers a picker of that value's fields.
+   */
+  fieldsOf?: JsonSchema | undefined
 }
 
 /**

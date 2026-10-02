@@ -1,8 +1,8 @@
-import type { JsonSchema, NodeInstance, NodeSchemas, WorkflowFile } from "@/lib/api"
+import type { NodeInstance, NodeSchemas, WorkflowFile } from "@/lib/api"
+import { childrenOf, refSchema } from "@/panels/run-tab/check-paths"
 import { caseLabel, isBranchPort, SWITCH_USES, switchCases } from "./core-nodes"
 import { type PortNode, schemaToRootedTree, schemaToTree } from "./schema-to-tree"
 import { inputFields, SUBWORKFLOW_INPUT } from "./subworkflow"
-import { unwrapSchema } from "./variables"
 
 export type { PortNode } from "./schema-to-tree"
 
@@ -253,57 +253,19 @@ function applyLogicPorts(
   }
   outputs = outputs.map((p) => (isBranchPort(instance.uses, p.id) ? { ...p, branch: true } : p))
 
-  const options = attributeOptions(workflow, schemas, instance)
-  if (options.length > 0) {
+  // `field` picks a path inside whatever is wired into `value`, from its type.
+  const raw = typeof instance.in === "object" ? instance.in?.value : undefined
+  const valueSchema =
+    typeof raw === "string" && REFERENCE.test(raw) ? refSchema(workflow, schemas, raw) : undefined
+  if (childrenOf(valueSchema).some((c) => typeof c.key === "string")) {
     inputChildren = inputChildren.map((p) =>
-      p.id === "field" ? { ...p, schema: { ...p.schema, type: "string", enum: options } } : p,
+      p.id === "field" ? { ...p, fieldsOf: valueSchema } : p,
     )
   }
   return {
     inputs: { ...ports.inputs, children: inputChildren, isLeaf: inputChildren.length === 0 },
     outputs,
   }
-}
-
-/**
- * The attributes a logic node's `field` can pick: the properties (two levels
- * deep, dotted) of the output wired into its `value`, when its schema says.
- */
-export function attributeOptions(
-  workflow: WorkflowFile,
-  schemas: Record<string, NodeSchemas>,
-  instance: NodeInstance,
-): string[] {
-  const raw = typeof instance.in === "object" ? instance.in?.value : undefined
-  if (typeof raw !== "string" || !REFERENCE.test(raw)) return []
-  const [sourceId, ...path] = raw.split(".")
-  const source = sourceId ? workflow.nodes[sourceId] : undefined
-  if (!source) return []
-  let schema = unwrapSchema(schemas[source.uses]?.outputs)
-  for (const seg of path) schema = propertiesOf(schema)[seg]
-  const out: string[] = []
-  const walk = (s: JsonSchema | undefined, prefix: string, depth: number) => {
-    for (const [key, child] of Object.entries(propertiesOf(s))) {
-      if (out.includes(prefix ? `${prefix}.${key}` : key)) continue
-      const name = prefix ? `${prefix}.${key}` : key
-      out.push(name)
-      if (depth < 1) walk(child, name, depth + 1)
-    }
-  }
-  walk(schema, "", 0)
-  return out
-}
-
-/** An object schema's properties; for a union, every option's, first one wins. */
-function propertiesOf(schema: JsonSchema | undefined): Record<string, JsonSchema> {
-  const s = unwrapSchema(schema)
-  const options = (s?.anyOf ?? s?.oneOf) as JsonSchema[] | undefined
-  if (!Array.isArray(options)) return s?.properties ?? {}
-  const out: Record<string, JsonSchema> = {}
-  for (const option of options) {
-    for (const [k, v] of Object.entries(propertiesOf(option))) out[k] ??= v
-  }
-  return out
 }
 
 /**

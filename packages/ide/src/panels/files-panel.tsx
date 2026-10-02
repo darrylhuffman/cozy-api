@@ -249,7 +249,7 @@ export function FilesPanel() {
                 title="NODES"
                 treeKind="nodes"
                 tree={nodes}
-                prepend={<CoreNodesFolder autoExpand={loadState === "ready"} />}
+                append={<CoreNodesFolder autoExpand={loadState === "ready"} />}
                 onContextMenu={openMenu}
                 autoExpand={loadState === "ready"}
                 {...(ready && {
@@ -394,7 +394,7 @@ function Section({
   onNewItem,
   onNewFolder,
   emptyHint,
-  prepend,
+  append,
 }: {
   title: string
   treeKind: TreeKind
@@ -405,8 +405,8 @@ function Section({
   onNewFolder?: () => void
   /** Shown instead of the tree when the folder is empty or missing. */
   emptyHint?: string
-  /** Rendered above the folder's own entries (the Nodes section's built-ins). */
-  prepend?: React.ReactNode
+  /** Rendered below the folder's own entries (the Nodes section's built-ins). */
+  append?: React.ReactNode
 }) {
   const rootPath = tree.type === "folder" ? tree.name : treeKind
   // Render children of the root folder directly (the section header IS the root label).
@@ -429,7 +429,6 @@ function Section({
           </SectionAction>
         )}
       </div>
-      {prepend}
       {children.length === 0 && emptyHint && (
         <div className="px-2 pb-1 text-[11.5px] text-muted-foreground">{emptyHint}</div>
       )}
@@ -444,6 +443,7 @@ function Section({
           autoExpand={autoExpand}
         />
       ))}
+      {append}
     </div>
   )
 }
@@ -691,7 +691,7 @@ const CORE_ICON: Record<string, typeof FileCode> = {
 }
 
 /**
- * The built-in nodes, above the project's own: a "core" folder with one
+ * The built-in nodes, below the project's own: a "core" folder with one
  * subfolder per category. They're drawn lighter than project nodes since
  * they aren't files you own; drag one onto the canvas to add it.
  */

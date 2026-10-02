@@ -108,9 +108,11 @@ import { SubworkflowIcon } from "./subworkflow-icon"
 import { SubworkflowIoNode } from "./subworkflow-io-node"
 import { VariableNode } from "./variable-node"
 import {
+  convertValue,
   extractVariable,
   schemaAtPath,
   VARIABLE_USES,
+  type VariableType,
   variableKind,
   variableSchema,
   variableTargets,
@@ -758,6 +760,18 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     [applyWorkflow],
   )
 
+  /** Gives a variable a type, carrying its value over: one undo step. */
+  const onVariableTypeChange = useCallback(
+    (nodeId: string, type: VariableType) => {
+      const wf = workflowRef.current
+      const node = wf?.nodes[nodeId]
+      if (!wf || !node) return
+      const values = { ...(node.values ?? {}), type, value: convertValue(node.values?.value, type) }
+      applyWorkflow({ ...wf, nodes: { ...wf.nodes, [nodeId]: { ...node, values } } })
+    },
+    [applyWorkflow],
+  )
+
   /** Removes a node's `when`, or flips it between truthy and falsy. */
   const onClearCondition = useCallback(
     (nodeId: string) => {
@@ -924,6 +938,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
             schema: variableSchema(workflow, schemas, id),
             targets: variableTargets(workflow, id),
             onValueChange: (value: unknown) => onInputValueChange(id, "value", value),
+            onTypeChange: (type: VariableType) => onVariableTypeChange(id, type),
             nodeStatus: nodeStatusesRef.current.get(id),
             issues: issuesByNode.get(id),
             gitChange: markFor(changeMarksRef.current[id]),
@@ -972,6 +987,7 @@ function WorkflowEditorInner({ path, tabId, visible = true }: Props) {
     onTogglePort,
     onInputValueChange,
     onClearCondition,
+    onVariableTypeChange,
     onSwitchCasesChange,
     editWorkflow,
     path,
