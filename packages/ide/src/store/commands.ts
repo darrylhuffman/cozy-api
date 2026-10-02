@@ -16,6 +16,8 @@ export type CommandId =
   | "edit.undo"
   | "edit.redo"
   | "edit.duplicate"
+  | "edit.extract"
+  | "edit.inline"
   | "canvas.addNode"
   | "canvas.fitView"
   | "canvas.tidy"

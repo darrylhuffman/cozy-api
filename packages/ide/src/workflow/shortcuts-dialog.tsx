@@ -9,6 +9,8 @@ export const SHORTCUTS: Array<[keys: string, action: string]> = [
   [`${MOD}+Shift+Z / ${MOD}+Y`, "Redo"],
   [`${MOD}+K`, "Add a node (palette)"],
   [`${MOD}+D`, "Duplicate selected node"],
+  [`${MOD}+G`, "Move the selected nodes to a new sub-workflow"],
+  [`${MOD}+Shift+G`, "Inline the selected sub-workflow node"],
   ["Delete / Backspace", "Delete the selected nodes or wire"],
   ["Shift+drag", "Select the nodes in a box"],
   [`Shift+click / ${MOD}+click`, "Add or remove a node from the selection"],

@@ -19,6 +19,10 @@ interface Props {
   onExplain?: () => void
   /** When provided (local nodes), renders "Write test cases with AI". */
   onGenerateCases?: () => void
+  /** When provided, renders "Move to sub-workflow…". */
+  onExtract?: () => void
+  /** When provided (sub-workflow nodes), renders "Inline sub-workflow". */
+  onInline?: () => void
 }
 
 export function NodeContextMenu({
@@ -34,6 +38,8 @@ export function NodeContextMenu({
   onToggleBreakpointAfter,
   onExplain,
   onGenerateCases,
+  onExtract,
+  onInline,
 }: Props) {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -91,6 +97,32 @@ export function NodeContextMenu({
           >
             Duplicate
             <span className="text-xs text-muted-foreground">Ctrl+D</span>
+          </button>
+        )}
+        {onExtract && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenChange(false)
+              onExtract()
+            }}
+            className="flex w-full items-center justify-between rounded px-3 py-1.5 text-left text-sm hover:bg-accent"
+          >
+            Move to sub-workflow…
+            <span className="text-xs text-muted-foreground">Ctrl+G</span>
+          </button>
+        )}
+        {onInline && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenChange(false)
+              onInline()
+            }}
+            className="flex w-full items-center justify-between rounded px-3 py-1.5 text-left text-sm hover:bg-accent"
+          >
+            Inline sub-workflow
+            <span className="text-xs text-muted-foreground">Ctrl+Shift+G</span>
           </button>
         )}
         <button

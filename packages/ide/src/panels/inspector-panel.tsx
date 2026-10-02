@@ -16,6 +16,7 @@ import { openCodeFile } from "@/lib/open-code-file"
 import { openWorkspaceFile } from "@/lib/open-file"
 import { openSubworkflow } from "@/lib/open-subworkflow"
 import { cn } from "@/lib/utils"
+import { runCommand } from "@/store/commands"
 import { type InspectorTab, useInspectorTab } from "@/store/inspector-tab"
 import { useLiveWorkflowStore } from "@/store/live-workflow"
 import { caseSummary, useNodeCases } from "@/store/node-cases"
@@ -198,6 +199,16 @@ function InspectContent() {
               Open sub-workflow
             </button>
           )}
+          {sub && (
+            <button
+              type="button"
+              onClick={() => runCommand("edit.inline")}
+              title="Put its nodes back in this workflow, in its place (Ctrl+Shift+G)"
+              className={ACTION_BUTTON}
+            >
+              Inline here
+            </button>
+          )}
           {sourcePath && (
             <button
               type="button"
@@ -324,6 +335,15 @@ function MultiSelection({
             )
           })}
         </ul>
+        <button
+          type="button"
+          onClick={() => runCommand("edit.extract")}
+          title="Move them into a new sub-workflow (Ctrl+G)"
+          className={cn(ACTION_BUTTON, "self-start")}
+        >
+          <SubworkflowIcon className="h-3 w-3 text-flow" />
+          Move to sub-workflow
+        </button>
         <p className="text-xs text-muted-foreground">
           Drag any of them to move the group. Delete removes them all, and Ctrl+Z puts them back.
           Shift+click a node to add or remove it.

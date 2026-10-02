@@ -138,6 +138,13 @@ export function Topbar() {
               <CommandItem id="edit.duplicate" shortcut={`${MOD}+D`}>
                 Duplicate node
               </CommandItem>
+              <MenubarSeparator />
+              <CommandItem id="edit.extract" shortcut={`${MOD}+G`}>
+                Move to sub-workflow…
+              </CommandItem>
+              <CommandItem id="edit.inline" shortcut={`${MOD}+Shift+G`}>
+                Inline sub-workflow
+              </CommandItem>
             </MenubarContent>
           </MenubarMenu>
           <MenubarMenu>
